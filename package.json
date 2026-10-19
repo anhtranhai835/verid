@@ -9,13 +9,18 @@
   "engines": {
     "node": ">=22"
   },
+  "bin": {
+    "verid": "dist/cli.js"
+  },
   "scripts": {
-    "build": "esbuild src/hook.ts --bundle --platform=node --format=esm --target=node22 --outfile=dist/hook.js --log-level=warning",
+    "build": "esbuild hook=src/hook.ts cli=src/cli/main.ts --bundle --splitting --platform=node --format=esm --target=node22 --outdir=dist --log-level=warning \"--banner:js=import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);\"",
     "typecheck": "tsc --noEmit",
     "test": "npm run build && vitest run",
     "format": "prettier --write ."
   },
   "dependencies": {
+    "fast-xml-parser": "^5.11.2",
+    "yaml": "^2.9.1",
     "zod": "^4.6.7"
   },
   "devDependencies": {

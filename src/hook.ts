@@ -1,5 +1,4 @@
 import { randomInt } from "node:crypto";
-import { readFileSync } from "node:fs";
 import type * as z from "zod/mini";
 import {
   isOverridable,
@@ -10,6 +9,7 @@ import {
 } from "./core/errors.js";
 import { consumeOverride, handlePrompt, parseVeridPrompt, recordDenial } from "./core/override.js";
 import { decide } from "./core/policy.js";
+import { decideTdd } from "./core/tdd.js";
 import { appendAudit } from "./adapters/audit-log.js";
 import {
   inputHash,
@@ -20,7 +20,16 @@ import {
   toAction,
   userPromptSchema,
 } from "./adapters/claude-code.js";
-import { readState, statePaths, VeridError, withLock, writeState } from "./adapters/state-store.js";
+import { bilingual, t, type Lang } from "./adapters/i18n.js";
+import { loadManifest, tddLayout } from "./adapters/manifest.js";
+import {
+  readState,
+  statePaths,
+  VeridError,
+  withLock,
+  writeState,
+  type StatePaths,
+} from "./adapters/state-store.js";
 
 /**
  * Single entry for PreToolUse, UserPromptSubmit, Stop and SessionStart.
@@ -46,7 +55,7 @@ async function main(): Promise<void> {
   try {
     const payload = parseJson(raw);
     event = (payload as { hook_event_name?: string } | null)?.hook_event_name ?? event;
-    result = handle(payload);
+    result = await handle(payload);
   } catch (err) {
     result = onError(event, err);
   }
@@ -55,7 +64,7 @@ async function main(): Promise<void> {
   process.exitCode = result.exit;
 }
 
-function handle(payload: unknown): Result {
+async function handle(payload: unknown): Promise<Result> {
   switch ((payload as { hook_event_name?: unknown } | null)?.hook_event_name) {
     case "PreToolUse":
       return preToolUse(parse(preToolUseSchema, payload));
@@ -69,15 +78,23 @@ function handle(payload: unknown): Result {
   }
 }
 
-function preToolUse(p: z.infer<typeof preToolUseSchema>): Result {
+async function preToolUse(p: z.infer<typeof preToolUseSchema>): Promise<Result> {
   const project = projectDir(p.cwd);
   const paths = statePaths(project);
   const action = toAction(p);
   if ("invalid" in action) throw new VeridError("VERID_E_PAYLOAD", { detail: action.invalid });
-  const decision = decide(action, policyContext(project));
+  let decision = decide(action, policyContext(project));
   if (decision.kind === "allow") {
-    readState(paths); // no usable state → nothing is allowed
-    return { exit: 0 };
+    const state = readState(paths); // no usable state → nothing is allowed
+    // The TDD gate needs the manifest only for file writes; no manifest = Phase 0 behaviour.
+    if (action.kind !== "file" || action.access !== "write") return { exit: 0 };
+    const manifest = await loadManifest(project);
+    if (!manifest) return { exit: 0 };
+    const tdd = decideTdd(action, state.tdd.state, tddLayout(project, manifest));
+    if (tdd.kind === "reopen")
+      reopen(paths, { session: p.session_id, tool: p.tool_name, target: action.display });
+    if (tdd.kind !== "deny") return { exit: 0 };
+    decision = tdd;
   }
 
   const now = new Date().toISOString();
@@ -99,6 +116,16 @@ function preToolUse(p: z.infer<typeof preToolUseSchema>): Result {
     appendAudit(paths.audit, { event: "denied", ...key, target: decision.target });
     writeState(paths, recordDenial(state, { ...key, target: decision.target, at: now }));
     return deny(decision.code, { target: decision.target });
+  });
+}
+
+/** A test changed after it was watched failing: it must be watched failing again. */
+function reopen(paths: StatePaths, event: { session: string; tool: string; target: string }): void {
+  withLock(paths, () => {
+    const state = readState(paths);
+    if (state.tdd.state === "RED") return; // a concurrent hook got here first
+    appendAudit(paths.audit, { event: "tdd_reopened", ...event, from: state.tdd.state });
+    writeState(paths, { ...state, tdd: { ...state.tdd, state: "RED" } });
   });
 }
 
@@ -184,23 +211,5 @@ const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 function newCode(): string {
   return Array.from({ length: 6 }, () => CODE_ALPHABET[randomInt(CODE_ALPHABET.length)]).join("");
 }
-
-// Phase 0 shows both languages; manifest.language picks one once the manifest exists (Phase 4).
-type Lang = "vi" | "en";
-const catalogs = new Map<Lang, Record<string, string>>();
-function t(lang: Lang, key: string, params: Record<string, string>): string {
-  if (!catalogs.has(lang)) {
-    try {
-      const url = new URL(`../i18n/${lang}.json`, import.meta.url);
-      catalogs.set(lang, JSON.parse(readFileSync(url, "utf8")) as Record<string, string>);
-    } catch {
-      catalogs.set(lang, {}); // a missing catalog must not turn a deny into a crash
-    }
-  }
-  const template = catalogs.get(lang)?.[key] ?? key;
-  return template.replace(/\{(\w+)\}/g, (m, name: string) => params[name] ?? m);
-}
-const bilingual = (key: string, params: Record<string, string>) =>
-  `vi: ${t("vi", key, params)}\nen: ${t("en", key, params)}`;
 
 await main();

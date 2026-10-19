@@ -163,6 +163,6 @@ function sleep(ms: number): void {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
 
-function errno(e: unknown): string | undefined {
+export function errno(e: unknown): string | undefined {
   return (e as NodeJS.ErrnoException | undefined)?.code;
 }
