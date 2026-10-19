@@ -11,6 +11,7 @@ describe("parseState", () => {
         last_denied: null,
         pending_override: null,
         overrides: [],
+        tdd: { state: "RED", last_run: null },
       },
     });
   });
@@ -40,6 +41,11 @@ describe("parseState", () => {
     [
       "override without used flag",
       '{"schemaVersion":1,"overrides":[{"session":"s","rule":"VERID_E_MANIFEST_PROTECTED","tool":"Write","target":"t","input_hash":"h","reason":"r","created_at":"t"}]}',
+      "VERID_E_STATE_CORRUPT",
+    ],
+    [
+      "unknown TDD state",
+      '{"schemaVersion":1,"tdd":{"state":"BLUE","last_run":null}}',
       "VERID_E_STATE_CORRUPT",
     ],
   ])("rejects %s", (_name, raw, code) => {

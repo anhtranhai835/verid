@@ -16,9 +16,21 @@
   "VERID_E_OVERRIDE_FORBIDDEN": "{rule} là bất biến, không override được ({target}). Developer phải tự làm việc này ngoài agent.",
   "VERID_E_OVERRIDE_BAD_CODE": "Mã xác nhận không đúng. Chưa tạo override nào.",
   "VERID_E_OVERRIDE_STALE": "Hành động bị chặn đã thay đổi kể từ lúc cảnh báo. Cảnh báo cũ đã bị huỷ; hãy gõ lại `/verid allow <lý do>`.",
+  "VERID_E_TDD_NO_FAILING_TEST": "Code production đang bị khoá vì vòng TDD đang ở RED ({target}). Không viết code production khi chưa có test fail: hãy viết hoặc sửa test, chạy `verid test`, rồi kiểm tra test fail đúng lý do bạn mong đợi.",
+  "VERID_E_MANIFEST_MISSING": "Không tìm thấy manifest của verid tại {path}. `verid test` cần file này: developer phải tự tạo (xem docs/manual-hook-checklist.md).",
+  "VERID_E_MANIFEST_INVALID": "Manifest của verid không hợp lệ ({path}): {detail}. Chỉ developer được sửa file này; cho tới lúc đó mọi thao tác ghi file đều bị chặn.",
+  "VERID_E_RUN_NO_JUNIT": "Lệnh test không để lại báo cáo JUnit đọc được tại {path}: test_cmd phải ghi báo cáo ra {junit}. Lần chạy này không được tính là bằng chứng; trạng thái TDD giữ nguyên.",
+  "VERID_E_RUN_NO_TESTS": "Báo cáo JUnit tại {path} không có test nào thực sự chạy. Lần chạy này không được tính là bằng chứng; trạng thái TDD giữ nguyên.",
+  "VERID_E_RUN_EXIT_MISMATCH": "Lệnh test thoát với mã {exit} trong khi báo cáo JUnit có {failed} test fail. verid không tin một lần chạy mà mã thoát và báo cáo mâu thuẫn nhau. Lần chạy này không được tính là bằng chứng; trạng thái TDD giữ nguyên.",
   "hint.overridable": "Bước tiếp theo: làm theo cách hợp lệ khác. Nếu thật sự cần hành động này, hãy hỏi developer; chỉ developer mới override được bằng `/verid allow <lý do>`.",
   "hint.not_overridable": "Đây là bất biến, không override được. Nếu cần, developer phải tự làm ngoài agent.",
   "override.risk_warning": "CẢNH BÁO RỦI RO. Bạn sắp cho agent vượt rule {rule} đúng 1 lần cho hành động: {tool} {target}. Lý do: {reason}. Override chỉ dùng được 1 lần, cho đúng hành động này, và được ghi vào audit. Nếu chấp nhận rủi ro, hãy gõ: /verid confirm {code}",
   "override.created": "verid: developer đã cho phép 1 lần hành động {tool} {target}. Hãy thực hiện lại đúng hành động đó, không thay đổi gì. Mọi hành động khác vẫn bị chặn.",
-  "prompt.hook_failed": "verid gặp lỗi khi xử lý prompt ({detail}). Prompt vẫn được gửi đi; không có override nào được tạo."
+  "prompt.hook_failed": "verid gặp lỗi khi xử lý prompt ({detail}). Prompt vẫn được gửi đi; không có override nào được tạo.",
+  "status.red": "RED: code production đang bị khoá. Hãy viết một test fail cho hành vi tiếp theo, rồi chạy `verid test`.",
+  "status.green": "GREEN: viết lượng code production tối thiểu để các test đang fail pass, rồi chạy `verid test`. Sửa code, không sửa test: sửa test sẽ đưa vòng TDD về lại RED.",
+  "status.refactor": "REFACTOR: mọi test đều pass. Dọn dẹp code production và giữ `verid test` luôn xanh. Viết test tiếp theo sẽ bắt đầu một vòng mới ở RED.",
+  "tdd.passed_in_red": "Mọi test đều pass, nên không có gì chứng minh test mới có thể fail: nó đang test hành vi đã có sẵn. Hãy sửa test để nó fail vì đúng hành vi bạn muốn.",
+  "tdd.refactor_broke": "Lần refactor vừa rồi làm hỏng {failed} test.",
+  "cli.usage": "Cách dùng: `verid test` chạy lệnh test trong manifest và ghi kết quả làm bằng chứng TDD; `verid status` cho biết trạng thái TDD hiện tại."
 }

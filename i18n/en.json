@@ -16,9 +16,21 @@
   "VERID_E_OVERRIDE_FORBIDDEN": "{rule} is an invariant and cannot be overridden ({target}). The developer must do this outside the agent.",
   "VERID_E_OVERRIDE_BAD_CODE": "Wrong confirmation code. No override was created.",
   "VERID_E_OVERRIDE_STALE": "The blocked action changed since the warning. The old warning was cancelled; type `/verid allow <reason>` again.",
+  "VERID_E_TDD_NO_FAILING_TEST": "Production code is locked while the TDD cycle is RED ({target}). No production code without a failing test first: write or fix a test, run `verid test`, and check that it fails for the reason you expect.",
+  "VERID_E_MANIFEST_MISSING": "verid manifest not found at {path}. `verid test` needs it: the developer must create it (see docs/manual-hook-checklist.md).",
+  "VERID_E_MANIFEST_INVALID": "verid manifest is invalid ({path}): {detail}. Only the developer can fix this file; until then every file write is blocked.",
+  "VERID_E_RUN_NO_JUNIT": "The test command left no readable JUnit report at {path}: test_cmd must write it to {junit}. This run is not evidence; the TDD state is unchanged.",
+  "VERID_E_RUN_NO_TESTS": "The JUnit report at {path} has no test that ran. This run is not evidence; the TDD state is unchanged.",
+  "VERID_E_RUN_EXIT_MISMATCH": "The test command exited with {exit} while the JUnit report has {failed} failing test(s). verid does not trust a run whose exit code and report disagree. This run is not evidence; the TDD state is unchanged.",
   "hint.overridable": "Next step: find another valid way. If this action is really needed, ask the developer; only the developer can override with `/verid allow <reason>`.",
   "hint.not_overridable": "This is an invariant and cannot be overridden. If needed, the developer must do it outside the agent.",
   "override.risk_warning": "RISK WARNING. You are about to let the agent bypass rule {rule} exactly once for: {tool} {target}. Reason: {reason}. The override works once, for this exact action only, and is recorded in the audit log. To accept the risk, type: /verid confirm {code}",
   "override.created": "verid: the developer allowed {tool} {target} exactly once. Retry exactly that action, unchanged. Every other action is still blocked.",
-  "prompt.hook_failed": "verid failed while handling the prompt ({detail}). The prompt was still sent; no override was created."
+  "prompt.hook_failed": "verid failed while handling the prompt ({detail}). The prompt was still sent; no override was created.",
+  "status.red": "RED: production code is locked. Write one failing test for the next behaviour, then run `verid test`.",
+  "status.green": "GREEN: write the minimum production code to make the failing tests pass, then run `verid test`. Fix the code, not the test: changing a test sends the cycle back to RED.",
+  "status.refactor": "REFACTOR: all tests pass. Clean up the production code and keep `verid test` green. Writing the next test starts a new cycle in RED.",
+  "tdd.passed_in_red": "Every test passed, so nothing proves the new test can fail: it tests behaviour that already exists. Change it so it fails for the behaviour you want.",
+  "tdd.refactor_broke": "The refactor broke {failed} test(s).",
+  "cli.usage": "Usage: `verid test` runs the manifest's test command and records the result as TDD evidence; `verid status` shows the TDD state."
 }

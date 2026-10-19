@@ -1,6 +1,7 @@
 // zod/mini tree-shakes to ~40 KB; full zod added ~65 ms to every hook start (Phase 0 measurement).
 import * as z from "zod/mini";
 import { RULE_CODES } from "./errors.js";
+import { TDD_STATES } from "./tdd.js";
 
 const rule = z.enum(RULE_CODES);
 
@@ -36,6 +37,12 @@ const override = z.strictObject({
   used_at: z.optional(z.string()),
 });
 
+const tdd = z.strictObject({
+  state: z.enum(TDD_STATES),
+  /** Id of the last run that counted as evidence, under .state/runs/. */
+  last_run: z.nullable(z.string()),
+});
+
 /**
  * Every field except schemaVersion has a default, so a developer can bootstrap state
  * by hand with `{"schemaVersion":1}` until `verid init` exists. Unknown fields are
@@ -49,6 +56,8 @@ const stateSchema = z.strictObject({
   last_denied: z._default(z.nullable(deniedAction), null),
   pending_override: z._default(z.nullable(pendingOverride), null),
   overrides: z._default(z.array(override), []),
+  // A new project starts in RED: no production code without a failing test first.
+  tdd: z._default(tdd, { state: "RED", last_run: null }),
 });
 
 export type State = z.infer<typeof stateSchema>;

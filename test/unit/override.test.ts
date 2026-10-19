@@ -47,6 +47,7 @@ const base: State = {
   last_denied: { ...denied },
   pending_override: null,
   overrides: [],
+  tdd: { state: "RED", last_run: null },
 };
 const ctx: PromptContext = {
   session: "s1",
