@@ -1,0 +1,18 @@
+# internal planning docs — kept local, not committed
+plans/
+
+# dependencies / build
+node_modules/
+dist/
+
+# verid runtime state (never commit)
+.verid/.state/
+
+# env
+.env
+.env.*
+
+# logs / caches
+*.log
+*.tsbuildinfo
+.DS_Store

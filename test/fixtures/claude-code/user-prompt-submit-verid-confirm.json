@@ -1,0 +1,10 @@
+{
+  "session_id": "{{SESSION_ID}}",
+  "transcript_path": "{{TRANSCRIPT_PATH}}",
+  "cwd": "{{CWD}}",
+  "scratchpad_dir": "{{SCRATCHPAD_DIR}}",
+  "prompt_id": "df01a632-1c05-4e63-904f-d729d6dcd95e",
+  "permission_mode": "auto",
+  "hook_event_name": "UserPromptSubmit",
+  "prompt": "/verid confirm ZQ7X91"
+}

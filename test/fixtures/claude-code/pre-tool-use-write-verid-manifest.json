@@ -1,0 +1,18 @@
+{
+  "session_id": "{{SESSION_ID}}",
+  "transcript_path": "{{TRANSCRIPT_PATH}}",
+  "cwd": "{{CWD}}",
+  "scratchpad_dir": "{{SCRATCHPAD_DIR}}",
+  "prompt_id": "29b8f363-29fc-4386-82fd-2b15b57a2f0b",
+  "permission_mode": "acceptEdits",
+  "effort": {
+    "level": "medium"
+  },
+  "hook_event_name": "PreToolUse",
+  "tool_name": "Write",
+  "tool_input": {
+    "file_path": "{{CWD}}\\.verid\\manifest.yaml",
+    "content": "schemaVersion: 1\n"
+  },
+  "tool_use_id": "toolu_01YaZD1S3WVVgvywGwyyYP5H"
+}

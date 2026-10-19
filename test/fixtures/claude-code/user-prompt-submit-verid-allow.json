@@ -1,0 +1,10 @@
+{
+  "session_id": "{{SESSION_ID}}",
+  "transcript_path": "{{TRANSCRIPT_PATH}}",
+  "cwd": "{{CWD}}",
+  "scratchpad_dir": "{{SCRATCHPAD_DIR}}",
+  "prompt_id": "b9f9d924-c9bf-4a8e-aea8-c889b0f34f8d",
+  "permission_mode": "auto",
+  "hook_event_name": "UserPromptSubmit",
+  "prompt": "/verid allow x"
+}
