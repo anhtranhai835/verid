@@ -70,3 +70,32 @@ Sau đó `.verid/.state/state.json` có `blocked_actions` bằng số lần bị
 | Xoá `state.json` | Mọi tool call bị chặn với `VERID_E_STATE_MISSING`, kèm hướng dẫn tạo lại |
 | Ghi rác vào `state.json` | `VERID_E_STATE_CORRUPT` |
 | Đổi `args` sang file không tồn tại | Tool bị chặn: `failed; blocking because onFailure is "block"` |
+
+## 5. Vòng TDD (Phase 1)
+
+Chạy trong một thư mục thử mới, chuẩn bị như mục 1, có cài vitest (`npm init -y && npm i -D vitest`, tạo `src/` và `test/`). Ở mục 1–4 không có manifest, nên cổng TDD tắt. Phần này mới bật cổng.
+
+1. Developer tạo `.verid/manifest.yaml`:
+
+```yaml
+schemaVersion: 1
+repos:
+  - path: .
+    test_cmd: npx vitest run --reporter=junit --outputFile={junit}
+    source_globs: ["src/**"]
+    test_globs: ["test/**"]
+```
+
+2. Agent gọi CLI bằng `node <VERID>/dist/cli.js test`. Cách khác: chạy `npm link` trong repo verid để có lệnh `verid`.
+
+| Việc | Kết quả |
+|---|---|
+| `verid status` | `verid: TDD RED · last run none` |
+| Nhờ agent viết `src/add.ts` trước | `VERID_E_TDD_NO_FAILING_TEST` |
+| Agent viết `test/add.test.ts` (import `../src/add.js`), rồi chạy `verid test` | exit 1, `verid: RED → GREEN`, in `FAIL test/add.test.ts` kèm `Cannot find module` |
+| Agent viết `src/add.ts`, rồi chạy `verid test` | exit 0, `verid: GREEN → REFACTOR` |
+| Agent sửa `test/add.test.ts` | được; `verid status` báo RED |
+| Ngay sau đó agent sửa `src/add.ts` | `VERID_E_TDD_NO_FAILING_TEST` |
+| Developer bỏ `{junit}` khỏi `test_cmd` | Mọi lần ghi file và `verid test` đều bị chặn với `VERID_E_MANIFEST_INVALID` |
+
+Sau đó `.verid/.state/runs/` có một thư mục cho mỗi lần chạy (gồm `junit.xml`, `output.log`, `run.json`), và `audit.jsonl` có các dòng `test_run` và `tdd_reopened`.
