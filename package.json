@@ -8,7 +8,7 @@
     "node": ">=22"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "esbuild src/hook.ts --bundle --platform=node --format=esm --target=node22 --outfile=dist/hook.js --log-level=warning",
     "typecheck": "tsc --noEmit",
     "test": "npm run build && vitest run",
     "format": "prettier --write ."
@@ -18,6 +18,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.20.5",
+    "esbuild": "^0.28.2",
     "prettier": "^3.9.10",
     "typescript": "^7.0.2",
     "vitest": "^5.0.5"
