@@ -3,6 +3,8 @@
   "version": "0.0.0",
   "private": true,
   "description": "Evidence-verified, hook-enforced TDD harness for Claude Code",
+  "author": "Anh Tran",
+  "license": "MIT",
   "type": "module",
   "engines": {
     "node": ">=22"
