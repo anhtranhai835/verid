@@ -1,4 +1,5 @@
-import { z } from "zod";
+// zod/mini tree-shakes to ~40 KB; full zod added ~65 ms to every hook start (Phase 0 measurement).
+import * as z from "zod/mini";
 import { RULE_CODES } from "./errors.js";
 
 const rule = z.enum(RULE_CODES);
@@ -32,7 +33,7 @@ const override = z.strictObject({
   reason: z.string(),
   created_at: z.string(),
   used: z.boolean(),
-  used_at: z.string().optional(),
+  used_at: z.optional(z.string()),
 });
 
 /**
@@ -42,12 +43,12 @@ const override = z.strictObject({
  */
 const stateSchema = z.strictObject({
   schemaVersion: z.literal(1),
-  counters: z
-    .strictObject({ blocked_actions: z.number().int().nonnegative() })
-    .default({ blocked_actions: 0 }),
-  last_denied: deniedAction.nullable().default(null),
-  pending_override: pendingOverride.nullable().default(null),
-  overrides: z.array(override).default([]),
+  counters: z._default(z.strictObject({ blocked_actions: z.int().check(z.nonnegative()) }), {
+    blocked_actions: 0,
+  }),
+  last_denied: z._default(z.nullable(deniedAction), null),
+  pending_override: z._default(z.nullable(pendingOverride), null),
+  overrides: z._default(z.array(override), []),
 });
 
 export type State = z.infer<typeof stateSchema>;
