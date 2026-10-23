@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="2" failures="1" errors="0" time="0.00774201">
+    <testsuite name="test/add.test.ts" timestamp="2026-10-20T09:12:41.317Z" hostname="host" tests="1" failures="0" errors="0" skipped="0" time="0.004418092">
+        <testcase classname="test/add.test.ts" name="add &gt; AC-1 adds two numbers" time="0.002913407">
+        </testcase>
+    </testsuite>
+    <testsuite name="test/greet.test.ts" timestamp="2026-10-20T09:12:41.321Z" hostname="host" tests="1" failures="1" errors="0" skipped="0" time="0.003012864">
+        <testcase classname="test/greet.test.ts" name="greet &gt; says hi" time="0.001640255">
+            <failure message="expected &apos;Hello An&apos; to be &apos;Hi An&apos;" type="AssertionError">
+AssertionError: expected &apos;Hello An&apos; to be &apos;Hi An&apos;
+            </failure>
+        </testcase>
+    </testsuite>
+</testsuites>

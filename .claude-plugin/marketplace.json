@@ -1,0 +1,14 @@
+{
+  "name": "verid",
+  "owner": {
+    "name": "Anh Tran"
+  },
+  "description": "Agents and skills for verid, the hook-enforced TDD harness for Claude Code",
+  "plugins": [
+    {
+      "name": "verid",
+      "source": "./plugin",
+      "description": "verid's tester, coder and reviewer agents, and a skill for each step from design to review"
+    }
+  ]
+}

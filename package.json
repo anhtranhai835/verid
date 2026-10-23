@@ -1,0 +1,51 @@
+{
+  "name": "@anhtranhai835/verid",
+  "version": "1.1.0",
+  "description": "Evidence-verified, hook-enforced TDD harness for Claude Code",
+  "author": "Anh Tran",
+  "license": "MIT",
+  "type": "module",
+  "keywords": [
+    "claude-code",
+    "tdd",
+    "test-driven-development",
+    "hooks",
+    "superpowers"
+  ],
+  "homepage": "https://github.com/anhtranhai835/verid#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/anhtranhai835/verid.git"
+  },
+  "bugs": {
+    "url": "https://github.com/anhtranhai835/verid/issues"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "bin": {
+    "verid": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "i18n",
+    "README.vi.md"
+  ],
+  "scripts": {
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && esbuild hook=src/hook.ts cli=src/cli/main.ts --bundle --splitting --platform=node --format=esm --target=node22 --outdir=dist --log-level=warning \"--banner:js=import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);\"",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run build && vitest run",
+    "format": "prettier --write .",
+    "prepublishOnly": "npm run typecheck && npm test"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "esbuild": "^0.28.2",
+    "fast-xml-parser": "^5.11.2",
+    "prettier": "^3.9.10",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5",
+    "yaml": "^2.9.1",
+    "zod": "^4.6.7"
+  }
+}

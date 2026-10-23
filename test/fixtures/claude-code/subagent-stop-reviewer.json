@@ -1,0 +1,19 @@
+{
+  "session_id": "{{SESSION_ID}}",
+  "transcript_path": "{{TRANSCRIPT_PATH}}",
+  "cwd": "{{CWD}}",
+  "scratchpad_dir": "{{SCRATCHPAD_DIR}}",
+  "prompt_id": "ad848fcd-1ebf-48f0-a523-a91b98cf7c78",
+  "permission_mode": "default",
+  "agent_id": "ad67fcb10e662041a",
+  "agent_type": "feature-dev:code-reviewer",
+  "effort": {
+    "level": "medium"
+  },
+  "hook_event_name": "SubagentStop",
+  "stop_hook_active": false,
+  "agent_transcript_path": "{{AGENT_TRANSCRIPT_PATH}}",
+  "last_assistant_message": "Hello.",
+  "background_tasks": [],
+  "session_crons": []
+}
