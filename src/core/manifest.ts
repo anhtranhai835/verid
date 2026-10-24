@@ -1,4 +1,5 @@
 import * as z from "zod/mini";
+import { durationDays, isCalendarDate, WEEKDAYS } from "./iterations.js";
 
 // zod/mini ships no messages ("Invalid input"), so the ones a developer needs are spelled out.
 const nonEmpty = { error: "must not be empty" };
@@ -22,8 +23,60 @@ const glob = z.string().check(
   }),
 );
 
+/** A portable repo path; aliases and ambiguous Windows spellings fail closed. */
+export const repoPathKey = (path: string): string => path.replaceAll("\\", "/").toLowerCase();
+const normalizeRepoPath = (path: string): string =>
+  path
+    .replaceAll("\\", "/")
+    .split("/")
+    .filter((part) => part !== "" && part !== ".")
+    .join("/") || ".";
+const safeRepoPath = (path: string): boolean =>
+  path === "." ||
+  path
+    .split(/[/\\]/)
+    .every(
+      (part) =>
+        part !== "" &&
+        part !== "." &&
+        part !== ".." &&
+        !/[<>:"|?*~\x00-\x1f]/.test(part) &&
+        !/[. ]$/.test(part) &&
+        !/^\s/.test(part) &&
+        !/^\.(git|verid|claude)$/i.test(part) &&
+        !/^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(part),
+    );
+const gitValue = z.string().check(
+  z.minLength(1, nonEmpty),
+  z.refine((value) => value.trim() !== "" && !/^[-\s]|[\x00-\x1f]/.test(value), {
+    error: "must be a non-empty git value, not an option",
+  }),
+);
+/** Local paths are allowed, but network file shares and git options are never clone inputs. */
+export const safeCloneRemote = (value: string): boolean =>
+  value.trim() !== "" &&
+  !/^[-\s]|[\x00-\x1f]/.test(value) &&
+  !/^[/\\]{2}/.test(value) &&
+  !/^file:\/\/[^/]|^file:\/{4}/i.test(value.replaceAll("\\", "/"));
 const repo = z.strictObject({
-  path: z._default(z.string().check(z.minLength(1, nonEmpty)), "."),
+  path: z._default(
+    z
+      .pipe(
+        z.string().check(
+          z.refine((path) => path !== "" && !/^[/\\]|^[a-z]:/i.test(path), {
+            error: "must be a non-empty relative repo path",
+          }),
+        ),
+        z.transform(normalizeRepoPath),
+      )
+      .check(z.refine(safeRepoPath, { error: "must be an unambiguous relative repo path" })),
+    ".",
+  ),
+  remote: z.optional(
+    gitValue.check(z.refine(safeCloneRemote, { error: "must not name a network file share" })),
+  ),
+  default_branch: z.optional(gitValue),
+  role: z.optional(z.enum(["frontend", "backend", "e2e", "other"])),
   // {junit} is replaced by the quoted path; runners set up through an environment variable
   // read the same path from VERID_JUNIT (cmd.exe keeps quotes in `set VAR="..."`). Without it,
   // verid finds the runners from the build files (core/runners.ts).
@@ -49,12 +102,23 @@ export const DEFAULT_TIMEOUT_SEC = 100;
 export const MODES = ["prep", "recipe", "remix"] as const;
 export type Mode = (typeof MODES)[number];
 
-export const ROLE_NAMES = ["reviewer", "tester", "coder"] as const;
+export const ROLE_NAMES = [
+  "reviewer",
+  "tester",
+  "coder",
+  "researcher",
+  "architect",
+  "planner",
+  "qa",
+] as const;
 export type RoleName = (typeof ROLE_NAMES)[number];
 
 /** Who moves the project through the cycle: the developer, or the mapped agents on their own. */
 export const DRIVES = ["human", "auto"] as const;
 export type Drive = (typeof DRIVES)[number];
+
+export const LAYOUTS = ["monorepo", "workspace"] as const;
+export type Layout = (typeof LAYOUTS)[number];
 
 const agentList = z
   .array(z.string().check(z.minLength(1, nonEmpty)))
@@ -66,6 +130,10 @@ const roles = z
     reviewer: z.optional(agentList),
     tester: z.optional(agentList),
     coder: z.optional(agentList),
+    researcher: z.optional(agentList),
+    architect: z.optional(agentList),
+    planner: z.optional(agentList),
+    qa: z.optional(agentList),
   })
   .check(
     z.superRefine((r, ctx) => {
@@ -85,7 +153,35 @@ const roles = z
     }),
   );
 
-/** Only what Phase 1 reads; unknown keys are rejected rather than ignored. */
+const iterations = z
+  .strictObject({
+    duration: z.string().check(
+      z.refine((value) => durationDays(value) !== null, {
+        error: "must be a positive integer followed by days or weeks",
+      }),
+    ),
+    start_date: z.string().check(
+      z.refine(isCalendarDate, {
+        error: "must be a real date in YYYY-MM-DD format",
+      }),
+    ),
+    demo_day: z.enum(WEEKDAYS, { error: "must be Monday through Sunday" }),
+  })
+  .check(
+    z.superRefine((settings, ctx) => {
+      const days = durationDays(settings.duration);
+      if (days === null || !isCalendarDate(settings.start_date)) return;
+      const end = Date.parse(`${settings.start_date}T00:00:00Z`) + (days - 1) * 86_400_000;
+      if (!Number.isFinite(new Date(end).getTime()))
+        ctx.addIssue({
+          code: "custom",
+          path: ["duration"],
+          message: "exceeds the supported date range",
+        });
+    }),
+  );
+
+/** Unknown keys are rejected rather than ignored. */
 const manifestSchema = z
   .strictObject({
     schemaVersion: z.literal(1),
@@ -93,12 +189,42 @@ const manifestSchema = z
     mode: z.enum(MODES, { error: "must be prep, recipe or remix" }),
     roles: z.optional(roles),
     drive: z._default(z.enum(DRIVES, { error: "must be human or auto" }), "human"),
-    repos: z.array(repo).check(z.length(1, { error: "Phase 1 supports exactly one repo" })),
+    layout: z._default(z.enum(LAYOUTS, { error: "must be monorepo or workspace" }), "monorepo"),
+    iterations: z.optional(iterations),
+    repos: z.array(repo).check(z.minLength(1, nonEmpty)),
   })
   .check(
     // Auto walks the plan module by module, which remix has none of, and with no developer to
     // fill in, a role left unmapped would leave a step with no one to take it.
     z.superRefine((m, ctx) => {
+      const paths: string[] = [];
+      for (const [i, repo] of m.repos.entries()) {
+        const path = repoPathKey(repo.path);
+        if (
+          (m.layout === "workspace" && path === ".") ||
+          paths.some(
+            (other) =>
+              path === other ||
+              path === "." ||
+              other === "." ||
+              path.startsWith(`${other}/`) ||
+              other.startsWith(`${path}/`),
+          )
+        )
+          return ctx.addIssue({
+            code: "custom",
+            path: ["repos", i, "path"],
+            message:
+              "repo roots must be distinct, non-overlapping folders; workspace roots must be children",
+          });
+        paths.push(path);
+      }
+      if (m.iterations && m.mode === "remix")
+        return ctx.addIssue({
+          code: "custom",
+          path: ["iterations"],
+          message: "needs mode prep or recipe",
+        });
       if (m.drive !== "auto") return;
       if (m.mode === "remix")
         return ctx.addIssue({
@@ -116,6 +242,7 @@ const manifestSchema = z
   );
 
 export type Manifest = z.infer<typeof manifestSchema>;
+export type Iterations = NonNullable<Manifest["iterations"]>;
 export type Roles = NonNullable<Manifest["roles"]>;
 
 /** The agents `verid cook` maps: verid's own, from its plugin. Any agent can take their place. */
@@ -123,6 +250,10 @@ export const DEFAULT_ROLES: Roles = {
   reviewer: ["verid:reviewer"],
   tester: ["verid:tester"],
   coder: ["verid:coder"],
+  researcher: ["verid:researcher"],
+  architect: ["verid:architect"],
+  planner: ["verid:planner"],
+  qa: ["verid:qa"],
 };
 
 export type ParseManifestResult = { ok: true; manifest: Manifest } | { ok: false; detail: string };
@@ -165,6 +296,13 @@ export interface InitFlags {
   mode?: string | undefined;
   /** As typed on the command line; the caller checks it against DRIVES. */
   drive?: string | undefined;
+  /** As typed; an existing manifest keeps its chosen layout. */
+  layout?: string | undefined;
+  /** Optional calendar planning for prep and recipe; never changes module order or gates. */
+  iterations?: boolean | undefined;
+  duration?: string | undefined;
+  startDate?: string | undefined;
+  demoDay?: string | undefined;
   /** As typed: the language for this machine's messages, vi or en; the caller checks it. */
   lang?: string | undefined;
   /**
@@ -172,6 +310,10 @@ export interface InitFlags {
    * the developer answered, and unset (no terminal to ask in) lists them in a note.
    */
   upgrade?: boolean;
+  /** Preview only, without caches or other project writes. */
+  dryRun?: boolean | undefined;
+  /** Accept suggested choices and manifest defaults without prompting. */
+  yes?: boolean | undefined;
 }
 
 export type Repo = Manifest["repos"][number];
@@ -289,13 +431,30 @@ export function suggestManifest(flags: InitFlags): Repo {
 }
 
 /** The manifest as YAML; strings and lists are written as JSON, which YAML reads as is. */
-export function renderManifest(mode: Mode, repo: Repo, roles?: Roles, drive?: Drive): string {
+export function renderManifest(
+  mode: Mode,
+  repo: Repo | readonly Repo[],
+  roles?: Roles,
+  drive?: Drive,
+  layout: Layout = "monorepo",
+  iterations?: Iterations,
+): string {
+  const repos: readonly Repo[] = Array.isArray(repo) ? repo : [repo as Repo];
   return [
     "# verid manifest: only the developer edits this file. Commit it with the project.",
     "schemaVersion: 1",
     `mode: ${JSON.stringify(mode)} # ${MODES.join(" | ")}`,
+    ...(layout === "workspace" ? ['layout: "workspace" # monorepo | workspace'] : []),
     // human is the default, so only auto is written.
     ...(drive === "auto" ? [`drive: ${JSON.stringify(drive)} # ${DRIVES.join(" | ")}`] : []),
+    ...(iterations
+      ? [
+          "iterations:",
+          `  duration: ${JSON.stringify(iterations.duration)}`,
+          `  start_date: ${JSON.stringify(iterations.start_date)}`,
+          `  demo_day: ${JSON.stringify(iterations.demo_day)}`,
+        ]
+      : []),
     ...(roles
       ? [
           "roles: # agent types Claude Code reports, from the verid plugin; any agent can fill a role",
@@ -303,14 +462,22 @@ export function renderManifest(mode: Mode, repo: Repo, roles?: Roles, drive?: Dr
       : []),
     ...ROLE_NAMES.flatMap((r) => (roles?.[r] ? [`  ${r}: ${JSON.stringify(roles[r])}`] : [])),
     "repos:",
-    `  - path: ${JSON.stringify(repo.path)}`,
-    repo.test_cmd === undefined
-      ? "    # test_cmd: verid finds the test runner from the build files; set one to choose it"
-      : `    test_cmd: ${JSON.stringify(repo.test_cmd)}`,
-    `    source_globs: ${JSON.stringify(repo.source_globs)}`,
-    `    test_globs: ${JSON.stringify(repo.test_globs)}`,
-    ...(repo.ignore_globs ? [`    ignore_globs: ${JSON.stringify(repo.ignore_globs)}`] : []),
-    ...(repo.e2e_globs ? [`    e2e_globs: ${JSON.stringify(repo.e2e_globs)}`] : []),
+    ...repos.flatMap((repo) => [
+      `  - path: ${JSON.stringify(repo.path)}`,
+      ...(repo.remote ? [`    remote: ${JSON.stringify(repo.remote)}`] : []),
+      ...(repo.default_branch
+        ? [`    default_branch: ${JSON.stringify(repo.default_branch)}`]
+        : []),
+      ...(repo.role ? [`    role: ${JSON.stringify(repo.role)}`] : []),
+      repo.test_cmd === undefined
+        ? "    # test_cmd: verid finds the test runner from the build files; set one to choose it"
+        : `    test_cmd: ${JSON.stringify(repo.test_cmd)}`,
+      `    source_globs: ${JSON.stringify(repo.source_globs)}`,
+      `    test_globs: ${JSON.stringify(repo.test_globs)}`,
+      ...(repo.ignore_globs ? [`    ignore_globs: ${JSON.stringify(repo.ignore_globs)}`] : []),
+      ...(repo.e2e_globs ? [`    e2e_globs: ${JSON.stringify(repo.e2e_globs)}`] : []),
+      ...(repo.timeout_sec ? [`    timeout_sec: ${repo.timeout_sec}`] : []),
+    ]),
     "",
   ].join("\n");
 }
@@ -323,8 +490,8 @@ const OLD_PRESETS = [
 
 /**
  * What `verid cook` offers a manifest written by an older verid: the default test and ignore
- * globs it lacks, verid's agents when it maps none, and dropping a test_cmd that is only the
- * runner preset of the time. The developer's own entries stay, and nothing is removed.
+ * globs it lacks, missing optional roles (all roles when it maps none), and dropping a test_cmd
+ * that is only the runner preset of the time. The developer's own entries stay.
  */
 export function manifestUpgrade(
   repo: Repo,
@@ -339,13 +506,25 @@ export function manifestUpgrade(
   const ignored = repo.ignore_globs ?? [];
   // Test globs the developer chose (--tests) share none with the defaults: they stay as chosen.
   const ownTests = !repo.test_globs.some((g) => TEST_GLOBS.includes(g));
+  const used = new Set(Object.values(roles ?? {}).flat());
+  const added: Roles =
+    roles === undefined
+      ? DEFAULT_ROLES
+      : Object.fromEntries(
+          (["researcher", "architect", "planner", "qa"] as const).flatMap((role) => {
+            const agents = DEFAULT_ROLES[role];
+            return !roles[role] && agents && !agents.some((name) => used.has(name))
+              ? [[role, agents]]
+              : [];
+          }),
+        );
   return {
     tests: ownTests ? [] : TEST_GLOBS.filter((g) => !repo.test_globs.includes(g)),
     ignore: IGNORE_GLOBS.filter((g) => !ignored.includes(g)),
     // e2e_globs the developer wrote stay as written.
     e2e: repo.e2e_globs === undefined ? [...E2E_GLOBS] : [],
     // Roles the developer mapped stay as mapped.
-    roles: roles === undefined ? DEFAULT_ROLES : null,
+    roles: Object.keys(added).length > 0 ? added : null,
     dropTestCmd: repo.test_cmd !== undefined && OLD_PRESETS.includes(repo.test_cmd),
   };
 }

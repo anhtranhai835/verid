@@ -22,6 +22,32 @@ const repo = {
 };
 
 describe("parseManifest", () => {
+  it("accepts and renders a default branch and refuses an empty one", () => {
+    const rows = [
+      { branch: "main", ok: true },
+      { branch: "", ok: false },
+    ];
+    for (const { branch, ok } of rows) {
+      const r = parseManifest({
+        schemaVersion: 1,
+        mode: "remix",
+        repos: [
+          {
+            path: ".",
+            default_branch: branch,
+            source_globs: ["src/**"],
+            test_globs: ["test/**"],
+          },
+        ],
+      });
+      expect(r.ok).toBe(ok);
+      if (r.ok) {
+        expect(r.manifest.repos[0]?.default_branch).toBe("main");
+        expect(renderManifest("remix", r.manifest.repos[0]!)).toContain('default_branch: "main"');
+      }
+    }
+  });
+
   it("accepts one repo, defaults its path to the project dir, and keeps a timeout", () => {
     const doc = { schemaVersion: 1, mode: "remix", repos: [{ ...repo, timeout_sec: 300 }] };
     expect(parseManifest(doc)).toEqual({
@@ -30,6 +56,7 @@ describe("parseManifest", () => {
         schemaVersion: 1,
         mode: "remix",
         drive: "human",
+        layout: "monorepo",
         repos: [{ path: ".", ...repo, timeout_sec: 300 }],
       },
     });
@@ -43,6 +70,7 @@ describe("parseManifest", () => {
         schemaVersion: 1,
         mode: "prep",
         drive: "human",
+        layout: "monorepo",
         repos: [{ path: ".", ...auto }],
       },
     });
@@ -93,6 +121,16 @@ describe("parseManifest", () => {
     const rows: [string, unknown, string][] = [
       ["a reviewer only", { reviewer: ["feature-dev:code-reviewer"] }, "ok"],
       ["all three roles", { reviewer: ["a"], tester: ["b"], coder: ["general-purpose"] }, "ok"],
+      ["a researcher", { researcher: ["verid:researcher"] }, "ok"],
+      ["an architect", { architect: ["verid:architect"] }, "ok"],
+      ["a planner", { planner: ["verid:planner"] }, "ok"],
+      ["qa without a split", { qa: ["verid:qa"] }, "ok"],
+      [
+        "one drafter in two roles",
+        { researcher: ["draft"], architect: ["draft"] },
+        "roles: draft is both researcher and architect",
+      ],
+      ["an empty qa list", { qa: [] }, "roles.qa: must not be empty"],
       [
         "one agent in two roles",
         { reviewer: ["a"], coder: ["a"] },
@@ -412,7 +450,13 @@ describe("renderManifest", () => {
     ]);
     expect(parseManifest(parse(text))).toEqual({
       ok: true,
-      manifest: { schemaVersion: 1, mode: "prep", drive: "human", repos: [repo] },
+      manifest: {
+        schemaVersion: 1,
+        mode: "prep",
+        drive: "human",
+        layout: "monorepo",
+        repos: [repo],
+      },
     });
   });
 
@@ -443,7 +487,13 @@ describe("renderManifest", () => {
     );
     expect(parseManifest(parse(text))).toEqual({
       ok: true,
-      manifest: { schemaVersion: 1, mode: "prep", drive: "human", repos: [repo] },
+      manifest: {
+        schemaVersion: 1,
+        mode: "prep",
+        drive: "human",
+        layout: "monorepo",
+        repos: [repo],
+      },
     });
   });
 
@@ -455,6 +505,10 @@ describe("renderManifest", () => {
       '  reviewer: ["verid:reviewer"]',
       '  tester: ["verid:tester"]',
       '  coder: ["verid:coder"]',
+      '  researcher: ["verid:researcher"]',
+      '  architect: ["verid:architect"]',
+      '  planner: ["verid:planner"]',
+      '  qa: ["verid:qa"]',
     ]);
     expect(parseManifest(parse(text))).toEqual({
       ok: true,
@@ -462,10 +516,15 @@ describe("renderManifest", () => {
         schemaVersion: 1,
         mode: "prep",
         drive: "human",
+        layout: "monorepo",
         roles: {
           reviewer: ["verid:reviewer"],
           tester: ["verid:tester"],
           coder: ["verid:coder"],
+          researcher: ["verid:researcher"],
+          architect: ["verid:architect"],
+          planner: ["verid:planner"],
+          qa: ["verid:qa"],
         },
         repos: [repo],
       },
@@ -516,6 +575,10 @@ describe("manifestUpgrade", () => {
           reviewer: ["verid:reviewer"],
           tester: ["verid:tester"],
           coder: ["verid:coder"],
+          researcher: ["verid:researcher"],
+          architect: ["verid:architect"],
+          planner: ["verid:planner"],
+          qa: ["verid:qa"],
         },
         dropTestCmd: true,
       },
@@ -524,12 +587,66 @@ describe("manifestUpgrade", () => {
       "up to date": { tests: [], ignore: [], e2e: [], roles: null, dropTestCmd: false },
       "own test globs": [],
       "own e2e globs": [],
-      "own roles": null,
+      "own roles": {
+        researcher: ["verid:researcher"],
+        architect: ["verid:architect"],
+        planner: ["verid:planner"],
+        qa: ["verid:qa"],
+      },
     });
+  });
+
+  it("offers missing optional roles without replacing mappings or assigning one name twice", () => {
+    const rows = [
+      {
+        roles: { reviewer: ["custom:r"], researcher: ["custom:research"] },
+        want: { architect: ["verid:architect"], planner: ["verid:planner"], qa: ["verid:qa"] },
+      },
+      {
+        roles: { reviewer: ["verid:qa"] },
+        want: {
+          researcher: ["verid:researcher"],
+          architect: ["verid:architect"],
+          planner: ["verid:planner"],
+        },
+      },
+    ];
+    for (const { roles, want } of rows) expect(manifestUpgrade(old, roles).roles).toEqual(want);
   });
 });
 
 describe("upgradeManifestText", () => {
+  it("adds new role defaults while keeping existing role entries and their comments", async () => {
+    const raw = [
+      "schemaVersion: 1",
+      "mode: prep",
+      "roles:",
+      '  reviewer: ["custom:reviewer"] # keep this reviewer',
+      '  researcher: ["custom:researcher"] # keep this researcher',
+      "repos:",
+      '  - path: "."',
+      '    source_globs: ["**"]',
+      '    test_globs: ["test/**"]',
+      "",
+    ].join("\n");
+    const text = await upgradeManifestText(raw, {
+      tests: [],
+      ignore: [],
+      e2e: [],
+      dropTestCmd: false,
+      roles: { architect: ["verid:architect"], planner: ["verid:planner"], qa: ["verid:qa"] },
+    });
+    expect(parse(text).roles).toEqual({
+      reviewer: ["custom:reviewer"],
+      researcher: ["custom:researcher"],
+      architect: ["verid:architect"],
+      planner: ["verid:planner"],
+      qa: ["verid:qa"],
+    });
+    expect(text).toContain("# keep this reviewer");
+    expect(text).toContain("# keep this researcher");
+  });
+
   it("adds the missing defaults and drops an old preset, keeping comments and the developer's entries", async () => {
     const raw = [
       "# verid manifest: only the developer edits this file. Commit it with the project.",
@@ -562,6 +679,7 @@ describe("upgradeManifestText", () => {
         schemaVersion: 1,
         mode: "remix",
         drive: "human",
+        layout: "monorepo",
         roles: { reviewer: ["verid:reviewer"], tester: ["verid:tester"], coder: ["verid:coder"] },
         repos: [
           {

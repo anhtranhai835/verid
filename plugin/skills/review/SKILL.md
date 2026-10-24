@@ -5,6 +5,8 @@ description: Steps 6 to 8 of a verid project. Once every acceptance criterion of
 
 # verid: review and serve
 
+Use andrej-karpathy-skills:karpathy-guidelines as a review lens.
+
 Ask for the review as superpowers:requesting-code-review describes, and claim nothing without fresh
 evidence (superpowers:verification-before-completion).
 
@@ -50,7 +52,8 @@ serves the module itself, so never ask the developer to run `verid serve` (it re
 to 3 become:
 
 1. **Verify** as above: `verid taste` for the whole suite, passing, with no change after it.
-2. **Commit** every change of the module, new files included, and do not push or branch:
+2. **Commit** every change of the module, new files included, on its `feat/<module>` branch
+   suggested by `verid:build`; do not push:
    `git add -A`, then `git commit` with a conventional message that names the module. verid serves a
    module only when the project's tree is clean, untracked files included; only
    `.claude/settings.local.json` is left out. Bash cannot name that file, which is why `git add -A`

@@ -1,7 +1,7 @@
 {
   "name": "verid",
   "version": "1.1.0",
-  "description": "verid's tester, coder and reviewer agents, and a skill for each step from design to review",
+  "description": "verid's researcher, architect, planner, tester, coder, qa and reviewer agents, and skills from design to review",
   "author": { "name": "Anh Tran" },
   "homepage": "https://github.com/anhtranhai835/verid",
   "license": "MIT"

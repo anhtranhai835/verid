@@ -10,6 +10,9 @@ export interface PlanModule {
   clarification: number | null;
   /** The AC codes marked `(e2e)`: only an end-to-end test covers them. */
   e2e: string[];
+  /** Optional planning metadata; never determines module order. */
+  iteration?: number;
+  iterationProblem?: string;
 }
 export type PlanCheck = { ok: true; modules: PlanModule[] } | { ok: false; detail: string };
 
@@ -18,6 +21,7 @@ const AC_LINE = /^[ \t]*[-*][ \t]+(AC-\d+)[ \t]*(\([eE]2[eE]\))?:[ \t]*\S/;
 const AC_IN_NAME = /(?<![A-Za-z0-9-])AC[-_](\d+)(?!\d)/g;
 const MODULE_HEADING = /^##[ \t]+Module:[ \t]*(.*?)[ \t]*$/;
 const MODULE_NAME = /^[a-z0-9][a-z0-9-]*$/;
+const ITERATION_LINE = /^[ \t]*Iteration:(.*)$/;
 const CLARIFY = "[NEEDS CLARIFICATION";
 const NO_AC = "no line of the form - AC-1: …";
 
@@ -27,8 +31,10 @@ const NO_AC = "no line of the form - AC-1: …";
  * A plan with no heading is one module named main, which keeps plans written before modules
  * existed approvable as they are. An editor on Windows may prepend a BOM; it is ignored for
  * matching but kept in the section text, so the implicit main's text is the file itself.
+ * With iterations enabled, only the first nonempty line after a module heading can declare
+ * `Iteration: <n>`; every later line and any text outside named modules stays ordinary text.
  */
-export function parsePlan(text: string): PlanCheck {
+export function parsePlan(text: string, iterations = false): PlanCheck {
   const lines: { start: number; body: string }[] = [];
   for (let start = 0; ;) {
     const nl = text.indexOf("\n", start);
@@ -57,13 +63,35 @@ export function parsePlan(text: string): PlanCheck {
     const i = lines.slice(from, to).findIndex((l) => l.body.includes(CLARIFY));
     return i < 0 ? null : from + i + 1;
   };
+  const iterationIn = (
+    from: number,
+    to: number,
+  ): Pick<PlanModule, "iteration" | "iterationProblem"> => {
+    if (!iterations) return {};
+    let first = from;
+    while (first < to && lines[first]!.body.trim() === "") first++;
+    const match = first < to ? ITERATION_LINE.exec(lines[first]!.body) : null;
+    if (!match) return {};
+    const value = (match[1] ?? "").trim();
+    const iteration = Number(value);
+    return /^[1-9]\d*$/.test(value) && Number.isSafeInteger(iteration)
+      ? { iteration }
+      : { iterationProblem: `line ${first + 1}: Iteration must be a positive integer` };
+  };
 
   if (headings.length === 0) {
     const found = acsIn(0, lines.length);
     if (typeof found === "string") return { ok: false, detail: found };
     return {
       ok: true,
-      modules: [{ name: "main", ...found, text, clarification: clarificationIn(0, lines.length) }],
+      modules: [
+        {
+          name: "main",
+          ...found,
+          text,
+          clarification: clarificationIn(0, lines.length),
+        },
+      ],
     };
   }
 
@@ -91,6 +119,7 @@ export function parsePlan(text: string): PlanCheck {
       ...found,
       text: text.slice((lines[h] as { start: number }).start, end),
       clarification: clarificationIn(h + 1, next),
+      ...iterationIn(h + 1, next),
     });
   }
   return { ok: true, modules };
@@ -102,6 +131,7 @@ export const PRODUCT = "product";
 /** Why `verid order` refuses this module, or null when it can be approved. */
 export function moduleProblem(m: PlanModule): string | null {
   if (m.clarification !== null) return `line ${m.clarification} still has ${CLARIFY}]`;
+  if (m.iterationProblem) return m.iterationProblem;
   if (m.acs.length === 0) return NO_AC;
   const unit = m.name === PRODUCT ? m.acs.find((code) => !m.e2e.includes(code)) : undefined;
   return unit ? `every AC of the product module must be (e2e): ${unit} is not` : null;

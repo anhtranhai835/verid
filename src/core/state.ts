@@ -108,6 +108,8 @@ const autoState = z.strictObject({
         at: z.string(),
         /** In a git repository when signed; false for a signature made before this was recorded. */
         git: z._default(z.boolean(), false),
+        /** Git presence at signing for each repo path; absent on older signatures. */
+        git_repos: z.optional(z.record(z.string(), z.boolean())),
       }),
     ),
     null,

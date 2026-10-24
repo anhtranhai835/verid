@@ -58,12 +58,19 @@ function decideFile(
   lifted: ReadonlySet<RuleCode>,
 ): PolicyDecision {
   const write = a.access === "write";
+  // Both spellings: a link out of the protected folder is still a protected write.
+  if (write && (isPluginPath(a.path) || isPluginPath(a.display)))
+    return deny("VERID_BURNT_PLUGIN_PROTECTED", a.display, "plugin code, sources or data");
   const plan = write && a.path === ctx.planPath;
   // In priority order, invariants first.
   const rules: [RuleCode, string, boolean][] = [
     // Reads are blocked too: state holds the pending confirmation code.
     ["VERID_BURNT_STATE_PROTECTED", "verid state", isUnder(a.path, ctx.stateDir)],
-    ["VERID_BURNT_SECRET_PROTECTED", "secret file", isSecretPath(a.path)],
+    [
+      "VERID_BURNT_SECRET_PROTECTED",
+      "secret file",
+      isSecretPath(a.path) || isSecretPath(a.display),
+    ],
     [
       "VERID_BURNT_TRANSCRIPT_PROTECTED",
       "Claude Code transcript",
@@ -78,6 +85,7 @@ function decideFile(
       "Claude Code settings, agents or plugins, or verid's bundle",
       write &&
         (isClaudeSettings(a.path) ||
+          isClaudeSettings(a.display) ||
           isUnder(a.path, ctx.distDir) ||
           isVeridCommand(a.path) ||
           isAgentOrPlugin(a.path)),
@@ -96,10 +104,14 @@ const NESTED_CLAUDE = /(^|[\s;&|(`'"\\/])claude(\.exe|\.cmd|\.ps1)?(?=$|[\s;&|)`
 
 // verid's developer commands refuse only while CLAUDECODE=1, so an agent could clear that variable.
 // Block the variable's name and a direct call to those commands: `verid` (or its Windows shim
-// `verid.cmd`, `.ps1`, `.exe`) and the bare entry point `cli` / `cli.js` that `node dist/cli` runs.
+// `verid.cmd`, `.ps1`, `.exe`) and its bare `cli` / `cli.js` entry point, wherever run.
+// Word boundaries also block unrelated names such as `other-verid` and `@vue/cli`;
+// `/verid tip` can allow those commands.
 const CLAUDECODE_VAR = /\bclaudecode\b/;
 const DEVELOPER_COMMAND =
-  /(?:\bverid(?:\.(?:cmd|ps1|exe))?|\bcli(?:\.js)?)["']?\s+(?:cook|garnish|stock|order|serve)\b/;
+  /(?:\bverid(?:@[^\s"'\\/]*)?(?:\.(?:cmd|ps1|exe))?|\bcli(?:\.js)?)["']?\s+(?:--\s+)?(?:cook|upgrade|garnish|stock|order|serve|plugin)\b/;
+const PLUGIN_COMMAND =
+  /(?:\bverid(?:@[^\s"'\\/]*)?(?:\.(?:cmd|ps1|exe))?|\bcli(?:\.js)?)["']?\s+(?:--\s+)?plugin\b/;
 // The agent's Bash inherits CLAUDE_CODE_SESSION_ATTENDED, so a `/verid tip` piped into the hook
 // would hand it the confirmation code. A copy or a path built at run time still gets through.
 const VERID_HOOK = /\bdist[\\/]+hook\b|\bhook\.js\b/;
@@ -149,6 +161,16 @@ const BASH_RULES: [RuleCode, string, (command: string) => boolean][] = [
 function decideBash(command: string, lifted: ReadonlySet<RuleCode>): PolicyDecision {
   const target = command.length > 200 ? `${command.slice(0, 200)}…` : command;
   const forms = [command, unquote(command)].map((c) => c.toLowerCase());
+  if (
+    forms.some(
+      (c) =>
+        PLUGIN_COMMAND.test(c) ||
+        c.includes("plugins.json") ||
+        c.includes("plugin-data") ||
+        /\.verid[. ]*[\\/]+(?:\.[\\/]+)*(?:plugins(?:\.json)?|plugin-data)(?![\w-])/.test(c),
+    )
+  )
+    return deny("VERID_BURNT_PLUGIN_PROTECTED", target, "mentions plugin code, sources or data");
   for (const [code, reason, matches] of BASH_RULES)
     if (!lifted.has(code) && forms.some((c) => matches(c))) return deny(code, target, reason);
   return allow("no rule matched");
@@ -268,6 +290,20 @@ function writeTargets(command: string): string[] {
 
 function isUnder(path: string, dir: string): boolean {
   return path === dir || path.startsWith(`${dir}\\`) || path.startsWith(`${dir}/`);
+}
+
+function isPluginPath(path: string): boolean {
+  const parts = path
+    .toLowerCase()
+    .split(/[\\/]+/)
+    .filter(Boolean)
+    .map((part) => part.replace(/:.*$/, "").replace(/[. ]+$/g, ""));
+  return parts.some(
+    (part, i) =>
+      part === ".verid" &&
+      (i === parts.length - 1 ||
+        ["plugins.json", "plugins", "plugin-data"].includes(parts[i + 1] ?? "")),
+  );
 }
 
 /** `.claude/commands/verid` and what is in it, anywhere: the project's or the user's. */

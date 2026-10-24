@@ -25,6 +25,22 @@ const skills = () => readdirSync(join(root, "plugin", "skills"));
 
 // Each test lists every offender at once, so one failure names all of them.
 describe("verid plugin", () => {
+  it("uses the local language for the layouts heading in both READMEs", () => {
+    const rows = [
+      { file: "README.md", heading: "## Layouts" },
+      { file: "README.vi.md", heading: "## Bố cục" },
+    ];
+    for (const row of rows) expect(read(row.file)).toContain(row.heading);
+  });
+  it("directs workspace qa to the frontend by default and to each target repo's e2e globs", () => {
+    const build = read("plugin/skills/build/SKILL.md");
+    const qa = read("plugin/agents/qa.md");
+    expect(build).toContain("role: frontend");
+    expect(build).toContain("each repo");
+    expect(build).toContain(".verid");
+    expect(qa).toContain("repo-relative");
+    expect(qa).toContain("role: frontend");
+  });
   it("ships a plugin that matches the package", () => {
     const pkg = JSON.parse(read("package.json"));
     const market = JSON.parse(read(".claude-plugin/marketplace.json"));
@@ -69,6 +85,7 @@ describe("verid plugin", () => {
     const tools = (frontmatter("plugin/agents/reviewer.md").tools ?? "").split(/,\s*/);
     const cases: [string, boolean][] = [
       ["Read", true],
+      ["Skill", false],
       ["Write", false],
       ["Edit", false],
       ["NotebookEdit", false],
@@ -100,6 +117,51 @@ describe("verid plugin", () => {
     ];
     const text = (file: string) => (existsSync(join(root, file)) ? read(file) : "");
     expect(cases.filter(([file, says]) => !text(file).includes(says))).toEqual([]);
+  });
+
+  it("directs every agent and skill to the external Karpathy guidelines", () => {
+    const files = [
+      "plugin/agents/coder.md",
+      "plugin/agents/tester.md",
+      "plugin/agents/qa.md",
+      "plugin/agents/reviewer.md",
+      "plugin/agents/researcher.md",
+      "plugin/agents/architect.md",
+      "plugin/agents/planner.md",
+      "plugin/skills/design/SKILL.md",
+      "plugin/skills/plan/SKILL.md",
+      "plugin/skills/build/SKILL.md",
+      "plugin/skills/review/SKILL.md",
+    ];
+    const agentCases: [string, boolean][] = [
+      ["coder", true],
+      ["tester", true],
+      ["qa", true],
+      ["reviewer", false],
+      ["researcher", false],
+      ["architect", false],
+      ["planner", true],
+    ];
+    expect(
+      agentCases.filter(
+        ([agent, hasSkill]) =>
+          (frontmatter(`plugin/agents/${agent}.md`).tools ?? "").split(/,\s*/).includes("Skill") !==
+          hasSkill,
+      ),
+    ).toEqual([]);
+    expect(
+      agentCases
+        .filter(([, hasSkill]) => !hasSkill)
+        .filter(([agent]) => {
+          const { skills } = parse(fenced(`plugin/agents/${agent}.md`));
+          return (
+            !Array.isArray(skills) || !skills.includes("andrej-karpathy-skills:karpathy-guidelines")
+          );
+        }),
+    ).toEqual([]);
+    expect(
+      files.filter((file) => !read(file).includes("andrej-karpathy-skills:karpathy-guidelines")),
+    ).toEqual([]);
   });
 
   it("asks the reviewer for the verdict line verid reads, and each auto step for its part", () => {
@@ -145,7 +207,7 @@ describe("verid plugin", () => {
       .map((e) => readFileSync(join(e.parentPath, e.name), "utf8"));
     const named = (re: RegExp) => [...new Set(files.flatMap((s) => [...s.matchAll(re)]))];
     const unknown = [
-      ...named(/VERID_BURNT_[A-Z_]+/g)
+      ...named(/VERID_BURNT_[A-Z0-9_]+/g)
         .map((m) => m[0])
         .filter((code) => !(code in en)),
       ...named(/superpowers:([a-z-]+)/g)

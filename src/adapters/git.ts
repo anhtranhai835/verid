@@ -1,4 +1,9 @@
 import { spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import { join, resolve } from "node:path";
+import { gitCleanAcross } from "../core/auto.js";
+import { repoPathKey, type Manifest } from "../core/manifest.js";
+import type { AutoState } from "../core/state.js";
 import { errno } from "./state-store.js";
 
 export interface GitView {
@@ -44,5 +49,40 @@ export function gitView(project: string): GitView | null {
   return {
     clean: ok && status.stdout.trim() === "",
     head: !head.error && head.status === 0 ? head.stdout.trim() : null,
+  };
+}
+
+/** The legacy project subtree plus listed repos, or each workspace repo and .verid itself. */
+export function gitTree(
+  project: string,
+  manifest?: Pick<Manifest, "layout" | "repos">,
+  signed?: AutoState["signed"],
+): { clean: boolean | null; head: string | null; presence: Record<string, boolean> } {
+  const paths =
+    manifest?.layout === "workspace"
+      ? [...manifest.repos.map((repo) => repo.path), ".verid"]
+      : [".", ...(manifest?.repos.map((repo) => repo.path) ?? [])];
+  const views = Object.fromEntries(
+    [...new Set(paths)].map((path) => {
+      const folder = resolve(project, ...path.split(/[/\\]/));
+      const view =
+        manifest?.layout === "workspace" && !existsSync(join(folder, ".git"))
+          ? null
+          : gitView(folder);
+      return [repoPathKey(path), view];
+    }),
+  );
+  return {
+    clean: gitCleanAcross(views, signed?.git_repos ?? { ".": signed?.git ?? false }),
+    head: Object.values(views).every((view) => view === null)
+      ? null
+      : JSON.stringify(
+          Object.entries(views)
+            .sort(([a], [b]) => a.localeCompare(b))
+            .map(([path, view]) => [path, view?.head ?? null]),
+        ),
+    presence: Object.fromEntries(
+      Object.entries(views).map(([path, view]) => [path, view !== null]),
+    ),
   };
 }

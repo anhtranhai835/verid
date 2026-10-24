@@ -212,6 +212,20 @@ export function gitCleanOf(view: { clean: boolean } | null, signedInGit: boolean
   return view !== null ? view.clean : signedInGit ? false : null;
 }
 
+/** Every repository keeps option-C semantics, including one removed from the manifest. */
+export function gitCleanAcross(
+  views: Readonly<Record<string, { clean: boolean } | null>>,
+  signed: Readonly<Record<string, boolean>>,
+): boolean | null {
+  let result: boolean | null = null;
+  for (const repo of new Set([...Object.keys(views), ...Object.keys(signed)])) {
+    const clean = gitCleanOf(views[repo] ?? null, signed[repo] ?? false);
+    if (clean === false) return false;
+    if (clean === true) result = true;
+  }
+  return result;
+}
+
 /**
  * Whether verid closes the module itself: all its ACs have passing tests in a run that nothing has
  * changed since, the reviewer passed this module after its last change (any later write clears the

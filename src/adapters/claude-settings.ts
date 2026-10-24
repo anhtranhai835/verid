@@ -70,6 +70,33 @@ export function guardsToolCalls(settings: unknown, hook: string): boolean {
   );
 }
 
+/** All five events call this install; other handlers and their order do not matter. */
+export function hasCurrentVeridHooks(settings: unknown, hook: string): boolean {
+  if (!isObject(settings) || !isObject(settings.hooks)) return false;
+  const hooks = settings.hooks;
+  return HOOK_EVENTS.every((event) => {
+    const groups = hooks[event];
+    return (
+      Array.isArray(groups) &&
+      groups.some(
+        (group) =>
+          isObject(group) &&
+          (event !== "PreToolUse" || group.matcher === "*" || !group.matcher) &&
+          Array.isArray(group.hooks) &&
+          group.hooks.some(
+            (handler) =>
+              isObject(handler) &&
+              handler.type === "command" &&
+              isVerid(handler, hook) &&
+              Array.isArray(handler.args) &&
+              handler.args[0] === hook &&
+              (event !== "PreToolUse" || handler.onFailure === "block"),
+          ),
+      )
+    );
+  });
+}
+
 function veridGroup(event: (typeof HOOK_EVENTS)[number], hook: string) {
   const handler = {
     type: "command",

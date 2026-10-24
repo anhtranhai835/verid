@@ -130,7 +130,7 @@ export function inputHash(toolInput: unknown): string {
 
 /** Absolute and `..` resolved but links kept, lowercase on win32: the path as the agent wrote it. */
 export function writtenPath(path: string): string {
-  const abs = resolve(path);
+  const abs = stripStreams(resolve(path));
   return process.platform === "win32" ? abs.toLowerCase() : abs;
 }
 
@@ -139,8 +139,26 @@ export function writtenPath(path: string): string {
  * (realpath of the nearest existing parent when the file is new), lowercase on win32.
  */
 export function normalizePath(path: string): string {
-  const real = realpathLoose(resolve(path));
+  // NTFS accepts streams on files and directory components, including new targets.
+  // Strip before realpath so its missing-parent fallback cannot retain an alias.
+  const real = stripStreams(realpathLoose(stripStreams(resolve(path))));
   return process.platform === "win32" ? real.toLowerCase() : real;
+}
+
+function stripStreams(path: string): string {
+  if (process.platform !== "win32") return path;
+  // Device prefixes precede the drive; strip streams from the remaining path components.
+  const prefix = /^\\\\[?.]\\/.exec(path)?.[0] ?? "";
+  return (
+    prefix +
+    path
+      .slice(prefix.length)
+      .split(/([\\/])/)
+      .map((part, index) =>
+        index === 0 && /^[A-Za-z]:$/.test(part) ? part : part.replace(/:.*$/, ""),
+      )
+      .join("")
+  );
 }
 
 function realpathLoose(path: string): string {

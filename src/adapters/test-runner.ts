@@ -63,7 +63,7 @@ export function runTestCommand(
   });
 }
 
-function killTree(pid: number | undefined): void {
+export function killTree(pid: number | undefined): void {
   if (pid === undefined) return;
   try {
     if (process.platform === "win32")

@@ -6,7 +6,6 @@ import {
   autoPhase,
   closeReady,
   coderRoundsAfter,
-  gitCleanOf,
   LIMIT,
   parseVerdict,
   progressKey,
@@ -28,16 +27,25 @@ import type { Manifest, Roles } from "./core/manifest.js";
 import { consumeOverride, handlePrompt, parseVeridPrompt, recordDenial } from "./core/override.js";
 import { modulePhases, openModule } from "./core/plan.js";
 import { decide } from "./core/policy.js";
-import { mappedAgents, splitOn, subagentHold, writerOf, type Writer } from "./core/roles.js";
+import {
+  mappedAgents,
+  ROLE_DOCUMENTS,
+  splitOn,
+  subagentHold,
+  writerOf,
+  type Writer,
+} from "./core/roles.js";
 import {
   cycleHint,
   cycleLabel,
   decideTdd,
   keyId,
+  TDD_STRICTNESS,
   type Cycle,
   type TddDecision,
 } from "./core/tdd.js";
 import { appendAudit } from "./adapters/audit-log.js";
+import { notifyAutoPlugins } from "./adapters/plugin-events.js";
 import {
   bashWrites,
   inputHash,
@@ -51,7 +59,7 @@ import {
   writtenPath,
   type FileAction,
 } from "./adapters/claude-code.js";
-import { gitView, type GitView } from "./adapters/git.js";
+import { gitTree } from "./adapters/git.js";
 import { bilingual, inLanguage, setLanguage, t, type Lang } from "./adapters/i18n.js";
 import { loadManifest, tddLayouts } from "./adapters/manifest.js";
 import {
@@ -87,8 +95,6 @@ interface Result {
 }
 
 const LENIENT = new Set(["Stop", "SubagentStop", "SessionStart"]);
-// When the path as written and its link target disagree, the stricter decision wins.
-const STRICTNESS = { allow: 0, code: 1, reopen: 2, deny: 3 } as const;
 
 async function main(): Promise<void> {
   let raw = "";
@@ -117,8 +123,16 @@ async function handle(payload: unknown): Promise<Result> {
       return userPrompt(inProject(parse(userPromptSchema, payload)));
     case "Stop":
     case "SubagentStop":
-    case "SessionStart":
-      return lifecycle(inProject(parse(lifecycleSchema, payload)));
+    case "SessionStart": {
+      const p = inProject(parse(lifecycleSchema, payload));
+      const result = await lifecycle(p);
+      // Only an existing decision reaches the observer; a verid error still follows onError.
+      const warnings =
+        p.hook_event_name === "SessionStart" ? [] : await notifyAutoPlugins(projectDir(p.cwd));
+      return warnings.length
+        ? { ...result, stderr: `${result.stderr ?? ""}${warnings.join("\n")}\n` }
+        : result;
+    }
     default:
       throw new VeridError("VERID_BURNT_PAYLOAD", { detail: "unknown hook_event_name" });
   }
@@ -253,7 +267,10 @@ async function tddGate(
   // Production code waits for an open module: approved, not served, its section unchanged since.
   // Remix has no plan. An auto drive opens its modules itself, in plan order, and is stuck when it
   // cannot go on without the developer.
-  const facts = manifest.drive === "auto" ? autoFactsOf(project, state) : null;
+  const facts =
+    manifest.drive === "auto"
+      ? autoFactsOf(project, state, manifest.iterations !== undefined)
+      : null;
   // A write is judged before it runs, so a Bash `rm .verid/blocked.md` latches the file first.
   if (facts !== null && toLatch(state, facts.blockedFile))
     withLock(paths, () =>
@@ -318,7 +335,11 @@ function roleNames(
   agentType: string | undefined,
   roles: Roles | undefined,
 ): Record<string, string> {
-  return { writer: agentId === undefined ? "main" : (agentType ?? "?"), ...mappedAgents(roles) };
+  return {
+    writer: agentId === undefined ? "main" : (agentType ?? "?"),
+    ...mappedAgents(roles),
+    document: ROLE_DOCUMENTS[writerOf(agentId, agentType, roles)] ?? "—",
+  };
 }
 
 interface Judged {
@@ -327,7 +348,7 @@ interface Judged {
 }
 
 const harshest = (judged: Judged[]): Judged =>
-  judged.reduce((a, b) => (STRICTNESS[b.tdd.kind] > STRICTNESS[a.tdd.kind] ? b : a));
+  judged.reduce((a, b) => (TDD_STRICTNESS[b.tdd.kind] > TDD_STRICTNESS[a.tdd.kind] ? b : a));
 
 /** A rule the developer allowed no longer denies: the write counts as it would without that rule. */
 function passed(j: Judged, lifted: ReadonlySet<RuleCode>): Judged {
@@ -405,8 +426,15 @@ async function userPrompt(p: z.infer<typeof userPromptSchema>): Promise<Result> 
     const manifest = await loadManifest(project);
     const lines =
       cmd.kind === "menu" && manifest
-        ? menuLines(project, manifest.mode, state, manifest.roles, manifest.drive)
-        : peekLines(project, manifest?.mode ?? null, state, manifest?.roles, manifest?.drive);
+        ? menuLines(project, manifest.mode, state, manifest.roles, manifest.drive, manifest)
+        : peekLines(
+            project,
+            manifest?.mode ?? null,
+            state,
+            manifest?.roles,
+            manifest?.drive,
+            manifest ?? undefined,
+          );
     return { exit: 2, stderr: `${lines.join("\n")}\n` };
   }
   return withLock(paths, () => {
@@ -506,15 +534,25 @@ async function lifecycle(p: z.infer<typeof lifecycleSchema>): Promise<Result> {
       // Which agent to dispatch for each role: the hook holds each to its own files.
       ...(roles
         ? [
-            `verid: roles reviewer ${agents.reviewer} · tester ${agents.tester} · coder ${agents.coder}`,
+            `verid: roles ${Object.entries(agents)
+              .filter(
+                ([role]) =>
+                  roles[role as keyof Roles] || ["reviewer", "tester", "coder"].includes(role),
+              )
+              .map(([role, names]) => `${role} ${names}`)
+              .join(" · ")}`,
             bilingual("session.roles", {}),
+            ...Object.entries(ROLE_DOCUMENTS).flatMap(([role, document]) =>
+              roles[role as keyof Roles] ? [bilingual("session.drafter", { role, document })] : [],
+            ),
+            ...(roles.qa ? [bilingual("session.qa", {})] : []),
           ]
         : []),
       bilingual(`mode.${mode}`, {}),
       ...(manifest.drive === "auto" ? [bilingual("drive.auto", {})] : []),
       bilingual(cycleHint(cycle), {}),
       // Where the project stands and the next step, as `verid menu` shows them.
-      ...menuLines(project, mode, readState(paths), roles, manifest.drive),
+      ...menuLines(project, mode, readState(paths), roles, manifest.drive, manifest),
       "",
     ].join("\n"),
   };
@@ -538,19 +576,19 @@ function autoStop(
   return withLock(paths, () => {
     let state = readState(paths);
     if (state.auto.signed === null) return null;
-    let facts = autoFactsOf(project, state);
+    let facts = autoFactsOf(project, state, manifest.iterations !== undefined);
     const session = p.session_id;
     state = latchBlocked(paths, state, facts.blockedFile, session);
     facts = { ...facts, auto: state.auto };
     const before = autoPhase(facts);
-    const next = tryClose(project, paths, state, facts);
+    const next = tryClose(project, paths, state, facts, manifest);
     const closed = next !== state && before.kind === "module" ? before.view.name : null;
     state = next;
     facts = { ...facts, auto: state.auto, approvals: state.modules };
     let phase = autoPhase(facts);
-    let git: GitView | null = null;
+    let git: ReturnType<typeof gitTree> | null = null;
     if (!over(phase)) {
-      git = gitView(project);
+      git = gitTree(project, manifest, state.auto.signed);
       const served = Object.entries(state.modules)
         .filter(([, a]) => a.served_at !== null)
         .map(([m]) => m);
@@ -573,7 +611,7 @@ function autoStop(
       facts.researchHash !== null,
       facts.designHash !== null,
       state.review,
-      gitCleanOf(git, state.auto.signed?.git ?? false),
+      git?.clean ?? null,
     );
     const lines = [
       statusLine(manifest.mode, state.tdd, state.tdd.last_run),
@@ -619,11 +657,17 @@ function latchBlocked(
  * records it, and the next module starts its review and coder loops from zero. The state as given
  * when the module is not ready. Audits the close; the caller writes the state, under the lock.
  */
-function tryClose(project: string, paths: StatePaths, state: State, facts: AutoFacts): State {
+function tryClose(
+  project: string,
+  paths: StatePaths,
+  state: State,
+  facts: AutoFacts,
+  manifest: Manifest,
+): State {
   const phase = autoPhase(facts);
   if (phase.kind !== "module" || !facts.plan?.ok) return state;
   const { view } = phase;
-  const clean = gitCleanOf(gitView(project), state.auto.signed?.git ?? false);
+  const clean = gitTree(project, manifest, state.auto.signed).clean;
   if (!closeReady(view, state.tdd, state.review, clean)) return state;
   const now = new Date().toISOString();
   appendAudit(paths.audit, { event: "module_served", module: view.name, by: "auto" });
@@ -655,7 +699,7 @@ async function subagentStop(p: z.infer<typeof lifecycleSchema>): Promise<Result>
   const writer = writerOf(p.agent_id, p.agent_type, manifest.roles);
   const auto = manifest.drive === "auto";
   if (writer === "reviewer") {
-    if (manifest.mode !== "remix") recordReview(p, project, paths, auto);
+    if (manifest.mode !== "remix") recordReview(p, project, paths, auto, manifest);
     return { exit: 0 };
   }
   const agentId = p.agent_id;
@@ -678,7 +722,10 @@ async function subagentStop(p: z.infer<typeof lifecycleSchema>): Promise<Result>
       const line = statusLine(manifest.mode, state.tdd, state.tdd.last_run);
       return { exit: 2, stderr: `${line}\n${bilingual(why, {})}\n` };
     }
-    const rounds = auto && writer === "coder" ? coderRounds(project, paths, state, p) : null;
+    const rounds =
+      auto && writer === "coder"
+        ? coderRounds(project, paths, state, p, manifest.iterations !== undefined)
+        : null;
     if (!wrote && rounds === null) return { exit: 0 };
     writeState(paths, {
       ...state,
@@ -698,8 +745,9 @@ function coderRounds(
   paths: StatePaths,
   state: State,
   p: z.infer<typeof lifecycleSchema>,
+  iterations: boolean,
 ): Record<string, number> | null {
-  if (autoPhase(autoFactsOf(project, state)).kind !== "module") return null;
+  if (autoPhase(autoFactsOf(project, state, iterations)).kind !== "module") return null;
   const { failing, crashed, passed_acs } = state.tdd;
   const before = state.auto.coder_rounds;
   const after = coderRoundsAfter(before, [...failing.map(keyId), ...crashed], passed_acs);
@@ -722,13 +770,14 @@ function recordReview(
   project: string,
   paths: StatePaths,
   auto: boolean,
+  manifest: Manifest,
 ): void {
   const report = p.last_assistant_message ?? "";
   const sha256 = createHash("sha256").update(report, "utf8").digest("hex");
   const verdict = parseVerdict(report);
   withLock(paths, () => {
     const state = readState(paths);
-    const facts = auto ? autoFactsOf(project, state) : null;
+    const facts = auto ? autoFactsOf(project, state, manifest.iterations !== undefined) : null;
     const phase = facts === null ? null : autoPhase(facts);
     const module =
       phase === null
@@ -774,7 +823,10 @@ function recordReview(
         }),
     };
     // A pass on a committed tree serves the module now, not at the agent's next stop.
-    writeState(paths, facts ? tryClose(project, paths, next, { ...facts, auto: next.auto }) : next);
+    writeState(
+      paths,
+      facts ? tryClose(project, paths, next, { ...facts, auto: next.auto }, manifest) : next,
+    );
   });
 }
 

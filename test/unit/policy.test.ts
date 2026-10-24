@@ -252,6 +252,10 @@ describe("decide: bash", () => {
       ['node "C:/x/verid/dist/cli.js" order', DEVELOPER],
       ["verid garnish", DEVELOPER],
       ["verid cook --mode prep", DEVELOPER],
+      ["verid upgrade --yes", DEVELOPER],
+      ["verid.cmd upgrade --dry-run", DEVELOPER],
+      ['node "C:/x/verid/dist/cli.js" upgrade', DEVELOPER],
+      ["node dist/cli upgrade", DEVELOPER],
       ['ver""id order', DEVELOPER],
       ["npx verid stock && npm test", DEVELOPER],
       ["echo $CLAUDECODE", DEVELOPER],
@@ -261,8 +265,26 @@ describe("decide: bash", () => {
       ["verid.ps1 stock", DEVELOPER],
       ["node_modules/.bin/verid.cmd order", DEVELOPER],
       ["cmd /c verid.cmd order", DEVELOPER],
+      ['cmd //c "@verid stock"', DEVELOPER],
+      ['cmd //c ",verid stock"', DEVELOPER],
+      ['cmd //c "=verid order"', DEVELOPER],
+      ["cmd.exe /c @verid.cmd serve x", DEVELOPER],
       ["node dist/cli order", DEVELOPER],
       ['env -i PATH="$PATH" node dist/cli order', DEVELOPER],
+      [
+        'cd node_modules/@anhtranhai835/verid/dist && env -i PATH="$PATH" node cli.js stock',
+        DEVELOPER,
+      ],
+      ["node cli.js stock", DEVELOPER],
+      ["node ./cli.js order", DEVELOPER],
+      ["node cli serve auth", DEVELOPER],
+      ["node dist//cli.js order", DEVELOPER],
+      ["node dist/./cli.js stock", DEVELOPER],
+      ['env -i PATH="$PATH" node cli.js order', DEVELOPER],
+      ["npx expo-cli upgrade", DEVELOPER],
+      ["npx @vue/cli upgrade", DEVELOPER],
+      ["npx @vue/cli.js upgrade", DEVELOPER],
+      ["other-verid upgrade", DEVELOPER],
     ]);
   });
 
@@ -303,9 +325,9 @@ describe("decide: bash", () => {
     expectBash([['cat .verid/manifest.yaml .e""nv', SECRET]]);
   });
 
-  // Known limit: deleting .verid is not blocked here; it removes state, so every action then fails closed.
-  it("does not block deleting .verid", () => {
+  it("leaves bare directory writes to the hook's path-aware Bash checks", () => {
     expectBash([["rm -r .verid", ALLOW]]);
+    expect(bashWriteTargets("rm -r .verid")).toContain(".verid");
   });
 });
 

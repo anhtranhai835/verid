@@ -19,6 +19,7 @@ export function select(
   question: string,
   options: readonly Option[],
   initial: number,
+  shortcuts: Readonly<Record<string, number>> = {},
 ): Promise<number | null> {
   return new Promise((resolve) => {
     let index = initial;
@@ -37,6 +38,8 @@ export function select(
     };
     // Keys typed fast arrive together; the first Enter or Ctrl+C ends the list, the rest is dropped.
     const onData = (chunk: Buffer | string) => {
+      const shortcut = shortcuts[chunk.toString().trim().toLowerCase()];
+      if (shortcut !== undefined) return done(shortcut);
       for (const key of keysOf(chunk.toString())) {
         if (key === "enter") return done(index);
         if (key === "cancel") return done(null);

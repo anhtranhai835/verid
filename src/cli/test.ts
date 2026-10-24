@@ -28,6 +28,7 @@ import { DEFAULT_TIMEOUT_SEC, type Repo } from "../core/manifest.js";
 import { goneRunners, runnerKey, runnerLabel, type Runner } from "../core/runners.js";
 import { appendAudit } from "../adapters/audit-log.js";
 import { bilingual } from "../adapters/i18n.js";
+import { emitPluginEvent } from "../adapters/plugins.js";
 import { readJUnitFiles, xmlReports } from "../adapters/junit.js";
 import { loadManifest, manifestFile } from "../adapters/manifest.js";
 import {
@@ -169,7 +170,15 @@ export async function testCommand(project: string): Promise<CliResult> {
   if (from.state === "PLATED" && verdict.kind === "fail")
     lines.push(bilingual("tdd.refactor_broke", { failed: String(verdict.failing.length) }));
   lines.push(bilingual(cycleHint(to), {}), bilingual("taste.log", { log: shown(project, log) }));
-  return { exit: verdict.kind === "pass" ? 0 : 1, stdout: `${lines.join("\n")}\n`, stderr: "" };
+  const warnings = await emitPluginEvent(project, "taste", {
+    passed: verdict.kind === "pass",
+    counts: c,
+  });
+  return {
+    exit: verdict.kind === "pass" ? 0 : 1,
+    stdout: `${lines.join("\n")}\n`,
+    stderr: warnings.length ? `${warnings.join("\n")}\n` : "",
+  };
 }
 
 /**
@@ -284,6 +293,7 @@ interface Job {
   /** Where the reports are read from after the run. */
   reports: () => string[];
   runner?: Runner;
+  repo: Repo;
 }
 
 /**
@@ -295,10 +305,32 @@ async function runOnce(project: string): Promise<RunOnce> {
   const state = readState(paths); // no usable state → no run
   const startRev = state.tdd.rev;
   const manifest = await loadManifest(project);
-  const repo = manifest?.repos[0];
-  if (!repo) throw new VeridError("VERID_BURNT_MANIFEST_MISSING", { path: manifestFile(project) });
-  const root = resolve(project, repo.path);
-  const runners = repo.test_cmd === undefined ? foundRunners(root, repo, state.runners) : null;
+  if (!manifest)
+    throw new VeridError("VERID_BURNT_MANIFEST_MISSING", { path: manifestFile(project) });
+  const scopedRunners = manifest.layout === "workspace" || manifest.repos.length > 1;
+  const repos = manifest.repos.map((repo) => {
+    const root = resolve(project, ...repo.path.split(/[/\\]/));
+    const prefix = repo.path.replaceAll("\\", "/").toLowerCase();
+    const seen = state.runners.filter((key) => {
+      const dir = key.slice(key.indexOf("@") + 1).toLowerCase();
+      return !scopedRunners || dir === prefix || dir.startsWith(`${prefix}/`);
+    });
+    return {
+      repo,
+      root,
+      runners: repo.test_cmd === undefined ? foundRunners(root, repo, seen, scopedRunners) : null,
+    };
+  });
+  const runners = repos.some((repo) => repo.runners !== null)
+    ? repos.flatMap(({ repo, runners }) =>
+        (runners ?? []).map((r) => runnerKey(r, scopedRunners ? repo.path : ".")),
+      )
+    : null;
+  const gone = runners && goneRunners(state.runners, runners);
+  if (gone && gone.length > 0)
+    throw new VeridError("VERID_BURNT_RUN_RUNNER_GONE", {
+      runners: gone.map(runnerLabel).join(", "),
+    });
 
   const startedAt = new Date();
   const id = runId(startedAt);
@@ -309,19 +341,24 @@ async function runOnce(project: string): Promise<RunOnce> {
   // A replacer function: a string replacement would expand `$$` or `$&` in the project path.
   const fill = (text: string, junit: string, quote: boolean) =>
     text.replaceAll("{junit}", () => (quote ? shellQuote(junit) : junit));
-  const jobs: Job[] =
+  const jobs: Job[] = repos.flatMap(({ repo, root, runners }, repoIndex): Job[] =>
     runners === null
       ? [
           {
-            command: fill(repo.test_cmd ?? "", join(dir, "junit.xml"), true),
+            command: fill(
+              repo.test_cmd ?? "",
+              join(dir, repos.length === 1 ? "junit.xml" : `junit-${repoIndex}.xml`),
+              true,
+            ),
             cwd: root,
-            junit: join(dir, "junit.xml"),
+            junit: join(dir, repos.length === 1 ? "junit.xml" : `junit-${repoIndex}.xml`),
             env: {},
-            reports: () => [join(dir, "junit.xml")],
+            reports: () => [join(dir, repos.length === 1 ? "junit.xml" : `junit-${repoIndex}.xml`)],
+            repo,
           },
         ]
       : runners.map((r, i) => {
-          const own = join(dir, "junit", `${i + 1}-${r.name}`);
+          const own = join(dir, "junit", `${repoIndex}-${i + 1}-${r.name}`);
           mkdirSync(own, { recursive: true });
           const junit = r.junitIsFolder ? own : join(own, "junit.xml");
           clearReports(reportFolders(root, r));
@@ -337,14 +374,21 @@ async function runOnce(project: string): Promise<RunOnce> {
               ...reportFolders(root, r).flatMap((f) => xmlReports(f, REPORT_NAME)),
             ],
             runner: r,
+            repo,
           };
-        });
+        }),
+  );
 
-  const timeoutSec = repo.timeout_sec ?? DEFAULT_TIMEOUT_SEC;
-  const deadline = Date.now() + timeoutSec * 1000;
+  const timeoutSec = repos.reduce(
+    (seconds, { repo }) => seconds + (repo.timeout_sec ?? DEFAULT_TIMEOUT_SEC),
+    0,
+  );
+  const deadlines = new Map<Repo, number>();
   const results: { exit: number | null; cases: TestCase[] | null; timedOut: boolean }[] = [];
   const files: string[] = [];
   for (const job of jobs) {
+    if (!deadlines.has(job.repo))
+      deadlines.set(job.repo, Date.now() + (job.repo.timeout_sec ?? DEFAULT_TIMEOUT_SEC) * 1000);
     if (job.runner)
       appendFileSync(log, `verid: ${job.runner.name} in ${job.runner.dir}: ${job.command}\n`);
     const run = await runTestCommand(
@@ -352,7 +396,7 @@ async function runOnce(project: string): Promise<RunOnce> {
       job.cwd,
       log,
       job.junit,
-      Math.max(deadline - Date.now(), 1),
+      Math.max(deadlines.get(job.repo)! - Date.now(), 1),
       job.env,
     );
     const reports = job.reports();
@@ -360,10 +404,18 @@ async function runOnce(project: string): Promise<RunOnce> {
     files.push(...reports);
     if (run.timedOut) break;
   }
-  const { verdict: classified, at } = classifyRuns(results);
-  const cases = results.every((r) => r.cases !== null)
-    ? results.flatMap((r) => r.cases ?? [])
-    : null;
+  const named = (cases: readonly TestCase[], repo: Repo): TestCase[] =>
+    cases.map((test) => ({
+      ...test,
+      id:
+        manifest.layout === "workspace" || repos.length > 1 ? `[${repo.path}] ${test.id}` : test.id,
+    }));
+  const scoped = results.map((result, i) => ({
+    ...result,
+    cases: result.cases === null ? null : named(result.cases, jobs[i]!.repo),
+  }));
+  const { verdict: classified, at } = classifyRuns(scoped);
+  const cases = scoped.every((r) => r.cases !== null) ? scoped.flatMap((r) => r.cases ?? []) : null;
   const failed = at === null ? undefined : jobs[at]?.runner;
   const nonZero = results.find((r) => r.exit !== 0);
   return {
@@ -377,14 +429,20 @@ async function runOnce(project: string): Promise<RunOnce> {
     exitCode: nonZero ? nonZero.exit : 0,
     cases,
     classified,
-    e2eCases: e2eCases(
-      results.map((r, i) => ({ runner: jobs[i]?.runner?.name ?? null, cases: r.cases ?? [] })),
-      repo.e2e_globs ?? [],
-    ),
+    e2eCases: results.flatMap((r, i) => {
+      const job = jobs[i]!;
+      return named(
+        e2eCases(
+          [{ runner: job.runner?.name ?? null, cases: r.cases ?? [] }],
+          job.repo.e2e_globs ?? [],
+        ),
+        job.repo,
+      );
+    }),
     junitSha256: cases === null ? null : sha256(Buffer.concat(files.map((f) => readFileSync(f)))),
     command: jobs.map((j) => j.command).join("\n"),
     timeoutSec,
-    runners: runners && runners.map(runnerKey),
+    runners,
     hint:
       failed && classified.kind === "invalid" && classified.code === "VERID_BURNT_RUN_NO_JUNIT"
         ? noReportHint(failed)
@@ -406,13 +464,21 @@ function noReportHint(r: Runner): RunOnce["hint"] {
  * The runners to run when the manifest names no test_cmd. A runner run before whose build
  * file is gone stops the run: its tests, failing ones included, would quietly leave it.
  */
-function foundRunners(root: string, repo: Repo, seen: readonly string[]): Runner[] {
+function foundRunners(
+  root: string,
+  repo: Repo,
+  seen: readonly string[],
+  scoped: boolean,
+): Runner[] {
   const { runners, unsupported } = findRunners(root, {
     sourceGlobs: repo.source_globs,
     testGlobs: repo.test_globs,
     ignoreGlobs: repo.ignore_globs ?? [],
   });
-  const gone = goneRunners(seen, runners.map(runnerKey));
+  const gone = goneRunners(
+    seen,
+    runners.map((runner) => runnerKey(runner, scoped ? repo.path : ".")),
+  );
   if (gone.length > 0)
     throw new VeridError("VERID_BURNT_RUN_RUNNER_GONE", {
       runners: gone.map(runnerLabel).join(", "),

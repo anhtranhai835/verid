@@ -5,9 +5,21 @@ description: Step 3 of a verid project. Split the work in `.verid/plan.md` into 
 
 # verid: the plan
 
+Use andrej-karpathy-skills:karpathy-guidelines (Simplicity First) when proposing modules.
+
+When the manifest has `iterations`, assign every module, including `product`, one `Iteration: <n>`
+line as the first nonempty line under its heading, fitting the configured duration. If the work
+does not fit, ask the developer through the proposal or blocked-note workflow before writing.
+
 Break the work down with superpowers:writing-plans, but write the result in verid's format below,
-in `.verid/plan.md`. verid reads this file: a module the parser rejects cannot be ordered. Write it in
-the main conversation, so you can ask the developer.
+in `.verid/plan.md`. verid reads this file: a module the parser rejects cannot be ordered. Dispatch
+the mapped planner when `roles.planner` in `.verid/manifest.yaml` exists (read it with Read,
+never Bash). Dispatch it first for a proposal, with the research, design, specification and
+existing code. Present its module boundaries before any write; do not finalise them silently.
+Relay the planner's open questions to the developer one at a time, with its 2–3 options,
+trade-offs and recommendation. Then dispatch it again with the decisions and approval to write.
+The main conversation writes nothing in `.verid/plan.md` when a planner is mapped. Without one,
+write the plan in the main conversation using the same proposal and question workflow.
 
 ## Format
 
@@ -30,6 +42,10 @@ The whole product, as a user meets it.
 ```
 
 - Each module starts with `## Module: <name>`. Names are kebab-case and appear once.
+- With manifest `iterations`, `Iteration: <positive integer>` is optional and belongs on the first
+  nonempty line after the module heading. Lowercase `iteration:`, lines before the first module
+  heading and every later line in a section are ignored as metadata.
+  With iterations off, every `Iteration:` line is ordinary text.
 - Each acceptance criterion is one line, `- AC-<n>: <behaviour>`, inside a module. Codes are unique
   across the whole file. Write the behaviour, not the code: each AC becomes a test whose name
   carries its code.
@@ -65,13 +81,18 @@ opens and serves the modules itself, in the order of the file, and the developer
 research and the design. Do not read the manifest with Bash to find out: verid blocks it. Skip
 "Ordering": `verid order <module>` is refused (`VERID_BURNT_AUTO_ORDER_MODULE`).
 
-- Write the plan once the head line of `verid menu` says `signed`. `product` is the last module in the
+- Have the mapped planner draft the plan once the head line of `verid menu` says `signed`, or
+  draft it yourself if unmapped. `product` is the last module in the
   file, with every AC `(e2e)`; verid does not take a plan that ends otherwise.
 - Answer each `[NEEDS CLARIFICATION]` yourself: pick the option you would recommend and replace the
   marker with the answer and why. The exception is a question whose answer changes
   `.verid/design.md`, or that only the developer can answer. Then do not guess: write the question
   and the options, with their trade-offs, into `.verid/blocked.md` and stop. The drive waits for
   the developer, who answers and runs `verid order` to continue.
+- In this signed auto workflow, resolve the planner's questions within the design yourself,
+  record why, and dispatch the planner again with those decisions to write the plan. If its
+  proposal changes the signed design or needs the developer, write `.verid/blocked.md` yourself
+  and stop. The planner can write only `.verid/plan.md` and cannot record that block for you.
 - When `verid menu` says to have the reviewer check the plan, dispatch `verid:reviewer` (or the mapped
   reviewer) with `.verid/plan.md` and `.verid/design.md`, and say that it is the plan it reviews, not
   a module. Its final report ends with `Verdict: pass` or `Verdict: fail`. On a fail, fix the plan

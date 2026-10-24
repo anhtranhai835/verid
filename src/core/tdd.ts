@@ -181,6 +181,8 @@ export function transition(
 
 /** Where the repo is and which of its paths are production code and tests. */
 export interface TddLayout {
+  /** The project owns `.verid/`, even when the repo is a subfolder. */
+  projectRoot?: string;
   /** Normalized like action paths. */
   repoRoot: string;
   sourceGlobs: string[];
@@ -194,6 +196,9 @@ export interface TddLayout {
 export type TddDecision =
   PolicyDecision | { kind: "code"; reason: string } | { kind: "reopen"; reason: string };
 
+/** Across repo roots and written/resolved paths, keep the strictest decision. Ties keep the first. */
+export const TDD_STRICTNESS = { allow: 0, code: 1, reopen: 2, deny: 3 } as const;
+
 /**
  * What a repo-relative path is: a test when it matches a test glob, even if it matches the others
  * too, so runner config among the tests stays frozen; otherwise free when ignored or outside the
@@ -204,9 +209,12 @@ export function fileRole(
   layout: Omit<TddLayout, "repoRoot">,
 ): "test" | "code" | "free" {
   const matches = (globs: string[]) => globs.some((g) => matchesGlob(rel, g));
-  if (matches(layout.testGlobs) || matches(layout.e2eGlobs ?? [])) return "test";
+  if (matches(layout.testGlobs) || isE2eFile(rel, layout)) return "test";
   return matches(layout.ignoreGlobs) || !matches(layout.sourceGlobs) ? "free" : "code";
 }
+
+const isE2eFile = (rel: string, layout: Omit<TddLayout, "repoRoot">): boolean =>
+  (layout.e2eGlobs ?? []).some((g) => matchesGlob(rel, g));
 
 /**
  * Gate for file writes. `code` allows a write to production code, which no run shows yet.
@@ -224,16 +232,46 @@ export function fileRole(
 export function decideTdd(
   action: Action,
   { state, stub }: Cycle,
-  layout: TddLayout,
+  layout: TddLayout | readonly TddLayout[],
   planApproved: boolean,
   who: { writer: Writer; split: boolean } = { writer: "main", split: false },
+  auto?: { stuck: boolean },
+): TddDecision {
+  if (Array.isArray(layout)) {
+    const matching = layout.filter(
+      (repo) => action.kind === "file" && relativeTo(action.path, repo.repoRoot) !== null,
+    );
+    // Outside every repo, preserve the existing role rules and outside-repo TDD decision.
+    const candidates = matching.length ? matching : layout.slice(0, 1);
+    const decisions = candidates.map((repo) =>
+      decideTdd(action, { state, stub }, repo, planApproved, who, auto),
+    );
+    return decisions.length
+      ? decisions.reduce((a, b) => (TDD_STRICTNESS[b.kind] > TDD_STRICTNESS[a.kind] ? b : a))
+      : { kind: "allow", reason: "no repo" };
+  }
+  return decideRepoTdd(action, { state, stub }, layout as TddLayout, planApproved, who, auto);
+}
+
+function decideRepoTdd(
+  action: Action,
+  { state, stub }: Cycle,
+  layout: TddLayout,
+  planApproved: boolean,
+  who: { writer: Writer; split: boolean },
   auto?: { stuck: boolean },
 ): TddDecision {
   if (action.kind !== "file" || action.access !== "write")
     return { kind: "allow", reason: "not a file write" };
   const rel = relativeTo(action.path, layout.repoRoot);
   const role = rel === null ? "outside" : fileRole(rel, layout);
-  const byRole = decideRole(who.writer, who.split, role, action.display);
+  const byRole = decideRole(
+    who.writer,
+    who.split,
+    rel !== null && isE2eFile(rel, layout) ? "e2e" : role,
+    action.display,
+    relativeTo(action.path, layout.projectRoot ?? layout.repoRoot),
+  );
   if (byRole.kind === "deny") return byRole;
   if (role === "outside") return { kind: "allow", reason: "outside the repo" };
   if (auto?.stuck && role !== "free")

@@ -12,6 +12,7 @@ import {
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { parse } from "yaml";
 
 // Runs the built `verid cook` as a developer would in their own terminal, then runs the hook
 // commands it wrote to .claude/settings.local.json exactly as Claude Code spawns them.
@@ -108,7 +109,7 @@ function payload(dir: string, name: string, edit?: (p: Payload) => void): string
 const writeTo = (dir: string, rel: string) =>
   payload(dir, "pre-tool-use-write", (p) => (p.tool_input.file_path = file(dir, rel)));
 // cook maps verid's tester and coder, so each part is written by its subagent (agent_id set).
-const writeAs = (dir: string, rel: string, agent: "verid:tester" | "verid:coder") =>
+const writeAs = (dir: string, rel: string, agent: string) =>
   payload(dir, "pre-tool-use-write", (p) => {
     p.tool_input.file_path = file(dir, rel);
     p.agent_id = "a1b2c3";
@@ -135,6 +136,63 @@ const vitestProject = (dir: string) => {
 };
 
 describe("verid cook", () => {
+  it("mentions only mapped optional agents in the installation note", () => {
+    const rows = [
+      [
+        [
+          "roles:",
+          '  reviewer: ["verid:reviewer"]',
+          '  tester: ["verid:tester"]',
+          '  coder: ["verid:coder"]',
+        ],
+        "(verid:tester, verid:coder, verid:reviewer)",
+        [],
+      ],
+      [
+        ["roles:", '  reviewer: ["verid:reviewer"]', '  qa: ["custom:qa"]'],
+        "(verid:reviewer, custom:qa)",
+        ["qa"],
+      ],
+      [["roles:", '  planner: ["verid:planner"]'], "(verid:planner)", ["planner"]],
+    ] as const;
+    const got = rows.map(([roles, agents]) => {
+      const dir = newProject();
+      put(dir, ".verid/manifest.yaml", OLD_MANIFEST + roles.join("\n") + "\n");
+      const result = init(dir, "--lang", "en");
+      const note = result.stdout.split("\n").find((line) => line.startsWith("! Roles: ")) ?? "";
+      return [
+        result.code,
+        note.includes(agents),
+        [...new Set(note.match(/\b(?:researcher|architect|planner|qa)\b/g) ?? [])],
+      ];
+    });
+    expect(got).toEqual(rows.map(([, , roles]) => [0, true, roles]));
+  });
+
+  it("maps all seven plugin roles so the new agents meet their hook restrictions", () => {
+    expect(init(project, "--mode", "prep", ...NO_RUNNER).code).toBe(0);
+    expect(parse(read(project, ".verid/manifest.yaml")).roles).toEqual({
+      reviewer: ["verid:reviewer"],
+      tester: ["verid:tester"],
+      coder: ["verid:coder"],
+      researcher: ["verid:researcher"],
+      architect: ["verid:architect"],
+      planner: ["verid:planner"],
+      qa: ["verid:qa"],
+    });
+    const rows = [
+      ["verid:researcher", ".verid/research.md", 0, ""],
+      ["verid:architect", "notes.md", 2, "VERID_BURNT_ROLE_DOC_ONLY"],
+      ["verid:planner", "notes.md", 2, "VERID_BURNT_ROLE_DOC_ONLY"],
+      ["verid:qa", "test/unit.test.ts", 2, "VERID_BURNT_ROLE_QA_E2E_ONLY"],
+      ["verid:qa", "e2e/login.spec.ts", 0, ""],
+    ] as const;
+    for (const [agent, rel, code, message] of rows) {
+      const result = hook(project, "PreToolUse", writeAs(project, rel, agent));
+      expect(result.code, `${agent} ${rel}`).toBe(code);
+      if (message) expect(result.stderr).toContain(message);
+    }
+  });
   // By default each picks up the other's test files.
   it("says how to split vitest and Playwright when a project has both, and nothing otherwise", () => {
     const both = newProject();
@@ -152,16 +210,11 @@ describe("verid cook", () => {
     const r = init(project, "--mode", "remix");
     expect(r.stderr).toBe("");
     expect(r.code).toBe(0);
-    for (const line of [
-      "created  .verid/.state/state.json",
-      "created  .verid/.gitignore",
-      "created  .verid/manifest.yaml",
-      `created  ${LOCAL}`,
-    ])
+    for (const line of ["+ state.json", "+ .gitignore", "+ manifest.yaml", "+ settings.local.json"])
       expect(r.stdout).toContain(line);
 
     expect(json(project, ".verid/.state/state.json").schemaVersion).toBe(1);
-    expect(read(project, ".verid/.gitignore")).toBe(".state/\n");
+    expect(read(project, ".verid/.gitignore")).toBe(".state/\nplugins/\n");
     // No test_cmd: verid finds the runner at each run, and says which one it sees now.
     expect(read(project, ".verid/manifest.yaml")).toContain("# test_cmd: verid finds");
     expect(r.stdout).toMatch(/test runner.*vitest/i);
@@ -192,7 +245,7 @@ describe("verid cook", () => {
   it("adds verid's commands to Claude Code's menu in this machine's language, keeping any there", () => {
     vitestProject(project);
     const r = init(project, "--mode", "remix", "--lang", "vi");
-    expect(r.stdout).toContain("created  .claude/commands/verid/");
+    expect(r.stdout).toContain("+ tip.md");
     const dir = file(project, ".claude/commands/verid");
     expect(readdirSync(dir).sort()).toEqual(["confirm.md", "menu.md", "peek.md", "tip.md"]);
     expect(read(project, ".claude/commands/verid/tip.md")).toMatch(
@@ -202,10 +255,10 @@ describe("verid cook", () => {
     // A file that is there may be the developer's own edit, or a teammate's in another language.
     put(project, ".claude/commands/verid/menu.md", "mine\n");
     rmSync(file(project, ".claude/commands/verid/peek.md"));
-    expect(init(project, "--lang", "en").stdout).toContain("created  .claude/commands/verid/");
+    expect(init(project, "--lang", "en").stdout).toContain("+ peek.md");
     expect(read(project, ".claude/commands/verid/menu.md")).toBe("mine\n");
     expect(read(project, ".claude/commands/verid/peek.md")).toContain('description: "Show ');
-    expect(init(project).stdout).toContain("kept     .claude/commands/verid/");
+    expect(init(project).stdout).toContain("= tip.md");
   });
 
   it("refuses a language other than vi or en, writing nothing", () => {
@@ -234,7 +287,7 @@ describe("verid cook", () => {
     vitestProject(project);
     expect(init(project, "--mode", "remix", "--lang", "vi").code).toBe(0);
     const again = init(project, "--lang", "en");
-    expect(again.stdout).toContain("updated  .verid/.state/state.json");
+    expect(again.stdout).toContain("~ state.json");
     const peek = cli(project, "peek").stdout;
     expect([peek.includes("RAW: production code is locked"), /^(vi|en): /m.test(peek)]).toEqual([
       true,
@@ -254,12 +307,7 @@ describe("verid cook", () => {
     const first = read(project, LOCAL);
     const again = init(project);
     expect(again.code).toBe(0);
-    for (const line of [
-      "kept     .verid/.state/state.json",
-      "kept     .verid/.gitignore",
-      "kept     .verid/manifest.yaml",
-      `kept     ${LOCAL}`,
-    ])
+    for (const line of ["= state.json", "= .gitignore", "= manifest.yaml", "= settings.local.json"])
       expect(again.stdout).toContain(line);
     expect(read(project, LOCAL)).toBe(first);
     const settings = JSON.parse(first);
@@ -279,7 +327,7 @@ describe("verid cook", () => {
       }),
     );
     const r = init(project, "--mode", "remix");
-    expect(r.stdout).toContain(`updated  ${LOCAL}`);
+    expect(r.stdout).toContain("~ settings.local.json");
     expect(read(project, LOCAL)).not.toContain("C:/tools/verid");
   });
 
@@ -293,9 +341,9 @@ describe("verid cook", () => {
       cpSync(file(project, rel), file(clone, rel), { recursive: true });
 
     const r = init(clone);
-    expect(r.stdout).toContain("kept     .verid/manifest.yaml");
-    expect(r.stdout).toContain("created  .verid/.state/state.json");
-    expect(r.stdout).toContain(`created  ${LOCAL}`);
+    expect(r.stdout).toContain("= manifest.yaml");
+    expect(r.stdout).toContain("+ state.json");
+    expect(r.stdout).toContain("+ settings.local.json");
     expect(hook(clone, "PreToolUse", writeAs(clone, "test/a.test.ts", "verid:tester")).code).toBe(
       0,
     );
@@ -305,14 +353,14 @@ describe("verid cook", () => {
   it("sets up a project whose runner it cannot see yet, and takes a test command it is told", () => {
     const r = init(project, "--mode", "remix");
     expect(r.code).toBe(0);
-    expect(r.stdout).toContain("created  .verid/manifest.yaml");
+    expect(r.stdout).toContain("+ manifest.yaml");
     expect(r.stdout).toContain("package.json, pyproject.toml, pom.xml");
     expect(read(project, ".verid/manifest.yaml")).not.toMatch(/^ +test_cmd:/m);
 
     rmSync(file(project, ".verid"), { recursive: true });
     const told = init(project, "--mode", "remix", "--test-cmd", "make test JUNIT={junit}");
     expect(told.code).toBe(0);
-    expect(told.stdout).toContain("created  .verid/manifest.yaml");
+    expect(told.stdout).toContain("+ manifest.yaml");
     expect(read(project, ".verid/manifest.yaml")).toContain('test_cmd: "make test JUNIT={junit}"');
     expect(read(project, ".verid/manifest.yaml")).toContain('source_globs: ["**"]');
   });
@@ -323,7 +371,7 @@ describe("verid cook", () => {
     writeFileSync(file(project, ".verid/manifest.yaml"), OLD_MANIFEST);
     const r = init(project);
     expect(r.code).toBe(0);
-    expect(r.stdout).toContain("kept     .verid/manifest.yaml");
+    expect(r.stdout).toContain("= manifest.yaml");
     for (const glob of ["**/vite.config.*", "**/.*", "**/go.mod"]) expect(r.stdout).toContain(glob);
     expect(read(project, ".verid/manifest.yaml")).toBe(OLD_MANIFEST);
   });
@@ -333,7 +381,9 @@ describe("verid cook", () => {
     vitestProject(project);
     mkdirSync(file(project, ".verid"), { recursive: true });
     writeFileSync(file(project, ".verid/manifest.yaml"), OLD_MANIFEST);
-    const lines = init(project).stdout.split("\n");
+    const lines = init(project)
+      .stdout.split("\n")
+      .map((line) => line.replace(/^! /, ""));
     const at = (start: string) => lines.filter((l) => l.startsWith(start));
     expect({
       tests: at("  + test_globs: ").map((l) => l.includes('"**/vite.config.*"')),
@@ -350,6 +400,10 @@ describe("verid cook", () => {
         '  + roles.reviewer: ["verid:reviewer"]',
         '  + roles.tester: ["verid:tester"]',
         '  + roles.coder: ["verid:coder"]',
+        '  + roles.researcher: ["verid:researcher"]',
+        '  + roles.architect: ["verid:architect"]',
+        '  + roles.planner: ["verid:planner"]',
+        '  + roles.qa: ["verid:qa"]',
       ],
       test_cmd: ["  − test_cmd"],
       "explained in": 2,
@@ -377,10 +431,10 @@ describe("verid cook", () => {
     const stateFile = file(project, ".verid/.state/state.json");
     writeFileSync(stateFile, JSON.stringify({ schemaVersion: 1, runners: ["vitest@.", "go@."] }));
     const again = init(project);
-    expect(again.stdout).toContain("updated  .verid/.state/state.json");
-    expect(again.stdout).toMatch(/^en: verid forgets the runners it no longer finds: go\./m);
+    expect(again.stdout).toContain("~ state.json");
+    expect(again.stdout).toMatch(/^! en: verid forgets the runners it no longer finds: go\./m);
     expect(json(project, ".verid/.state/state.json").runners).toEqual(["vitest@."]);
-    expect(init(project).stdout).toContain("kept     .verid/.state/state.json");
+    expect(init(project).stdout).toContain("= state.json");
   });
 
   it("sets up an empty folder for prep, with the gate on from the start", () => {
@@ -493,10 +547,10 @@ describe("verid cook", () => {
     const before = read(project, ".verid/manifest.yaml");
     const r = init(project, "--src", "app/**", "--mode", "prep");
     expect(r.code).toBe(0);
-    expect(r.stdout).toMatch(/^en: The manifest already exists/m);
+    expect(r.stdout).toMatch(/^! en: The manifest already exists/m);
     expect(read(project, ".verid/manifest.yaml")).toBe(before);
     expect(init(project, "--drive", "auto").stdout).toMatch(
-      /^en: The manifest already exists.*--drive/m,
+      /^! en: The manifest already exists.*--drive/m,
     );
     expect(read(project, ".verid/manifest.yaml")).toBe(before);
   });

@@ -412,6 +412,86 @@ describe("transition: the RAW-COOKING-PLATED cycle", () => {
 });
 
 describe("decideTdd", () => {
+  it("preserves the actual allow reason when judging a list of repos", () => {
+    const layout: TddLayout = {
+      repoRoot: "/project/api",
+      sourceGlobs: ["src/**"],
+      testGlobs: ["tests/**"],
+      ignoreGlobs: [],
+    };
+    const rows = [
+      { path: "/project/notes/a.ts", reason: "outside the repo" },
+      { path: "/project/api/readme.md", reason: "neither production code nor a test" },
+    ];
+    for (const row of rows)
+      expect(
+        decideTdd(
+          { kind: "file", tool: "Write", access: "write", path: row.path, display: row.path },
+          { state: "RAW", stub: false },
+          [layout],
+          true,
+        ),
+      ).toEqual({ kind: "allow", reason: row.reason });
+  });
+  it("uses the project root to confine drafting writes even when the repo is a subfolder", () => {
+    const layout = {
+      projectRoot: "c:/proj",
+      repoRoot: "c:/proj/backend",
+      sourceGlobs: ["**"],
+      testGlobs: ["**/*.test.ts"],
+      ignoreGlobs: ["**/*.md"],
+    };
+    const rows = [
+      ["researcher", "c:/proj/.verid/research.md", "allow"],
+      ["architect", "c:/proj/.verid/design.md", "allow"],
+      ["planner", "c:/proj/.verid/plan.md", "allow"],
+      ["researcher", "c:/proj/backend/.verid/research.md", "VERID_BURNT_ROLE_DOC_ONLY"],
+      ["architect", "c:/proj/.verid/design.md.bak", "VERID_BURNT_ROLE_DOC_ONLY"],
+      ["planner", "c:/other/.verid/plan.md", "VERID_BURNT_ROLE_DOC_ONLY"],
+    ] as const;
+    for (const [writer, path, want] of rows) {
+      const d = decideTdd(
+        { kind: "file", tool: "Write", access: "write", path, display: ".verid/plan.md" },
+        { state: "RAW", stub: false },
+        layout,
+        false,
+        { writer, split: true },
+      );
+      expect(d.kind === "deny" ? d.code : d.kind, path).toBe(want);
+    }
+  });
+
+  it("keeps qa end-to-end writes under the TDD and stuck gates", () => {
+    const layout = {
+      repoRoot: "c:/proj",
+      sourceGlobs: ["**"],
+      testGlobs: ["**/*.test.ts"],
+      ignoreGlobs: [],
+      e2eGlobs: ["journeys/**"],
+    };
+    const rows = [
+      ["RAW", "journeys/login.py", false, "reopen"],
+      ["COOKING", "journeys/login.py", false, "VERID_BURNT_TDD_TEST_FROZEN"],
+      ["PLATED", "journeys/login.py", false, "reopen"],
+      ["RAW", "browser/login.spec.ts", false, "VERID_BURNT_ROLE_QA_E2E_ONLY"],
+      ["COOKING", "browser/login.spec.ts", false, "VERID_BURNT_ROLE_QA_E2E_ONLY"],
+      ["RAW", "browser/unit.spec.ts", false, "VERID_BURNT_ROLE_QA_E2E_ONLY"],
+      ["RAW", "journeys/login.py", true, "VERID_BURNT_AUTO_STUCK"],
+    ] as const;
+    for (const [state, rel, stuck, want] of rows) {
+      const path = `c:/proj/${rel}`;
+      const d = decideTdd(
+        { kind: "file", tool: "Write", access: "write", path, display: path },
+        { state, stub: false },
+        layout,
+        true,
+        { writer: "qa", split: true },
+        { stuck },
+      );
+      expect(d.kind === "deny" ? d.code : d.kind, `${state} ${rel}`).toBe(want);
+    }
+  });
+
   // Paths arrive normalized by the adapter: absolute, lowercase on win32.
   const win: TddLayout = {
     repoRoot: "c:\\proj",

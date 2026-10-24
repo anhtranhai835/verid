@@ -1,15 +1,9 @@
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";
-import {
-  autoModules,
-  autoNextStep,
-  autoPhase,
-  gitCleanOf,
-  LIMIT,
-  type AutoFacts,
-} from "../core/auto.js";
-import type { Drive, Mode, Roles } from "../core/manifest.js";
+import { autoModules, autoNextStep, autoPhase, LIMIT, type AutoFacts } from "../core/auto.js";
+import type { Drive, Iterations, Manifest, Mode, Roles } from "../core/manifest.js";
+import { iterationDates } from "../core/iterations.js";
 import {
   modulePhases,
   nextStep,
@@ -23,7 +17,7 @@ import {
 import { mappedAgents } from "../core/roles.js";
 import type { State } from "../core/state.js";
 import { cycleHint, cycleLabel } from "../core/tdd.js";
-import { gitView } from "./git.js";
+import { gitTree } from "./git.js";
 import { bilingual } from "./i18n.js";
 import { errno } from "./state-store.js";
 
@@ -72,7 +66,7 @@ export type PlanRead =
  * Any other failure propagates: a plan that cannot be read must not look like one that is
  * missing, or the gate would misjudge it.
  */
-export function readPlan(project: string): PlanRead | null {
+export function readPlan(project: string, iterations = false): PlanRead | null {
   let bytes: Buffer;
   try {
     bytes = readFileSync(planFile(project));
@@ -80,7 +74,7 @@ export function readPlan(project: string): PlanRead | null {
     if (errno(e) === "ENOENT") return null;
     throw e;
   }
-  const plan = parsePlan(bytes.toString("utf8"));
+  const plan = parsePlan(bytes.toString("utf8"), iterations);
   if (!plan.ok) return plan;
   const hashes = Object.fromEntries(
     plan.modules.map((m) => [m.name, createHash("sha256").update(m.text, "utf8").digest("hex")]),
@@ -94,7 +88,7 @@ export function readPlan(project: string): PlanRead | null {
  * `.verid/blocked.md` (null when missing or blank). Reads only; any read error but a missing file
  * propagates, so a file that cannot be read never looks like one that was not written.
  */
-export function autoFactsOf(project: string, state: State): AutoFacts {
+export function autoFactsOf(project: string, state: State, iterations = false): AutoFacts {
   let blocked: string;
   try {
     blocked = readFileSync(blockedFile(project), "utf8").trim();
@@ -107,7 +101,7 @@ export function autoFactsOf(project: string, state: State): AutoFacts {
     researchHash: readFileHash(researchFile(project)),
     designHash: readDesignHash(project),
     planHash: readFileHash(planFile(project)),
-    plan: readPlan(project),
+    plan: readPlan(project, iterations),
     approvals: state.modules,
     evidence: { passedAcs: state.tdd.passed_acs, passedE2eAcs: state.tdd.passed_e2e_acs },
     blockedFile: blocked === "" ? null : blocked,
@@ -143,6 +137,7 @@ export function peekLines(
   state: State,
   roles: Roles | undefined,
   drive?: Drive,
+  manifest?: Manifest,
 ): string[] {
   if (mode === null)
     return ["verid: TDD off · no .verid/manifest.yaml", bilingual("status.off", {})];
@@ -155,24 +150,32 @@ export function peekLines(
   if (remix)
     return [head, hint, ...(baseline === null ? [bilingual("status.no_baseline", {})] : [])];
   if (drive === "auto") {
-    const { phase, step } = autoStanding(project, state, roles);
+    const { phase, step } = autoStanding(project, state, roles, manifest);
     return [head, ...(phase.kind === "module" ? [hint] : []), step, bilingual("status.menu", {})];
   }
-  const plan = planStanding(project, state);
+  const plan = planStanding(project, state, manifest?.iterations !== undefined);
   const open = plan.ok && openModule(plan.views) !== undefined;
   return [head, ...(open ? [hint] : []), stepLine(plan, roles), bilingual("status.menu", {})];
 }
 
 /** The plan as `verid menu` reads it: the modules' phases, the open questions, the next step. */
-function planStanding(project: string, state: State) {
+function planStanding(project: string, state: State, iterations = false) {
   const questions = questionLines(project);
-  const plan = readPlan(project) ?? { ok: true as const, modules: [], hashes: {} };
+  const plan = readPlan(project, iterations) ?? { ok: true as const, modules: [], hashes: {} };
   if (!plan.ok) return { ok: false as const, questions, detail: plan.detail };
   const hasResearch = existsSync(researchFile(project));
   const hasDesign = existsSync(designFile(project));
   const views = modulePhases(plan.modules, plan.hashes, state.modules, evidenceOf(project, state));
   const step = nextStep(hasResearch, hasDesign, views, questions.length > 0);
-  return { ok: true as const, questions, hasResearch, hasDesign, views, step };
+  return {
+    ok: true as const,
+    questions,
+    hasResearch,
+    hasDesign,
+    modules: plan.modules,
+    views,
+    step,
+  };
 }
 
 // A step that hands work to an agent names the one mapped to the role, or — when none is.
@@ -188,11 +191,16 @@ const stepLine = (plan: ReturnType<typeof planStanding>, roles: Roles | undefine
  * An auto drive as `verid menu` reads it: the facts it decides from, where it stands, and the one
  * next step. git is asked only once a module is open, where it tells whether the work is committed.
  */
-function autoStanding(project: string, state: State, roles: Roles | undefined) {
-  const facts = autoFactsOf(project, state);
+function autoStanding(
+  project: string,
+  state: State,
+  roles: Roles | undefined,
+  manifest?: Manifest,
+) {
+  const facts = autoFactsOf(project, state, manifest?.iterations !== undefined);
   const phase = autoPhase(facts);
   const clean =
-    phase.kind === "module" ? gitCleanOf(gitView(project), state.auto.signed?.git ?? false) : null;
+    phase.kind === "module" ? gitTree(project, manifest, state.auto.signed).clean : null;
   const next = autoNextStep(
     phase,
     facts.researchHash !== null,
@@ -210,6 +218,48 @@ const moduleCount = (views: readonly ModuleView[]) =>
 const moduleLine = (v: ModuleView) =>
   `  ${v.name} · ${v.phase} · ${v.acs.length - v.uncovered.length}/${v.acs.length} ACs${v.designChanged ? " · design changed since order" : ""}`;
 
+/** Calendar status only: it never feeds a gate or an auto-drive decision. */
+function iterationLines(
+  iterations: Iterations | undefined,
+  modules: readonly PlanModule[],
+  views: readonly ModuleView[],
+  today?: string,
+): string[] {
+  if (!iterations) return [];
+  // The boundary supplies today's local calendar date; core only sees literal dates.
+  if (today === undefined) {
+    const now = new Date();
+    today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  }
+  const dates = iterationDates(iterations, today);
+  const served = new Set(views.filter((v) => v.phase === "done").map((v) => v.name));
+  const current = modules.filter((m) => m.iteration === dates.number);
+  return [
+    bilingual("menu.iteration", {
+      number: String(dates.number),
+      start: dates.start,
+      end: dates.end,
+      demo: iterations.demo_day,
+      days: String(dates.daysToDemo),
+      detail_key:
+        dates.daysToDemo < 0
+          ? "menu.iteration_demo_passed"
+          : dates.daysToDemo === 0
+            ? "menu.iteration_demo_today"
+            : dates.daysToDemo === 1
+              ? "menu.iteration_demo_day"
+              : "menu.iteration_demo_days",
+      served: String(current.filter((m) => served.has(m.name)).length),
+      total: String(current.length),
+    }),
+    ...modules
+      .filter((m) => m.iteration !== undefined && m.iteration < dates.number && !served.has(m.name))
+      .map((m) =>
+        bilingual("menu.iteration_late", { module: m.name, number: String(m.iteration) }),
+      ),
+  ];
+}
+
 /**
  * `verid menu`, also shown at session start: where the project stands and the one next step.
  * prep and recipe list each module with its phase and AC coverage, and the open questions;
@@ -222,6 +272,8 @@ export function menuLines(
   state: State,
   roles: Roles | undefined,
   drive?: Drive,
+  manifest?: Manifest,
+  today?: string,
 ): string[] {
   if (mode === "remix") {
     const baseline = state.baseline === null ? "none" : String(state.baseline.length);
@@ -231,15 +283,21 @@ export function menuLines(
       ...(state.baseline === null ? [bilingual("status.no_baseline", {})] : []),
     ];
   }
-  if (drive === "auto") return autoMenuLines(project, mode, state, roles);
-  const plan = planStanding(project, state);
+  if (drive === "auto") return autoMenuLines(project, mode, state, roles, manifest, today);
+  const plan = planStanding(project, state, manifest?.iterations !== undefined);
   if (!plan.ok)
-    return [`verid: mode ${mode} · plan invalid`, ...plan.questions, stepLine(plan, roles)];
+    return [
+      `verid: mode ${mode} · plan invalid`,
+      ...iterationLines(manifest?.iterations, [], [], today),
+      ...plan.questions,
+      stepLine(plan, roles),
+    ];
   const { views } = plan;
   const research = ` · research ${plan.hasResearch ? "written" : "missing"}`;
   const design = ` · design ${plan.hasDesign ? "written" : "missing"}`;
   return [
     `verid: mode ${mode}${research}${design} · ${moduleCount(views)}`,
+    ...iterationLines(manifest?.iterations, plan.modules, views, today),
     ...views.map(moduleLine),
     ...plan.questions,
     stepLine(plan, roles),
@@ -251,8 +309,10 @@ function autoMenuLines(
   mode: Mode,
   state: State,
   roles: Roles | undefined,
+  manifest?: Manifest,
+  today?: string,
 ): string[] {
-  const { facts, phase, step } = autoStanding(project, state, roles);
+  const { facts, phase, step } = autoStanding(project, state, roles, manifest);
   const { auto, plan } = facts;
   // A plan that cannot be read lists no modules; the step says what to fix. A module is built only
   // while the drive is at it: unsigned, planning or stuck, the one next in line waits.
@@ -273,6 +333,7 @@ function autoMenuLines(
   ];
   return [
     `verid: mode ${mode} · drive auto · ${auto.signed === null ? "not signed" : "signed"} · plan ${reviewed ? "reviewed" : "pending"} · ${moduleCount(views)}`,
+    ...iterationLines(manifest?.iterations, plan?.ok ? plan.modules : [], views, today),
     ...views.map(moduleLine),
     ...(auto.signed === null ? [] : [`  ${counters.join(" · ")}`]),
     ...questionLines(project),

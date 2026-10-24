@@ -175,7 +175,14 @@ export function detectRunners(
 }
 
 /** How state remembers a runner: `maven@.`, `vitest@fe`. */
-export const runnerKey = (r: Pick<Runner, "name" | "dir">) => `${r.name}@${r.dir}`;
+export const runnerKey = (r: Pick<Runner, "name" | "dir">, repo = ".") => {
+  const dir =
+    [repo, r.dir]
+      .filter((part) => part !== ".")
+      .join("/")
+      .replaceAll("\\", "/") || ".";
+  return `${r.name}@${dir}`;
+};
 
 /** A remembered runner as the developer reads it, like verid cook lists them: `vitest (fe)`. */
 export function runnerLabel(key: string): string {

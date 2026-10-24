@@ -18,11 +18,12 @@ import {
 import { mappedAgents } from "../core/roles.js";
 import { FRESH_AUTO, type State } from "../core/state.js";
 import { usageLines, type UsageRow } from "../core/cook-ui.js";
+import { isCi } from "../core/setup-plan.js";
 import { guardsToolCalls } from "../adapters/claude-settings.js";
 import { bilingual, setLanguage, t, veridName, type Lang } from "../adapters/i18n.js";
 import { loadManifest, manifestFile } from "../adapters/manifest.js";
 import { appendAudit } from "../adapters/audit-log.js";
-import { gitView } from "../adapters/git.js";
+import { gitTree, gitView } from "../adapters/git.js";
 import {
   autoFactsOf,
   blockedFile,
@@ -46,6 +47,9 @@ import {
 } from "../adapters/state-store.js";
 import type { Io } from "../adapters/terminal.js";
 import { interactiveCook } from "./cook-screen.js";
+import { doctorCommand } from "./doctor.js";
+import { pluginCommand } from "./plugins.js";
+import { emitPluginEvent } from "../adapters/plugins.js";
 import { initCommand } from "./init.js";
 import { baselineCommand, lastRefusal, testCommand, type CliResult } from "./test.js";
 
@@ -56,14 +60,23 @@ async function main(): Promise<void> {
   setLanguage(languageOf(project));
   let r: CliResult;
   try {
-    const flags = cmd === "cook" ? initFlags(rest) : null;
+    const flags = cmd === "cook" || cmd === "upgrade" ? initFlags(rest, cmd) : null;
     if (flags?.lang === "vi" || flags?.lang === "en") setLanguage(flags.lang);
     // cook sets up the folder it runs in, like `git init`; the others look upwards for .verid.
     // In the developer's own terminal, with no flags, it asks instead of reading flags.
     if (cmd === "cook" && rest.length === 0 && interactive())
       r = await interactiveCook(process.cwd(), terminalIo(), locale());
-    else if (flags) r = await initCommand(process.cwd(), flags);
+    else if (flags)
+      r = await initCommand(
+        cmd === "upgrade" ? project : process.cwd(),
+        flags,
+        hasTerminal() ? terminalIo() : undefined,
+        cmd === "upgrade" ? "upgrade" : "cook",
+      );
     else if (cmd === "taste" && rest.length === 0) r = await testCommand(project);
+    else if (cmd === "doctor" && rest.length === 0) r = await doctorCommand(project);
+    else if (cmd === "plugin")
+      r = await pluginCommand(project, rest, hasTerminal() ? terminalIo() : undefined);
     else if (cmd === "peek" && rest.length === 0) r = await status(project);
     else if (cmd === "menu" && rest.length === 0) r = await menu(project);
     else if (cmd === "garnish" && rest.length === 0) r = refactor(project);
@@ -88,23 +101,39 @@ async function main(): Promise<void> {
 const COOK_OPTIONS = {
   mode: { type: "string" },
   drive: { type: "string" },
+  layout: { type: "string" },
+  iterations: { type: "boolean" },
+  duration: { type: "string" },
+  "start-date": { type: "string" },
+  "demo-day": { type: "string" },
   lang: { type: "string" },
   "test-cmd": { type: "string" },
   src: { type: "string", multiple: true },
   tests: { type: "string", multiple: true },
+  "dry-run": { type: "boolean" },
+  yes: { type: "boolean" },
 } as const;
+const UPGRADE_OPTIONS = { "dry-run": COOK_OPTIONS["dry-run"], yes: COOK_OPTIONS.yes };
 
 /** `--mode`, `--drive`, `--test-cmd`, `--src` and `--tests` (repeatable); null when anything else is passed. */
-function initFlags(args: string[]) {
+function initFlags(args: string[], command: "cook" | "upgrade") {
   try {
+    if (command === "upgrade") parseArgs({ args, options: UPGRADE_OPTIONS });
     const { values } = parseArgs({ args, options: COOK_OPTIONS });
     return {
       mode: values.mode,
       drive: values.drive,
+      layout: values.layout,
+      iterations: values.iterations,
+      duration: values.duration,
+      startDate: values["start-date"],
+      demoDay: values["demo-day"],
       lang: values.lang,
       testCmd: values["test-cmd"],
       src: values.src ?? [],
       tests: values.tests ?? [],
+      dryRun: values["dry-run"],
+      yes: values.yes,
     };
   } catch {
     return null;
@@ -133,7 +162,14 @@ async function status(project: string): Promise<CliResult> {
   const stderr = guarded ? "" : `${bilingual("status.no_hooks", {})}\n`;
   // The gate follows the manifest, not state: say so when it is off (an invalid one throws).
   const manifest = await loadManifest(project);
-  const lines = peekLines(project, manifest?.mode ?? null, state, manifest?.roles, manifest?.drive);
+  const lines = peekLines(
+    project,
+    manifest?.mode ?? null,
+    state,
+    manifest?.roles,
+    manifest?.drive,
+    manifest ?? undefined,
+  );
   const refused = lastRefusal(project, state.tdd.last_run);
   if (refused)
     lines.push(
@@ -150,6 +186,7 @@ type Misuse = { key: MessageKey; params: Record<string, string> };
 
 // How many arguments each command takes after its name; cook takes flags.
 const ARGS: Record<string, number> = {
+  doctor: 0,
   taste: 0,
   peek: 0,
   menu: 0,
@@ -161,17 +198,18 @@ const ARGS: Record<string, number> = {
 
 /** What verid could not run in a command line: the command, or the words it did not expect. */
 function misused(cmd: string, rest: string[]): Misuse {
-  if (cmd === "cook") {
+  if (cmd === "cook" || cmd === "upgrade") {
+    const options = cmd === "upgrade" ? UPGRADE_OPTIONS : COOK_OPTIONS;
     const { tokens } = parseArgs({
       args: rest,
-      options: COOK_OPTIONS,
+      options,
       strict: false,
       tokens: true,
     });
     const odd = tokens.flatMap((tk) =>
       tk.kind === "positional"
         ? [tk.value]
-        : tk.kind === "option" && !(tk.name in COOK_OPTIONS)
+        : tk.kind === "option" && !(tk.name in options)
           ? [tk.rawName]
           : [],
     );
@@ -201,6 +239,19 @@ function usage(project: string, wrong: Misuse | null): CliResult {
   const cook = interactive() ? `${v} cook` : `${v} cook --mode <prep|recipe|remix>`;
   const rows: UsageRow[] = [
     { emoji: "🔪", command: cook, what: say("usage.cook"), who: dev },
+    {
+      emoji: "⬆️",
+      command: `${v} upgrade [--dry-run] [--yes]`,
+      what: say("usage.upgrade"),
+      who: dev,
+    },
+    { emoji: "🩺", command: `${v} doctor`, what: say("usage.doctor") },
+    {
+      emoji: "🔌",
+      command: `${v} plugin <add|remove|list|doctor|run>`,
+      what: say("usage.plugin"),
+      who: dev,
+    },
     { emoji: "👅", command: `${v} taste`, what: say("usage.taste") },
     { emoji: "👀", command: `${v} peek`, what: say("usage.peek") },
     { emoji: "📋", command: `${v} menu`, what: say("usage.menu") },
@@ -235,7 +286,7 @@ async function menu(project: string): Promise<CliResult> {
   const state = readState(statePaths(project));
   return {
     exit: 0,
-    stdout: `${menuLines(project, manifest.mode, state, manifest.roles, manifest.drive).join("\n")}\n`,
+    stdout: `${menuLines(project, manifest.mode, state, manifest.roles, manifest.drive, manifest).join("\n")}\n`,
     stderr: "",
   };
 }
@@ -289,7 +340,7 @@ async function approve(project: string, wanted: string | undefined): Promise<Cli
 
   const sha256 = plan.hashes[name] as string;
   const paths = statePaths(project);
-  return withLock(paths, () => {
+  const result = withLock(paths, () => {
     const state = readState(paths);
     const views = modulePhases(
       plan.modules,
@@ -343,6 +394,8 @@ async function approve(project: string, wanted: string | undefined): Promise<Cli
       stderr: "",
     };
   });
+  const warnings = await emitPluginEvent(project, "module-opened", { module: name });
+  return { ...result, stderr: warnings.length ? `${warnings.join("\n")}\n` : result.stderr };
 }
 
 /**
@@ -359,7 +412,7 @@ function signAuto(project: string, manifest: Manifest, wanted: string | undefine
   const paths = statePaths(project);
   return withLock(paths, () => {
     const state = readState(paths);
-    const facts = autoFactsOf(project, state);
+    const facts = autoFactsOf(project, state, manifest.iterations !== undefined);
     const { researchHash, designHash } = facts;
     if (researchHash === null)
       throw new VeridError("VERID_BURNT_RESEARCH_MISSING", { path: researchFile(project) });
@@ -383,6 +436,7 @@ function signAuto(project: string, manifest: Manifest, wanted: string | undefine
           design_sha256: designHash,
           at: new Date().toISOString(),
           git: gitView(project) !== null,
+          git_repos: gitTree(project, manifest).presence,
         },
         plan_sha256: unchanged ? state.auto.plan_sha256 : null,
       },
@@ -425,7 +479,7 @@ async function serve(project: string, wanted: string): Promise<CliResult> {
     throw new VeridError("VERID_BURNT_AUTO_SERVE");
   const { mode, plan, name, manifest } = await planModule(project, "serve", wanted);
   const paths = statePaths(project);
-  return withLock(paths, () => {
+  const result = withLock(paths, () => {
     const state = readState(paths);
     const views = modulePhases(
       plan.modules,
@@ -479,6 +533,8 @@ async function serve(project: string, wanted: string): Promise<CliResult> {
     ];
     return { exit: 0, stdout: `${lines.join("\n")}\n`, stderr: "" };
   });
+  const warnings = await emitPluginEvent(project, "module-served", { module: name });
+  return { ...result, stderr: warnings.length ? `${warnings.join("\n")}\n` : result.stderr };
 }
 
 /**
@@ -492,7 +548,7 @@ async function planModule(project: string, command: string, wanted: string | und
   const { mode } = manifest;
   if (mode === "remix") throw new VeridError("VERID_BURNT_MODE_MISMATCH", { command, mode });
   const file = planFile(project);
-  const plan = readPlan(project);
+  const plan = readPlan(project, manifest.iterations !== undefined);
   if (plan === null) throw new VeridError("VERID_BURNT_PLAN_MISSING", { path: file });
   if (!plan.ok)
     throw new VeridError("VERID_BURNT_PLAN_INVALID", { path: file, detail: plan.detail });
@@ -510,10 +566,9 @@ async function planModule(project: string, command: string, wanted: string | und
  * A person at a real terminal: never in a pipe or CI, where a prompt would wait forever, nor in a
  * dumb terminal, which cannot redraw a list.
  */
-const interactive = () =>
-  Boolean(process.stdin.isTTY && process.stdout.isTTY) &&
-  !process.env.CI &&
-  process.env.TERM !== "dumb";
+const hasTerminal = () =>
+  Boolean(process.stdin.isTTY && process.stdout.isTTY) && !isCi(process.env.CI);
+const interactive = () => hasTerminal() && process.env.TERM !== "dumb";
 
 /** The developer's terminal; colour unless NO_COLOR is set to something (no-color.org). */
 const terminalIo = (): Io => ({

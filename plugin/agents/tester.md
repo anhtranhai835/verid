@@ -9,6 +9,8 @@ any production code. verid's hook enforces the cycle of superpowers:test-driven-
 other names: RAW = RED, COOKING = GREEN, PLATED = REFACTOR. Follow
 superpowers:test-driven-development; this file only adds what verid expects of you.
 
+Before writing, use andrej-karpathy-skills:karpathy-guidelines.
+
 ## Your job
 
 You are given one acceptance criterion (AC) of the open module, for example

@@ -1747,6 +1747,10 @@ describe("prep and recipe plan", () => {
       '  reviewer: ["verid:reviewer"]',
       '  tester: ["verid:tester"]',
       '  coder: ["verid:coder"]',
+      '  researcher: ["custom:research"]',
+      '  architect: ["custom:architect"]',
+      '  planner: ["custom:planner"]',
+      '  qa: ["custom:qa"]',
       "",
     ].join("\n");
     writeFileSync(manifestFile, manifest("src/**", undefined, ".", "recipe") + mapped);
@@ -1763,6 +1767,7 @@ describe("prep and recipe plan", () => {
     const unmapped = cli("menu").stdout;
     const says = [
       "verid: roles reviewer verid:reviewer · tester verid:tester · coder verid:coder",
+      "researcher custom:research · architect custom:architect · planner custom:planner · qa custom:qa",
       "superpowers:subagent-driven-development",
       "Dispatch the mapped agents, not general-purpose",
     ];
@@ -2158,6 +2163,335 @@ describe("roles", () => {
   const writeAs = (type: string | undefined, path: string) =>
     by(type, (p) => (p.tool_input.file_path = path));
   const inProject = (rel: string) => join(project, ...rel.split("/"));
+
+  const EXTENDED = [
+    ...SPLIT,
+    '  researcher: ["verid:researcher"]',
+    '  architect: ["verid:architect"]',
+    '  planner: ["verid:planner"]',
+    '  qa: ["verid:qa"]',
+  ];
+
+  it("confines drafting subagents to their project documents for file tools and Bash", () => {
+    prepWith(EXTENDED);
+    const rows = [
+      ["verid:researcher", ".verid/research.md", ".verid/design.md"],
+      ["verid:architect", ".verid/design.md", "README.md"],
+      ["verid:planner", ".verid/plan.md", "test/unit.test.ts"],
+    ] as const;
+    for (const [agent, allowed, forbidden] of rows) {
+      expect(verdict(hook(writeAs(agent, inProject(allowed))))).toBe("exit 0");
+      const blocked = hook(writeAs(agent, inProject(forbidden)));
+      expect(verdict(blocked)).toBe("VERID_BURNT_ROLE_DOC_ONLY");
+      expect(blocked.stderr).toContain(allowed);
+      const command = by(agent, (p) => {
+        p.tool_name = "Bash";
+        p.tool_input = { command: `echo x > ${forbidden}` };
+      });
+      expect(verdict(hook(command))).toBe("VERID_BURNT_ROLE_DOC_ONLY");
+    }
+  });
+
+  it("allows qa end-to-end tests while refusing unit tests, code and docs through file tools and Bash", () => {
+    prepWith(EXTENDED);
+    const raw = readFileSync(manifestFile, "utf8").replace(
+      '    test_globs: ["test/**"]',
+      '    test_globs: ["test/**"]\n    e2e_globs: ["journeys/**"]',
+    );
+    writeFileSync(manifestFile, raw);
+    const rows = [
+      ["journeys/login.py", "exit 0"],
+      ["test/unit.test.ts", "VERID_BURNT_ROLE_QA_E2E_ONLY"],
+      ["src/a.ts", "VERID_BURNT_ROLE_QA_E2E_ONLY"],
+      ["README.md", "VERID_BURNT_ROLE_QA_E2E_ONLY"],
+    ] as const;
+    for (const [rel, want] of rows) {
+      expect(verdict(hook(writeAs("verid:qa", inProject(rel)))), rel).toBe(want);
+      const input = by("verid:qa", (p) => {
+        p.tool_name = "Bash";
+        p.tool_input = { command: `echo x > ${rel}` };
+      });
+      expect(verdict(hook(input)), `Bash ${rel}`).toBe(want);
+    }
+    expect(
+      verdict(hook(writeAs("code-modernization:test-engineer", inProject("journeys/login.py")))),
+    ).toBe("exit 0");
+  });
+
+  it("denies qa unit paths when Write content or Bash comments name Playwright", () => {
+    prepWith(EXTENDED);
+    const rows = [
+      [
+        "Write",
+        { file_path: inProject("src/foo.test.ts"), content: '// from "@playwright/test"\n' },
+        "VERID_BURNT_ROLE_QA_E2E_ONLY",
+      ],
+      [
+        "Bash",
+        { command: 'echo x > src/foo.test.ts # from "@playwright/test"' },
+        "VERID_BURNT_ROLE_QA_E2E_ONLY",
+      ],
+    ] as const;
+    const got = rows.map(([tool, input]) => {
+      const payload = by("verid:qa", (p) => {
+        p.tool_name = tool;
+        p.tool_input = input;
+      });
+      return [tool, verdict(hook(payload))];
+    });
+    expect(got).toEqual(rows.map(([tool, , want]) => [tool, want]));
+  });
+
+  it("keeps drafting documents at the project root when the guarded repo is a subfolder", () => {
+    prepWith(EXTENDED, false);
+    mkdirSync(inProject("backend"));
+    writeFileSync(
+      manifestFile,
+      readFileSync(manifestFile, "utf8").replace("  - path: .", "  - path: backend"),
+    );
+    const rows = [
+      [".verid/research.md", "exit 0"],
+      ["backend/.verid/research.md", "VERID_BURNT_ROLE_DOC_ONLY"],
+    ] as const;
+    for (const [rel, want] of rows)
+      expect(verdict(hook(writeAs("verid:researcher", inProject(rel))))).toBe(want);
+  });
+
+  it("classifies qa writes only by e2e globs regardless of Playwright imports", () => {
+    prepWith(EXTENDED);
+    writeFileSync(
+      manifestFile,
+      readFileSync(manifestFile, "utf8").replace(
+        '    test_globs: ["test/**"]',
+        '    test_globs: ["test/**"]\n    e2e_globs: ["journeys/**"]',
+      ),
+    );
+    mkdirSync(inProject("browser"));
+    mkdirSync(inProject("journeys"));
+    const source =
+      'import { test, expect } from "@playwright/test";\ntest("AC-1 logs in", async ({ page }) => {});\n';
+    writeFileSync(inProject("browser/existing.spec.ts"), source);
+    writeFileSync(inProject("journeys/login.spec.ts"), source);
+    const proposed = by("verid:qa", (p) => {
+      p.tool_input = { file_path: inProject("browser/new.spec.ts"), content: source };
+    });
+    const edit = by("verid:qa", (p) => {
+      p.tool_name = "Edit";
+      p.tool_input = {
+        file_path: inProject("browser/existing.spec.ts"),
+        old_string: "logs in",
+        new_string: "signs in",
+      };
+    });
+    const command = by("verid:qa", (p) => {
+      p.tool_name = "Bash";
+      p.tool_input = { command: "touch browser/existing.spec.ts" };
+    });
+    const removeImport = by("verid:qa", (p) => {
+      p.tool_name = "MultiEdit";
+      p.tool_input = {
+        file_path: inProject("journeys/login.spec.ts"),
+        edits: [{ old_string: 'import { test, expect } from "@playwright/test";', new_string: "" }],
+      };
+    });
+    const rows = [
+      [proposed, "VERID_BURNT_ROLE_QA_E2E_ONLY"],
+      [edit, "VERID_BURNT_ROLE_QA_E2E_ONLY"],
+      [command, "VERID_BURNT_ROLE_QA_E2E_ONLY"],
+      [writeAs("verid:qa", inProject("browser/unit.spec.ts")), "VERID_BURNT_ROLE_QA_E2E_ONLY"],
+      [writeAs("verid:qa", inProject("journeys/new.spec.ts")), "exit 0"],
+      [removeImport, "exit 0"],
+    ] as const;
+    expect(rows.map(([input]) => verdict(hook(input)))).toEqual(rows.map(([, want]) => want));
+  });
+
+  it("keeps legacy source and free paths under their original gates for every writer", () => {
+    const rows = [
+      ["RAW source", [], undefined, "src/a.spec.ts", "remix", "VERID_BURNT_TDD_NO_FAILING_TEST"],
+      [
+        "unapproved source",
+        [],
+        undefined,
+        "src/a.spec.ts",
+        "recipe",
+        "VERID_BURNT_PLAN_NOT_APPROVED",
+      ],
+      ["free file", [], undefined, "browser/a.spec.ts", "remix", "exit 0"],
+      [
+        "split main source",
+        SPLIT,
+        undefined,
+        "src/a.spec.ts",
+        "remix",
+        "VERID_BURNT_ROLE_CODER_ONLY",
+      ],
+      [
+        "split coder source",
+        SPLIT,
+        "general-purpose",
+        "src/a.spec.ts",
+        "remix",
+        "VERID_BURNT_TDD_NO_FAILING_TEST",
+      ],
+      [
+        "split tester source",
+        SPLIT,
+        "code-modernization:test-engineer",
+        "src/a.spec.ts",
+        "remix",
+        "VERID_BURNT_ROLE_CODER_ONLY",
+      ],
+      [
+        "split other source",
+        SPLIT,
+        "Explore",
+        "src/a.spec.ts",
+        "remix",
+        "VERID_BURNT_ROLE_CODER_ONLY",
+      ],
+      ["split main free file", SPLIT, undefined, "browser/a.spec.ts", "remix", "exit 0"],
+      ["split coder free file", SPLIT, "general-purpose", "browser/a.spec.ts", "remix", "exit 0"],
+      [
+        "reviewer",
+        ["roles:", '  reviewer: ["custom:reviewer"]'],
+        "custom:reviewer",
+        "src/a.spec.ts",
+        "remix",
+        "VERID_BURNT_ROLE_READ_ONLY",
+      ],
+    ] as const;
+    const got = rows.map(([name, roles, agent, rel, mode]) => {
+      freshState();
+      writeFileSync(
+        manifestFile,
+        manifest("src/**", undefined, ".", mode) + roles.join("\n") + "\n",
+      );
+      const payload = by(agent, (p) => {
+        p.tool_input = {
+          file_path: inProject(rel),
+          content: 'import { test } from "@playwright/test";\n',
+        };
+      });
+      const result = hook(payload);
+      return [name, verdict(result), state().tdd?.dirty ?? false];
+    });
+    expect(got).toEqual(rows.map(([name, , , , , want]) => [name, want, false]));
+  });
+
+  it("classifies existing test-named paths without reading their contents", () => {
+    mkdirSync(inProject("src/a.spec.ts"), { recursive: true });
+    mkdirSync(inProject("browser/a.spec.ts"), { recursive: true });
+    mkdirSync(inProject("test/a.spec.ts"), { recursive: true });
+    const rows = [
+      [
+        "Edit",
+        { file_path: inProject("src/a.spec.ts"), old_string: "x", new_string: "y" },
+        "VERID_BURNT_TDD_NO_FAILING_TEST",
+        false,
+      ],
+      [
+        "MultiEdit",
+        {
+          file_path: inProject("browser/a.spec.ts"),
+          edits: [{ old_string: "x", new_string: "y" }],
+        },
+        "exit 0",
+        false,
+      ],
+      ["Bash", { command: "touch test/a.spec.ts" }, "exit 0", true],
+      [
+        "mcp__filesystem__write_file",
+        { path: inProject("browser/a.spec.ts"), content: "x" },
+        "exit 0",
+        false,
+      ],
+    ] as const;
+    const got = rows.map(([tool, input]) => {
+      freshState();
+      const payload = by(undefined, (p) => {
+        p.tool_name = tool;
+        p.tool_input = input;
+      });
+      const result = hook(payload);
+      return [tool, verdict(result), state().tdd?.dirty ?? false];
+    });
+    expect(got).toEqual(rows.map(([tool, , want, dirty]) => [tool, want, dirty]));
+  });
+
+  it("mentions optional roles at session start only when they are mapped", () => {
+    const rows = [
+      [[], undefined, []],
+      [
+        SPLIT,
+        "verid: roles reviewer — · tester code-modernization:test-engineer · coder general-purpose",
+        [],
+      ],
+      [
+        ["roles:", '  reviewer: ["custom:reviewer"]'],
+        "verid: roles reviewer custom:reviewer · tester — · coder —",
+        [],
+      ],
+      [
+        ["roles:", '  planner: ["custom:planner"]'],
+        "verid: roles reviewer — · tester — · coder — · planner custom:planner",
+        ["planner"],
+      ],
+      [
+        ["roles:", '  qa: ["custom:qa"]'],
+        "verid: roles reviewer — · tester — · coder — · qa custom:qa",
+        ["qa"],
+      ],
+      [
+        EXTENDED,
+        "verid: roles reviewer — · tester code-modernization:test-engineer · coder general-purpose · researcher verid:researcher · architect verid:architect · planner verid:planner · qa verid:qa",
+        ["researcher", "architect", "planner", "qa"],
+      ],
+    ] as const;
+    const got = rows.map(([roles]) => {
+      freshState();
+      writeFileSync(manifestFile, manifest() + roles.join("\n") + "\n");
+      const result = hook(fixture("session-start"));
+      return [
+        result.code,
+        result.stdout.split("\n").find((line) => line.startsWith("verid: roles ")),
+        [...new Set(result.stdout.match(/\b(?:researcher|architect|planner|qa)\b/g) ?? [])],
+      ];
+    });
+    expect(got).toEqual(rows.map(([, line, roles]) => [0, line, roles]));
+  });
+
+  it("keeps new role overrides bound to one call and still applies the TDD gate", () => {
+    const rows = [
+      ["verid:researcher", "notes.md", false, "VERID_BURNT_ROLE_DOC_ONLY", "exit 0"],
+      [
+        "verid:qa",
+        "src/a.ts",
+        false,
+        "VERID_BURNT_ROLE_QA_E2E_ONLY",
+        "VERID_BURNT_TDD_NO_FAILING_TEST",
+      ],
+      [
+        "verid:qa",
+        "test/a.test.ts",
+        true,
+        "VERID_BURNT_ROLE_QA_E2E_ONLY",
+        "VERID_BURNT_TDD_TEST_FROZEN",
+      ],
+    ] as const;
+    for (const [agent, rel, cooking, first, after] of rows) {
+      freshState();
+      prepWith(EXTENDED);
+      if (cooking) {
+        scenario(1, RED_ASSERT_RUN);
+        expect(cli("taste").code).toBe(1);
+      }
+      const input = writeAs(agent, inProject(rel));
+      expect(verdict(hook(input))).toBe(first);
+      allowOnce();
+      expect(verdict(hook(input))).toBe(after);
+      expect(verdict(hook(input))).toBe(first);
+    }
+  });
 
   it("blocks every write by the mapped reviewer, its Bash and outside the repo too", () => {
     prepWith(["roles:", '  reviewer: ["feature-dev:code-reviewer"]']);

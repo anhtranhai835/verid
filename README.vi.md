@@ -22,22 +22,43 @@ Coding agent khi vội thường bỏ qua test: viết code trước, hoặc n�
 
 - Node.js 22 trở lên, và [Claude Code](https://claude.com/claude-code).
 - Plugin superpowers, nơi có các skill mà verid chỉ agent tới.
-- Plugin verid: các agent tester, coder và reviewer mà `verid cook` ánh xạ vào các vai trò, cùng một skill cho mỗi bước. Agent nào khác cũng nhận được vai trò qua `roles`.
+- Plugin andrej-karpathy-skills, nơi có skill `karpathy-guidelines` mà verid gọi.
+- Plugin verid: các agent researcher, architect, planner, tester, coder, qa và reviewer mà `verid cook` ánh xạ vào các vai trò, cùng một skill cho mỗi bước. Agent nào khác cũng nhận được vai trò qua `roles`; researcher, architect, planner và qa là tuỳ chọn, auto vẫn chỉ cần reviewer, tester và coder.
 
 ```bash
 claude plugin marketplace add obra/superpowers-marketplace
 claude plugin install superpowers@superpowers-marketplace
+claude plugin marketplace add forrestchang/andrej-karpathy-skills
+claude plugin install andrej-karpathy-skills@karpathy-skills
 claude plugin marketplace add anhtranhai835/verid
 claude plugin install verid@verid
 ```
 
 ## Cài đặt
 
+Windows (PowerShell 5.1+):
+
+```powershell
+irm https://raw.githubusercontent.com/anhtranhai835/verid/main/install.ps1 | iex
+```
+
+macOS / Linux:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/anhtranhai835/verid/main/install.sh | sh
+```
+
+Script yêu cầu Node 22+, cài verid bằng npm và thêm cả ba plugin nếu có `claude` trên PATH. Khi có terminal và `CI` rỗng, `false` hoặc `0`, script hỏi thư mục project rồi chạy `verid cook`; trả lời rỗng thì kết thúc mà không chọn thư mục. Script từ chối thư mục home. Trường hợp khác, script in bước tiếp theo.
+
+Đặt `VERID_VERSION` để ghim bản phát hành (mặc định: `latest`): `$env:VERID_VERSION = '1.1.0'` trước lệnh PowerShell, hoặc `curl -fsSL https://raw.githubusercontent.com/anhtranhai835/verid/main/install.sh | VERID_VERSION=1.1.0 sh`. Sau đó xoá biến ghim trong PowerShell bằng `Remove-Item Env:VERID_VERSION`.
+
+Hoặc cài trực tiếp:
+
 ```bash
 npm install -g @anhtranhai835/verid
 ```
 
-Từ bản clone: `npm ci`, `npm run build`, `npm link` (hoặc `bun install --frozen-lockfile`, `bun run build`, `bun link`). Hook trỏ vào `dist/` của bản đã cài, nên hãy chạy lại `verid cook` trong mỗi project sau khi nâng cấp, chuyển bản clone sang chỗ khác, hoặc đổi giữa bản npm và bản clone.
+Từ bản clone: `npm ci`, `npm run build`, `npm link` (hoặc `bun install --frozen-lockfile`, `bun run build`, `bun link`). Hook trỏ vào `dist/` của bản đã cài, nên hãy chạy `verid upgrade --yes` trong mỗi project sau khi nâng cấp, chuyển bản clone sang chỗ khác, hoặc đổi giữa bản npm và bản clone.
 
 ## Bắt đầu nhanh
 
@@ -52,6 +73,28 @@ Rồi mở Claude Code và nói bạn muốn làm gì. Mỗi thông báo của v
 
 Commit `.verid/manifest.yaml`, `.verid/.gitignore`, `.claude/commands/verid/` và, ở prep và recipe, `.verid/research.md`, `.verid/design.md` cùng `.verid/plan.md`. Đừng commit `.claude/settings.local.json`: file này ghi verid của máy bạn. Người trong team chạy `verid cook` một lần sau khi clone.
 
+## Bố cục
+
+`monorepo` là mặc định: một cây project, đường dẫn repo tính từ gốc project. `workspace` là thư mục không có `.git` riêng, chứa các repo tách biệt:
+
+```text
+project/ (.git)              workspace/ (không có .git)
+├── api/                    ├── api/ (.git)
+├── web/                    ├── web/ (.git)
+├── .verid/                 ├── .verid/ (.git)
+└── .claude/                └── .claude/ (riêng từng máy)
+```
+
+Cook nhận diện workspace khi thư mục nằm ngoài git work tree (hoặc repo tổ tiên có gốc tại thư mục home của người dùng để lưu dotfiles ở `~`) và có ít nhất một repo con trực tiếp. `--layout monorepo|workspace` chọn rõ cho manifest mới; manifest đã có giữ nguyên layout. Cài đặt workspace, dù chọn tường minh, tự nhận diện hay đọc từ manifest, bị từ chối khi nằm trong bất kỳ repo git tổ tiên nào khác. Home lấy từ `os.homedir()` của Node (`USERPROFILE` trên Windows, không phải `HOME` của Git). Workspace không được có `.git` riêng; chỉ repo con được nhận diện. Bản xem trước nêu layout, rồi cook khởi tạo repo git trong `.verid/` mà không commit. Commit file dùng chung trong `.verid/`; các file `.claude/` ở gốc được tạo trên mỗi máy. Mở Claude Code tại gốc workspace.
+
+Cook ghi origin của mỗi repo con sau khi bỏ userinfo (kể cả mật khẩu và token); chỉ giữ user SSH thông dụng `git@` khi không có mật khẩu, ở URL SSH và remote kiểu scp. `default_branch` chỉ lấy từ `origin/HEAD` cục bộ; thiếu thì để trống trường này.
+
+Đồng đội clone repo dùng chung vào `workspace/.verid`, rồi chạy `verid cook` **từ `workspace/`**. Bản xem trước, kể cả `--dry-run`, liệt kê mỗi lần clone dạng `path <- remote (branch)` khi có nhánh. Git dùng terminal và cấu hình SSH của developer, có thể hỏi xác nhận và không bị giới hạn thời gian clone. Clone chỉ cho phép giao thức `https`, `ssh`, `git` và `file` cục bộ; từ chối thư mục mạng (UNC, `//host/...`, URL `file://` có host) và remote bắt đầu bằng `-`.
+
+Cook giữ thư mục đã có, tiếp tục sau một lần clone lỗi và thoát 1 nếu có lỗi hoặc thiếu remote. Trước khi clone, verid ghi dấu riêng cho repo trong `.verid/.state/clones/` được bảo vệ và xoá dấu sau khi clone thành công hoặc xác nhận thư mục clone lỗi đã được xoá. Clone lỗi chỉ xoá thư mục đích do chính lần gọi đó tạo; chạy lại để thử các thư mục còn thiếu, xoá dấu cũ trước khi thử. Thư mục đã có và mang dấu được chấp nhận, đồng thời xoá dấu, khi `HEAD` trỏ tới một commit, đã có checkout và index khớp `HEAD` (`git diff --cached --quiet HEAD`). Nếu không, đó là clone chưa hoàn chỉnh, kể cả sau Ctrl-C: lưu lại công việc cần giữ, hoàn tất checkout hoặc xoá thư mục đó rồi chạy lại `verid cook`. Repo mới chưa có commit vẫn hợp lệ, nên workspace prep mới cài đặt xong với mã thoát 0; repo đã có và không mang dấu thì báo đã cài đặt. `--dry-run` chỉ xem trước việc clone và khởi tạo `.verid`, không ghi gì.
+
+Glob của hook và lần chạy taste tính từ từng repo. qa ghi được đường dẫn khớp `e2e_globs` trong bất kỳ repo nào; skill build mặc định chọn `role: frontend`, hoặc repo `role: e2e` được chỉ định. Mọi repo dùng chung một vòng TDD. Auto kiểm tree sạch của từng repo đã liệt kê và repo `.verid`, đồng thời ghi nhận git riêng từng repo lúc ký; mất git sau khi ký thì repo đó vẫn tính là bẩn. Doctor cũng báo từng repo và `.verid`.
+
 ## Mode
 
 | Mode     | Bắt đầu từ                | verid thêm                                                                                                                                                                                                      |
@@ -59,6 +102,10 @@ Commit `.verid/manifest.yaml`, `.verid/.gitignore`, `.claude/commands/verid/` v�
 | `prep`   | một ý tưởng, chưa có code | nghiên cứu trong `.verid/research.md`, thiết kế trong `.verid/design.md`, rồi các module trong `.verid/plan.md`, mỗi module được duyệt, review rồi đóng, và cuối cùng là module `product` gồm các AC end-to-end |
 | `recipe` | một bản đặc tả            | các bước như trên, với các module lấy từ đặc tả                                                                                                                                                                 |
 | `remix`  | code và test có sẵn       | baseline của các test đã đỏ từ trước verid                                                                                                                                                                      |
+
+Ở prep và recipe, trường `iterations` tuỳ chọn trong manifest nhóm plan theo các khoảng ngày. Mỗi module có thể thêm một dòng `Iteration: 1` làm dòng không rỗng đầu tiên sau tiêu đề, kể cả `product`; bật iterations vẫn không bắt buộc dòng này và số phải là số nguyên dương. Mọi dòng phía sau là văn bản thường. Khi tắt iterations, không dòng `Iteration:` nào được phân tích, nên plan cũ và drive đang chạy giữ nguyên hành vi. Planner xếp module cho vừa thời lượng đã đặt và hỏi developer khi công việc không vừa.
+
+`verid menu` và thông báo đầu phiên hiện iteration hiện tại cùng ngày bắt đầu và kết thúc, số ngày tới lần cuối của thứ demo trong iteration này, số module đã đóng/tổng của iteration này và module thuộc iteration trước chưa đóng, đánh dấu trễ. Đúng ngày demo hiện `hôm nay`, sau đó hiện `demo đã qua`; khoảng không chứa thứ đã chọn dùng ngày kết thúc. Các khoảng bắt đầu từ `start_date`, kéo dài theo số ngày lịch đã đặt và tính cả ngày kết thúc; trước ngày bắt đầu vẫn hiện iteration 1 cùng demo của nó. Hôm nay lấy theo ngày địa phương của máy.
 
 ## Drive: human hay auto
 
@@ -74,8 +121,8 @@ Drive auto:
 1. **Hỏi.** Agent hỏi các câu research và design rồi ghi `.verid/research.md` và `.verid/design.md`. Khi chưa ký, code production bị khoá và drive không giữ agent (các lần giữ thông thường vì test đỏ, stub hay thay đổi chưa chạy vẫn áp dụng).
 2. **Ký.** Developer đọc cả hai và chạy `verid order` (không kèm module) trong terminal của mình; verid ghi sha256 của chúng. Trừ khi drive bị kẹt, đó là lệnh duy nhất developer phải gõ.
 3. **Plan.** Agent viết `.verid/plan.md`, kết thúc bằng `product`, và reviewer review nó so với design. Bản review kết thúc bằng `Verdict: pass` hoặc `Verdict: fail`; thiếu dòng này tính là fail. Code production vẫn bị khoá cho tới khi plan pass.
-4. **Làm.** verid mở module đầu tiên chưa đóng, theo thứ tự trong plan. Tester và coder làm từng AC theo kiểu test trước, agent commit, reviewer review module.
-5. **Đóng.** verid đóng module khi mọi AC có test pass, lần chạy cuối pass và không có thay đổi nào sau nó, review sau lần sửa cuối kết luận pass, và git tree sạch tính từ thư mục project trở xuống (file chưa track cũng tính, `.claude/settings.local.json` thì không). Module kế tiếp mở; drive xong khi `product` đóng sau cùng, và một module đóng sau `product` sẽ mở lại `product`.
+4. **Làm.** verid mở module đầu tiên chưa đóng, theo thứ tự trong plan. Tester (qa cho AC `(e2e)` khi có ánh xạ) và coder làm từng AC theo kiểu test trước, agent commit module trên `feat/<module>`, reviewer review nó. Nhánh là chỉ dẫn của skill; bước kiểm tree sạch của hook không đổi.
+5. **Đóng.** verid đóng module khi mọi AC có test pass, lần chạy cuối pass và không có thay đổi nào sau nó, review sau lần sửa cuối kết luận pass, và git sạch: cây con của project cùng các repo đã liệt kê ở monorepo, mọi repo đã liệt kê cùng `.verid` ở workspace (file chưa track cũng tính, `.claude/settings.local.json` thì không). Module kế tiếp mở; drive xong khi `product` đóng sau cùng, và một module đóng sau `product` sẽ mở lại `product`.
 
 Stop giữ agent mọi lần, nói bước kế tiếp, cho tới khi drive xong hoặc kẹt. `verid menu` và thông báo đầu phiên cho thấy drive (đã ký chưa, plan đã duyệt chưa, các module, bộ đếm n/3, bước kế tiếp hoặc vì sao kẹt); `verid peek` cho thấy vòng TDD và bước kế tiếp.
 
@@ -91,21 +138,61 @@ Stop giữ agent mọi lần, nói bước kế tiếp, cho tới khi drive xong
 
 ## Các lệnh
 
-| Lệnh                         | Ai chạy                      | Làm gì                                                                                                                                       |
-| :--------------------------- | :--------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------- |
-| `verid cook`                 | developer                    | cài verid cho project và máy này; đề xuất mặc định mới cho manifest cũ                                                                       |
-| `verid taste`                | agent                        | chạy test; chỉ những lần chạy này mới là bằng chứng                                                                                          |
-| `verid peek`                 | ai cũng được                 | vòng TDD, bước tiếp theo, và vì sao lần chạy gần nhất không được tính                                                                        |
-| `verid menu`                 | ai cũng được                 | nghiên cứu, các module và độ phủ AC, câu hỏi còn mở, bước tiếp theo                                                                          |
-| `verid stock`                | developer                    | remix: ghi các test đang đỏ làm baseline                                                                                                     |
-| `verid order [module]`       | developer                    | prep, recipe: duyệt một module của `.verid/plan.md`, ký cả `.verid/design.md`; auto: ký research và design, và chạy tiếp sau khi dừng        |
-| `verid serve <module>`       | developer                    | prep, recipe, chỉ drive human: đóng module đang mở khi mọi AC đã pass và reviewer đã review nó sau lần sửa cuối; in đường dẫn của bản review |
-| `verid garnish`              | developer                    | mở code production cho cuộc hội thoại chỉ để refactor                                                                                        |
-| `/verid:tip <lý do>`         | developer, trong Claude Code | xin cho hành động vừa bị chặn đi qua, kèm một mã dùng một lần                                                                                |
-| `/verid:confirm <mã>`        | developer, trong Claude Code | cho đúng hành động đó qua một lần                                                                                                            |
-| `/verid:peek`, `/verid:menu` | developer, trong Claude Code | những gì `verid peek` và `verid menu` hiện, chỉ cho bạn xem                                                                                  |
+| Lệnh                                | Ai chạy                      | Làm gì                                                                                                                                       |
+| :---------------------------------- | :--------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------- |
+| `verid cook [--dry-run] [--yes]`    | developer                    | xem trước cài đặt cho project và máy này; đề nghị thêm mặc định mới vào manifest cũ                                                          |
+| `verid upgrade [--dry-run] [--yes]` | developer                    | thêm mặc định manifest còn thiếu, tạo lại lệnh của verid và cập nhật đường dẫn hook của máy này                                              |
+| `verid doctor`                      | mọi người                    | kiểm tra Node, repo, thay đổi chưa commit, `default_branch` nếu đặt, runner, hook và plugin; chỉ đọc, thoát 1 khi có vấn đề                  |
+| `verid taste`                       | agent                        | chạy test; chỉ những lần chạy này mới là bằng chứng                                                                                          |
+| `verid peek`                        | ai cũng được                 | vòng TDD, bước tiếp theo, và vì sao lần chạy gần nhất không được tính                                                                        |
+| `verid menu`                        | ai cũng được                 | nghiên cứu, các module và độ phủ AC, câu hỏi còn mở, bước tiếp theo                                                                          |
+| `verid stock`                       | developer                    | remix: ghi các test đang đỏ làm baseline                                                                                                     |
+| `verid order [module]`              | developer                    | prep, recipe: duyệt một module của `.verid/plan.md`, ký cả `.verid/design.md`; auto: ký research và design, và chạy tiếp sau khi dừng        |
+| `verid serve <module>`              | developer                    | prep, recipe, chỉ drive human: đóng module đang mở khi mọi AC đã pass và reviewer đã review nó sau lần sửa cuối; in đường dẫn của bản review |
+| `verid garnish`                     | developer                    | mở code production cho cuộc hội thoại chỉ để refactor                                                                                        |
+| `/verid:tip <lý do>`                | developer, trong Claude Code | xin cho hành động vừa bị chặn đi qua, kèm một mã dùng một lần                                                                                |
+| `/verid:confirm <mã>`               | developer, trong Claude Code | cho đúng hành động đó qua một lần                                                                                                            |
+| `/verid:peek`, `/verid:menu`        | developer, trong Claude Code | những gì `verid peek` và `verid menu` hiện, chỉ cho bạn xem                                                                                  |
 
-`verid cook` nhận `--mode prep|recipe|remix`, `--drive human|auto`, `--lang vi|en`, `--test-cmd` (lệnh test của riêng bạn) và glob `--src`/`--tests` (lặp lại được), và tự hỏi khi chạy trong terminal mà không có cờ nào. Khi manifest đã có, `--mode`, `--drive`, `--test-cmd`, `--src` và `--tests` bị bỏ qua kèm một ghi chú: hãy sửa `.verid/manifest.yaml` bằng tay. Các lệnh của developer từ chối chạy bên trong Claude Code, và hook chặn chúng khỏi Bash của agent.
+`verid cook` nhận `--mode prep|recipe|remix`, `--drive human|auto`, `--layout monorepo|workspace`, `--lang vi|en`, `--test-cmd` (lệnh test của riêng bạn) và glob `--src`/`--tests` (lặp lại được), và tự hỏi khi chạy trong terminal mà không có cờ nào. Ở prep hay recipe, thêm `--iterations --duration "2 weeks" --start-date 2026-10-12 --demo-day Friday`, cung cấp đủ ba giá trị; luồng tương tác hỏi sau drive. Khi manifest đã có, `--mode`, `--drive`, `--layout`, `--iterations`, `--duration`, `--start-date`, `--demo-day`, `--test-cmd`, `--src` và `--tests` bị bỏ qua kèm một ghi chú: hãy sửa `.verid/manifest.yaml` bằng tay. Các lệnh của developer từ chối chạy bên trong Claude Code, và hook chặn chúng khỏi Bash của agent.
+
+Cook và upgrade hiện cây file trước khi ghi: `+` tạo, `~` sửa, `=` giữ, `!` ghi chú. Trong terminal, xác nhận bằng `Áp dụng? (Y/n)`; nếu file đổi trong lúc chờ, verid hiện plan mới rồi hỏi lại. `--dry-run` không ghi gì; `--yes` bỏ qua câu hỏi, áp dụng plan mới nhất và nhận mặc định, gồm mode gợi ý cho project mới (prep, hoặc remix nếu có src/, lib/ hay app/). `--dry-run` của project mới cũng dùng gợi ý đó nếu chưa đặt `--mode`. Không có terminal, cook vẫn chạy với mode chỉ rõ hoặc manifest đã có; upgrade cần `--yes` để ghi. Upgrade thay các chỉnh sửa riêng trong bốn lệnh verid được tạo sẵn; cook giữ chúng.
+
+## Plugin
+
+Plugin quy trình nối các công cụ với verid bằng script Node. Chúng tách biệt với plugin Claude Code cung cấp skill và agent. Mọi nguồn đều không chính thức và chạy với quyền người dùng của bạn; hãy xem nguồn trước khi đồng ý. Mọi lệnh `verid plugin` dành cho developer và từ chối chạy trong Claude Code.
+
+```sh
+verid plugin add ./my-plugin --yes       # hoặc file:../my-plugin
+verid plugin add git:https://example.com/team/plugin.git#v1 --yes
+verid plugin add npm:@team/verid-board@1.0.0 --yes
+verid plugin list                       # plugin doctor kiểm script và công cụ cần có
+verid plugin run taste                  # JSON mẫu, có sample: true
+verid plugin remove board               # giữ dữ liệu
+```
+
+Add hiện tên, phiên bản, sự kiện, lệnh cần có và nguồn rồi hỏi có cài không; `--yes` đồng ý. Không có terminal thì cần `--yes`. Không có registry, lệnh setup hay tự cài công cụ. Commit `.verid/plugins.json` (mảng các `{ "name", "source", "resolved" }`) và `.verid/plugin-data/<name>/`. Code tải về và bản tạm nằm trong `.verid/plugins/`, được `.verid/.gitignore` bỏ qua. Cook và upgrade khôi phục code còn thiếu hoặc đã đổi với cùng bước xác nhận; `--dry-run` chỉ xem trước. Git khôi phục đúng commit đã ghi, npm đúng phiên bản đã ghi. Git dùng giới hạn clone của workspace và terminal kế thừa; thông tin người dùng trong remote bị bỏ trước khi tải hay lưu.
+
+Khi developer add, remove hoặc xác nhận khôi phục, verid ghi bản duyệt SHA-256 vào `.verid/.state/plugin-integrity.json`: byte chính xác của `plugins.json` và đường dẫn tương đối cùng nội dung mọi file plugin, sắp theo đường dẫn. Chỉ thư mục riêng của plugin được băm; các dependency được phân giải từ bên ngoài thư mục đó không được băm. Agent không đọc hay ghi được state đó qua file tool hoặc đường dẫn MCP nhận diện được. Trước mỗi script, kể cả `plugin run` và sự kiện từ hook, verid so sánh các file với bản duyệt. Thiếu bản ghi hoặc không khớp thì bỏ qua thực thi, ghi cảnh báo vào audit và yêu cầu developer xem nguồn rồi duyệt lại bằng `verid plugin add` (gỡ bản đã cài trước), hoặc khôi phục bằng `verid cook` / `verid upgrade`. `verid plugin doctor` báo các sai lệch. Thêm hoặc gỡ plugin khác giữ bản duyệt hiện có, không tự duyệt code đã đổi.
+
+Thư mục plugin chứa `verid-plugin.json` và các script:
+
+```json
+{ "name": "board", "version": "1.0.0", "events": { "taste": "taste.mjs" }, "requires": ["node"] }
+```
+
+Manifest chỉ nhận các trường này: tên kebab-case dùng được trên các hệ điều hành, phiên bản, sự kiện đã biết với đường dẫn script tương đối, và tên lệnh trên PATH nếu cần. Đường dẫn không được tuyệt đối, chứa `..` hay đi qua link. Script chạy bằng Node trong thư mục plugin đã tải, nhận JSON qua stdin và thư mục tuyệt đối `VERID_PLUGIN_DATA`. Ví dụ `taste.mjs`:
+
+```js
+import fs from "node:fs";
+let raw = "";
+for await (const chunk of process.stdin) raw += chunk;
+fs.appendFileSync(`${process.env.VERID_PLUGIN_DATA}/events.jsonl`, raw + "\n");
+```
+
+Các sự kiện: `module-opened` và `module-served` (`module`), `taste` (`passed`, `counts: { passed, failed, skipped }` cho lần chạy hợp lệ), `drive-stuck` (`reason`) và `drive-done`. Payload luôn có `event`; `plugin run` gửi mẫu. Chuyển trạng thái auto được quan sát sau khi Stop hay SubagentStop lưu quyết định. Output của script bị bỏ qua; fail, crash và timeout được ghi audit và cảnh báo, giữ nguyên quyết định của verid. Mỗi sự kiện CLI dùng chung năm giây; mọi sự kiện và plugin trong một hook dùng chung một giây.
+
+File tool và MCP writer nhận diện được không được sửa nguồn, code tải về **hay dữ liệu** plugin, kể cả với `/verid tip`. Bash nhắc các đường dẫn plugin đó hoặc gọi `verid plugin`, kể cả điểm vào npm có phiên bản và dấu phân cách `--` tuỳ chọn, được bảo vệ không override được như vậy. Dữ liệu có thể chọn lệnh hay cấu hình công cụ, nên cũng được bảo vệ khỏi các lần ghi đó. Developer và script plugin được cập nhật dữ liệu; dữ liệu nằm ngoài bản duyệt nội dung.
 
 ## Cách hoạt động
 
@@ -119,17 +206,23 @@ Stop giữ agent mọi lần, nói bước kế tiếp, cho tới khi drive xong
 
 Claude Code đặt một `agent_type` vào mỗi lần gọi tool từ subagent; `roles` ánh xạ các agent type đó sang vai trò. Có cả tester lẫn coder thì việc được tách:
 
-| Ai ghi                                 | Code production   | Test               | File khác (docs, config, `.verid/*.md`) |
-| :------------------------------------- | :---------------- | :----------------- | :-------------------------------------- |
-| reviewer                               | `ROLE_READ_ONLY`  | `ROLE_READ_ONLY`   | `ROLE_READ_ONLY`                        |
-| khi tách: coder                        | theo cổng TDD     | `ROLE_TESTER_ONLY` | được                                    |
-| khi tách: tester                       | `ROLE_CODER_ONLY` | theo cổng TDD      | được                                    |
-| khi tách: luồng chính, agent khác      | `ROLE_CODER_ONLY` | `ROLE_TESTER_ONLY` | được                                    |
-| khi không tách: mọi người trừ reviewer | theo cổng TDD     | theo cổng TDD      | được                                    |
+| Ai ghi                                                 | Code production    | Test                                            | File khác (docs, config, `.verid/*.md`) |
+| :----------------------------------------------------- | :----------------- | :---------------------------------------------- | :-------------------------------------- |
+| reviewer                                               | `ROLE_READ_ONLY`   | `ROLE_READ_ONLY`                                | `ROLE_READ_ONLY`                        |
+| researcher                                             | `ROLE_DOC_ONLY`    | `ROLE_DOC_ONLY`                                 | chỉ `.verid/research.md`                |
+| architect                                              | `ROLE_DOC_ONLY`    | `ROLE_DOC_ONLY`                                 | chỉ `.verid/design.md`                  |
+| planner                                                | `ROLE_DOC_ONLY`    | `ROLE_DOC_ONLY`                                 | chỉ `.verid/plan.md`                    |
+| qa                                                     | `ROLE_QA_E2E_ONLY` | e2e theo cổng TDD; test khác `ROLE_QA_E2E_ONLY` | `ROLE_QA_E2E_ONLY`                      |
+| khi tách: coder                                        | theo cổng TDD      | `ROLE_TESTER_ONLY`                              | được                                    |
+| khi tách: tester                                       | `ROLE_CODER_ONLY`  | theo cổng TDD                                   | được                                    |
+| khi tách: luồng chính, agent khác                      | `ROLE_CODER_ONLY`  | `ROLE_TESTER_ONLY`                              | được                                    |
+| khi không tách: luồng chính, tester, coder, agent khác | theo cổng TDD      | theo cổng TDD                                   | được                                    |
 
 - Lần gọi không có `agent_id` là của luồng chính, kể cả khi chạy `claude --agent X`. Luật vai trò xét trước cổng TDD: vai trò nói ai, vòng TDD nói lúc nào.
 - Khi reviewer dừng lúc có module đang mở, verid ghi báo cáo cuối của nó vào `.verid/.state/reviews/`; một lần ghi code hay test sau đó, hoặc một lần `verid order` mới, làm bản review đó mất hiệu lực.
-- Subagent đã ghi code hay test bị giữ lại một lần nếu dừng khi còn test fail, stub đang mở hoặc thay đổi chưa chạy; tester không bị giữ vì test fail hay stub.
+- Subagent đã ghi code hay test bị giữ lại một lần nếu dừng khi còn test fail, stub đang mở hoặc thay đổi chưa chạy; tester khi tách và qa không bị giữ vì test fail hay stub.
+- qa và tester đều ghi được test end-to-end khi tách. Với mọi người ghi, chỉ đường dẫn khớp `e2e_globs` được tính là test end-to-end ở cổng ghi, kể cả test Playwright; cổng TDD vẫn xét các file này.
+- `verid:design` gọi researcher rồi architect đã ánh xạ, `verid:plan` gọi planner đã ánh xạ. Luồng chính trình bản đề xuất, chuyển câu hỏi từng câu cho developer, rồi mới nhờ agent ghi. Bước chưa ánh xạ vẫn làm ở luồng chính. `verid:build` gợi ý `feat/<module>` cho mỗi module.
 
 ### Vòng TDD
 
@@ -146,26 +239,29 @@ Claude Code đặt một `agent_type` vào mỗi lần gọi tool từ subagent;
 
 ## Hook chặn gì
 
-| Rule                               | Override được | Phạm vi                                                                                                           |
-| :--------------------------------- | :------------ | :---------------------------------------------------------------------------------------------------------------- |
-| `VERID_BURNT_STATE_PROTECTED`      | không         | đọc hoặc ghi `.verid/.state/`                                                                                     |
-| `VERID_BURNT_SECRET_PROTECTED`     | không         | file bí mật: `.env*` (trừ file mẫu), key, chứng chỉ, `.ssh/`, `.npmrc`…                                           |
-| `VERID_BURNT_TRANSCRIPT_PROTECTED` | không         | transcript của Claude Code trong `~/.claude/projects/`                                                            |
-| `VERID_BURNT_HOOK_PROTECTED`       | không         | ghi `.claude/settings*.json`, `.claude/agents/`, `.claude/plugins/`, `.claude/commands/verid/`, `dist/` của verid |
-| `VERID_BURNT_MANIFEST_PROTECTED`   | có            | ghi `.verid/manifest.yaml`                                                                                        |
-| `VERID_BURNT_BASH_NESTED_CLAUDE`   | có            | Bash mở một phiên `claude` lồng                                                                                   |
-| `VERID_BURNT_BASH_DEVELOPER_ONLY`  | có            | Bash nhắc tới `CLAUDECODE` hay hook của verid, hoặc chạy lệnh của developer                                       |
-| `VERID_BURNT_SHELL_UNSUPPORTED`    | có            | PowerShell, hay tool khác bất kỳ có input `command`                                                               |
-| `VERID_BURNT_ROLE_READ_ONLY`       | có            | mọi lần ghi của reviewer đã ánh xạ                                                                                |
-| `VERID_BURNT_ROLE_TESTER_ONLY`     | có            | khi tách: test do người khác ngoài tester ghi                                                                     |
-| `VERID_BURNT_ROLE_CODER_ONLY`      | có            | khi tách: code production do người khác ngoài coder ghi                                                           |
-| `VERID_BURNT_PLAN_NO_RESEARCH`     | có            | ghi `.verid/plan.md` khi chưa có `.verid/research.md`                                                             |
-| `VERID_BURNT_PLAN_NO_DESIGN`       | có            | ghi `.verid/plan.md` khi chưa có `.verid/design.md`                                                               |
-| `VERID_BURNT_PLAN_NOT_APPROVED`    | có            | code production khi không có module nào đang mở (prep, recipe)                                                    |
-| `VERID_BURNT_AUTO_NO_MODULE`       | có            | auto: code production khi không có module nào đang mở                                                             |
-| `VERID_BURNT_AUTO_STUCK`           | có            | auto: code production và test khi drive đang kẹt                                                                  |
-| `VERID_BURNT_TDD_NO_FAILING_TEST`  | có            | code production khi vòng đang ở RAW                                                                               |
-| `VERID_BURNT_TDD_TEST_FROZEN`      | có            | test khi vòng đang ở COOKING                                                                                      |
+| Rule                               | Override được | Phạm vi                                                                                                                                                   |
+| :--------------------------------- | :------------ | :-------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `VERID_BURNT_STATE_PROTECTED`      | không         | đọc hoặc ghi `.verid/.state/`                                                                                                                             |
+| `VERID_BURNT_SECRET_PROTECTED`     | không         | file bí mật: `.env*` (trừ file mẫu), key, chứng chỉ, `.ssh/`, `.npmrc`…                                                                                   |
+| `VERID_BURNT_TRANSCRIPT_PROTECTED` | không         | transcript của Claude Code trong `~/.claude/projects/`                                                                                                    |
+| `VERID_BURNT_HOOK_PROTECTED`       | không         | ghi `.claude/settings*.json`, `.claude/agents/`, `.claude/plugins/`, `.claude/commands/verid/`, `dist/` của verid                                         |
+| `VERID_BURNT_PLUGIN_PROTECTED`     | không         | file tool/MCP ghi `.verid/plugins.json`, `.verid/plugins/`, `.verid/plugin-data/` hay chính `.verid/`; Bash nhắc đường dẫn plugin hoặc gọi `verid plugin` |
+| `VERID_BURNT_MANIFEST_PROTECTED`   | có            | ghi `.verid/manifest.yaml`                                                                                                                                |
+| `VERID_BURNT_BASH_NESTED_CLAUDE`   | có            | Bash mở một phiên `claude` lồng                                                                                                                           |
+| `VERID_BURNT_BASH_DEVELOPER_ONLY`  | có            | Bash nhắc tới `CLAUDECODE` hay hook của verid, hoặc chạy lệnh của developer                                                                               |
+| `VERID_BURNT_SHELL_UNSUPPORTED`    | có            | PowerShell, hay tool khác bất kỳ có input `command`                                                                                                       |
+| `VERID_BURNT_ROLE_READ_ONLY`       | có            | mọi lần ghi của reviewer đã ánh xạ                                                                                                                        |
+| `VERID_BURNT_ROLE_TESTER_ONLY`     | có            | khi tách: test do người khác ngoài tester ghi, trừ qa ghi test end-to-end                                                                                 |
+| `VERID_BURNT_ROLE_CODER_ONLY`      | có            | khi tách: code production do người khác ngoài coder ghi                                                                                                   |
+| `VERID_BURNT_ROLE_DOC_ONLY`        | có            | researcher, architect hay planner ghi ngoài tài liệu của mình; thông báo nêu file được phép                                                               |
+| `VERID_BURNT_ROLE_QA_E2E_ONLY`     | có            | qa ghi code production, unit test hay file ngoài test end-to-end                                                                                          |
+| `VERID_BURNT_PLAN_NO_RESEARCH`     | có            | ghi `.verid/plan.md` khi chưa có `.verid/research.md`                                                                                                     |
+| `VERID_BURNT_PLAN_NO_DESIGN`       | có            | ghi `.verid/plan.md` khi chưa có `.verid/design.md`                                                                                                       |
+| `VERID_BURNT_PLAN_NOT_APPROVED`    | có            | code production khi không có module nào đang mở (prep, recipe)                                                                                            |
+| `VERID_BURNT_AUTO_NO_MODULE`       | có            | auto: code production khi không có module nào đang mở                                                                                                     |
+| `VERID_BURNT_AUTO_STUCK`           | có            | auto: code production và test khi drive đang kẹt                                                                                                          |
+| `VERID_BURNT_TDD_NO_FAILING_TEST`  | có            | code production khi vòng đang ở RAW                                                                                                                       |
+| `VERID_BURNT_TDD_TEST_FROZEN`      | có            | test khi vòng đang ở COOKING                                                                                                                              |
 
 Các rule áp dụng cho tool file, Bash (đích ghi rõ ràng của nó được xét như một lần Write) và tool MCP. Mọi lỗi bất ngờ đều chặn lần gọi đó.
 
@@ -178,9 +274,18 @@ roles: # tuỳ chọn: agent type, đúng như Claude Code báo, cho từng vai 
   reviewer: ["verid:reviewer"]
   tester: ["verid:tester"] # có cả tester lẫn coder thì việc được tách
   coder: ["verid:coder"]
+  researcher: ["verid:researcher"] # tuỳ chọn: chỉ .verid/research.md
+  architect: ["verid:architect"] # tuỳ chọn: chỉ .verid/design.md
+  planner: ["verid:planner"] # tuỳ chọn: chỉ .verid/plan.md
+  qa: ["verid:qa"] # tuỳ chọn: chỉ test end-to-end
 drive: human # human | auto
+layout: monorepo # monorepo | workspace; thiếu thì mặc định monorepo
+# iterations: { duration: "2 weeks", start_date: "2026-10-12", demo_day: Friday } # chỉ prep, recipe
 repos:
   - path: .
+    # remote: https://example.com/team/api.git  # tuỳ chọn: clone repo còn thiếu
+    # default_branch: main  # tuỳ chọn: verid doctor kiểm tra nhánh này
+    # role: backend  # tuỳ chọn: frontend | backend | e2e | other
     # test_cmd: make test JUNIT={junit}   # tuỳ chọn: không có thì verid tự tìm runner
     source_globs: ["**"] # code production
     test_globs: ["**/test/**", "**/*.test.*", …] # test và cấu hình runner
@@ -190,7 +295,9 @@ repos:
 ```
 
 - Chỉ developer sửa manifest; `verid cook` ghi các mặc định, trong đó mọi file đều là code, trừ test, tài liệu, dữ liệu, cấu hình, file build và thư mục của tool.
-- Mỗi tên trong `roles` chỉ thuộc một vai trò, và đã có tester thì phải có coder. Không có `roles` thì không ai bị giữ theo vai trò, và `verid serve` từ chối vì thiếu reviewer. `drive: auto` mà không ở prep hay recipe hoặc thiếu một trong ba vai trò thì manifest bị từ chối.
+- `iterations` là tuỳ chọn ở prep và recipe: `duration` là số nguyên dương theo sau bởi `day`, `days`, `week` hay `weeks`, `start_date` là ngày thật dạng `YYYY-MM-DD`, và `demo_day` là `Monday` đến `Sunday` (phân biệt hoa thường).
+- Đường dẫn repo tính từ project, riêng biệt và không lồng nhau; `./x`, `x/` và dấu phân cách lặp được chuẩn hoá. Đường dẫn workspace chỉ thư mục con. Đường dẫn tuyệt đối, đi lên thư mục cha, tên alias Windows và gốc repo workspace qua link bị từ chối; thư mục project và repo monorepo có thể là link. Mỗi repo có glob, lệnh và timeout riêng; tên test và runner đã ghi nhớ ở workspace kèm đường dẫn repo để phân biệt tên trùng giữa các repo. `remote`, `default_branch` và `role` là tuỳ chọn.
+- Mỗi tên trong `roles` chỉ thuộc một vai trò, và đã có tester thì phải có coder. Không có `roles` thì không ai bị giữ theo vai trò, và `verid serve` từ chối vì thiếu reviewer. `drive: auto` cần prep hay recipe cùng reviewer, tester, coder; researcher, architect, planner và qa là tuỳ chọn. Cook đề xuất mặc định tuỳ chọn còn thiếu cho ánh xạ cũ và giữ tên đã có.
 - Đường dẫn khớp `test_globs` hay `e2e_globs` là test; nếu không, khớp `ignore_globs` thì tự do; nếu không nữa, khớp `source_globs` là code. Glob hỗ trợ `**`, `*`, `?`; một thư mục được viết là `src/**`.
 - Một AC viết `- AC-3 (e2e): …` cần một test end-to-end pass: test bất kỳ do Playwright báo, hoặc test của runner khác mà file khớp `e2e_globs`.
 
@@ -214,17 +321,28 @@ Không có `test_cmd` thì verid tìm runner từ các file build ở gốc repo
 
 Hook không phải sandbox của hệ điều hành: verid bịt các lối tắt hay gặp, không bịt được mọi đường mà một agent cố tình tìm.
 
+**Plugin quy trình**
+
+- Code plugin có toàn quyền của bạn: nó có thể sửa trực tiếp file, state hay hook, và nạp code project hoặc công cụ ngoài thư mục được bảo vệ. Hãy xem nguồn và dependency; verid không sandbox chúng.
+- Bash vẫn có thể sửa file plugin trên đĩa qua các kẽ hở bên dưới; verid từ chối chạy code hay bản đăng ký plugin đã đổi cho tới khi developer duyệt lại bằng `verid plugin add` hoặc xác nhận khôi phục qua cook/upgrade. Script, đường dẫn ghép lúc chạy, tool ghi không nhận diện được và tiến trình bên ngoài vẫn tới được file cùng dữ liệu plugin. Bash nhắc `.verid/plugins`, `plugins.json` hoặc `plugin-data` bị từ chối thận trọng, kể cả đọc và tên không liên quan chứa các chuỗi con đó; hãy dùng Read hay Glob. Không override được các lần từ chối này. Lệnh workspace như `git -C .verid commit` và đường dẫn `plugins/` thông thường của ứng dụng được phép.
+- Hard link có sẵn có thể đưa file được bảo vệ ra một tên khác; tiến trình khác cũng có thể thay đường dẫn đã kiểm trước khi sao chép hay thực thi. Hook không ngăn được race của hệ thống file.
+- Khôi phục đối chiếu phiên bản tự khai của nguồn local rồi ghi bản duyệt nội dung mới; nguồn đó có thể đổi giữa các lần cài. Commit git hay phiên bản npm không chứng minh nguồn đáng tin, và dependency npm không được khoá qua các lần cài lại. Khi tải, verid dùng `npm install --ignore-scripts --no-bin-links`; npm cũng bỏ qua `prepare` của dependency git, nên package cần sinh file có thể không hoạt động.
+- Sự kiện là quan sát, không phải hàng đợi: crash giữa lưu quyết định và gửi có thể làm mất sự kiện, và sự kiện fail hay timeout không được thử lại. Chuyển trạng thái auto được thấy ở Stop/SubagentStop; các module đã đóng trước đó có thể được báo trong lần quan sát đầu. Plugin phía sau có thể hết ngân sách thời gian trước khi chạy. Timeout dừng cả cây tiến trình; tiến trình con thoát khỏi cây hoặc không thể bị dừng do quyền của hệ điều hành vẫn có thể còn chạy.
+- Dữ liệu plugin có thể chứa thông tin agent đọc được nếu rule file bí mật hiện có không khớp. Plugin nên giữ thông tin xác thực ngoài dữ liệu commit. Audit không ghi được lỗi khi chính nơi lưu nó không dùng được; cảnh báo cũng nói điều đó.
+
 **Bash và các tool khác**
 
 - Bash được so như chuỗi: biến, `$(...)`, `$'...'`, glob, script, `cd` rồi ghi theo đường dẫn tương đối, `git checkout`/`restore`/`apply`, `prettier --write` và đường dẫn ghép lúc chạy đều lọt. verid cố ý không làm allowlist cho Bash.
-- Cũng cách so đó chặn nhầm vài lệnh vô hại (`jq '.key'`, commit message có chữ `secret`); `/verid tip` cho chúng qua.
+- Cũng cách so đó chặn nhầm vài lệnh vô hại (`jq '.key'`, commit message có chữ `secret`, `other-verid upgrade`, `npx @vue/cli upgrade`, `npx expo-cli upgrade`); `/verid tip` cho qua các rule override được. Lệnh developer nhận diện được sẽ được so theo ranh giới từ, kể cả `verid@<version>`, tên npm có scope, tiền tố Windows `@`, `,`, `=` và entry point `cli` / `cli.js` đứng riêng sau `cd` hay khi xoá môi trường. Dấu `--` tuỳ chọn trước lệnh con cũng được so, kể cả `npm exec verid -- plugin`, `npm x -y verid -- cook`, `npx verid -- plugin` và `pnpm exec verid -- plugin`. Tên lệnh ghép lúc chạy và script bọc vẫn có kẽ hở nêu bên dưới; lệnh plugin không override được.
 - Shell khác chỉ được nhận ra qua tên `PowerShell` hoặc khoá `command` ở cấp ngoài cùng: lệnh trong mảng, lồng sâu hơn, hay dưới `cmd`/`script` thì lọt; tool có `command` không liên quan thì bị chặn nhầm.
 - Tool MCP được xét theo các khoá dạng đường dẫn và theo tên nói rằng nó ghi: khoá khác và tool ghi mà không nói ra thì lọt; đường dẫn ở nơi khác có thể bị chặn nhầm.
 - Grep và Glob quét cả thư mục có thể đọc được file bí mật bên trong; chỉ chính file bí mật bị chặn.
-- Symlink và junction chỉ được resolve cho phần đường dẫn đã tồn tại, nên tên ngắn 8.3 của Windows cho file mới có thể lọt.
+- Hậu tố stream NTFS trên Windows được bỏ ở mọi thành phần đường dẫn trước khi xét chính sách, kể cả đích mới. Symlink và junction chỉ được resolve cho phần đường dẫn đã tồn tại, nên tên ngắn 8.3 của Windows cho file mới vẫn có thể lọt.
 
 **Bằng chứng và vòng TDD**
 
+- Workspace dùng chung một vòng: test fail trong repo này có thể mở code production ở repo khác. verid không kiểm phụ thuộc giữa repo, tính tương thích API hay module phải sửa repo nào.
+- Đường dẫn ngoài mọi repo đã liệt kê giữ luật hiện tại: chính sách và giới hạn người ghi vẫn áp dụng, glob TDD thì không. File ở gốc workspace và repo không liệt kê nằm ngoài bước kiểm git của auto; `.verid` được tính.
 - Code test chạy với toàn quyền trong `verid taste` và có thể ghi đè báo cáo; sha256 trong audit chỉ giúp phát hiện về sau, và hash chain phát hiện được log bị sửa nhưng không ngăn được.
 - Test chỉ bị đóng băng ở COOKING: ở RAW và PLATED, nới một test trong khi thêm một test khác fail vẫn lọt.
 - verid không biết code có vượt quá những gì test đòi hỏi không; PLATED vẫn cho thêm hành vi mới trong cùng một cuộc hội thoại.
@@ -243,6 +361,7 @@ Hook không phải sandbox của hệ điều hành: verid bịt các lối tắ
 
 **Plan và module**
 
+- Ngày và việc gán iteration không đổi thứ tự module. Khi bật iterations, metadata sai ở dòng không rỗng đầu tiên dưới tiêu đề module làm module đó không duyệt được và giữ toàn bộ drive auto như mọi lỗi plan; sửa dòng này làm bản duyệt mất hiệu lực như mọi chỉnh sửa khác. Hook không ép lịch, việc gán iteration hay công việc có vừa thời lượng hay không.
 - Một AC được tính là đã phủ khi mã của nó nằm trong id của một test pass, gồm cả đường dẫn file: test `AC-1` không assert gì vẫn được tính, và mọi test trong `AC-1-login.test.ts` cũng vậy.
 - Mã AC phải khớp chính xác: `AC-01` không phải `AC-1`.
 - Bản duyệt bao các byte, không bao ý nghĩa: mọi lần sửa phần của module hay `.verid/design.md` (một dấu cách, BOM, dòng CRLF), hoặc plan không còn đọc được, đều khoá code production cho tới lần `verid order` tiếp theo.
@@ -257,24 +376,29 @@ Hook không phải sandbox của hệ điều hành: verid bịt các lối tắ
 
 **Vai trò và agent**
 
+- Hook không kiểm chứng được agent soạn tài liệu đã trình bản đề xuất, chuyển câu hỏi kèm lựa chọn, nhận câu trả lời của developer, hay thống nhất phạm vi, ranh giới và DAG phụ thuộc trước khi ghi.
+- Luồng chính và agent khác vẫn ghi được research, design và plan: gọi agent soạn tài liệu đã ánh xạ là chỉ dẫn của skill.
+- Đường dẫn trong `e2e_globs` không chứng minh test chạy sản phẩm từ đầu tới cuối hay qa lấy selector từ code UI thật.
 - Vai trò xét theo `agent_type` trong payload: nếu Claude Code đổi tên hoặc bỏ nó, subagent trông như luồng chính, nên khi tách mọi lần ghi code hay test bị chặn, không có reviewer thì `verid serve` từ chối, và auto fail-closed.
+- Skill có `context: fork` được một agent gọi sẽ chạy dưới loại agent khác, được verid xét là `other`: khi tách, nó vẫn không ghi được code hay test, nhưng ghi được file tự do và chạy Bash.
 - Tên trong `roles` phải khớp chính xác: agent bị plugin của nó đổi tên thì mất vai trò, theo kiểu fail-closed (ghi bị chặn, `verid serve` từ chối).
 - Plugin verid cài riêng với package npm: khi chưa cài, `roles` trỏ tới các agent không có (ghi bị chặn, `verid serve` từ chối), và cập nhật một bên mà quên bên kia thì hai bản lệch nhau.
 - Khi tách, tester vẫn có thể làm yếu một test ở RAW hay PLATED: việc tách chỉ ngăn coder.
 - Tester và coder có Bash, và chỉ hook giữ mỗi agent trong phần của nó. Việc tách bật mặc định, nên luồng chính không còn tự viết code hay test.
 - Agent của plugin khác, hay của ClaudeKit, được ánh xạ trong `roles` không biết verid: chỉ thông báo từ chối của hook chỉ đường cho chúng. Agent của chính verid thì biết.
 - Tên agent không có namespace (`general-purpose`, hay agent ở `~/.claude/agents/` như của ClaudeKit) bị thay bởi một `.claude/agents/<tên>.md` có sẵn trong repo vừa clone; tên `verid:*` thì không. Hook chặn agent tạo file đó, nhưng không chặn file đã có sẵn.
-- Skill của verid và của superpowers là lời nhắc: hook không biết agent có dùng chúng hay không.
+- Skill của verid, superpowers và andrej-karpathy-skills là lời nhắc: hook không biết agent có dùng hay làm theo chúng hay không.
 
 **Drive auto**
 
+- Hook không ép `feat/<module>`, một nhánh mỗi module hay nhánh chứa commit; nó vẫn chỉ kiểm tree của project sạch.
 - Verdict do chính reviewer viết: verid chỉ đọc dòng `Verdict:`, không biết reviewer đọc kỹ tới đâu, và không có người nào đọc review trước khi module đóng.
 - Plan do agent viết và reviewer duyệt; không người nào ký plan.
 - Báo cáo được xếp là review plan hay review module theo chỗ drive đang đứng, không theo việc reviewer được nhờ review cái gì.
 - Agent gọi reviewer tự viết lời nhờ, nên verid không biết reviewer được cho xem gì; một reviewer còn chạy nền trong lúc code đổi vẫn ghi báo cáo như thể nó đến sau lần sửa cuối.
 - Lượt coder đếm theo tên AC của test đỏ lúc coder dừng; test đỏ không mang tên AC thì không được đếm.
-- Git chỉ được kiểm là tree sạch, tính từ thư mục project trở xuống, không kiểm commit chứa gì hay thuộc module nào.
-- Git lỗi trong một repo (dubious ownership, index hay config hỏng), hoặc repo mất hay hỏng sau khi đã ký trong git, đều tính là chưa commit, nên module chờ; bước kiểm chỉ bỏ qua khi project nằm ngoài git (hoặc git không có trong `PATH`) lúc ký, và muốn bỏ git thì phải `verid order` lại.
+- Git kiểm tree sạch ở các thư mục của layout, không kiểm nội dung commit, module sở hữu hay các commit có đồng bộ giữa repo không.
+- Git lỗi trong repo (dubious ownership, index hay config hỏng), hoặc repo mất git sau khi đã ký có git, đều tính là chưa commit. Option C áp dụng riêng từng repo: thư mục ký khi chưa có git bỏ qua bước kiểm đó cho tới khi có git; muốn bỏ git thì phải `verid order` lại.
 - Thứ mà chính git ẩn đi thì không tính là chưa commit: dòng trong `.gitignore`, `.git/info/exclude` hay file ignore toàn cục (`core.excludesFile`), file đánh dấu `assume-unchanged` hay `skip-worktree`, submodule đặt `ignore`.
 - Agent không gọi tên được `.claude/settings.local.json` trong Bash, nên thường commit bằng `git add -A`; Claude Code thường thêm file này vào gitignore toàn cục, và thiếu dòng đó thì file có thể bị commit.
 - Claude Code không chạy Stop khi bấm Esc: ngắt không bị tính là không tiến triển, nhưng agent cũng không bị giữ lại.
@@ -287,6 +411,7 @@ Hook không phải sandbox của hệ điều hành: verid bịt các lối tắ
 
 **Runner**
 
+- Doctor nhận runner từ file build hoặc `test_cmd` riêng; nó không chạy test hay kiểm tra executable của runner đã cài chưa.
 - File build không bị khoá: agent có thể thêm một runner, hay làm một runner bỏ qua test.
 - File build nằm sâu hơn một cấp thư mục (`packages/a/b/pom.xml`) không được tìm thấy; hãy đặt `test_cmd`.
 - Xoá file build sẽ bị chặn nhờ runner đã ghi nhớ, nhưng `verid cook` bỏ runner đó mà không hỏi.
@@ -300,16 +425,18 @@ Hook không phải sandbox của hệ điều hành: verid bịt các lối tắ
 - jest-junit cần `JEST_JUNIT_REPORT_TEST_SUITE_ERRORS=true`, nếu không file test không load được sẽ không có trong báo cáo.
 - Với ngôn ngữ biên dịch, test gọi class chưa có thì không có báo cáo, nên stub đầu tiên cần một lần override; verid nói rõ điều đó với Maven và Gradle, và không bao giờ đọc log build.
 - `timeout_sec` dài hơn mốc 2 phút của Bash tool thì Claude Code cắt `verid taste` trước, và test có thể còn chạy.
+- Timeout từng repo chạy nối tiếp, nên tổng thời gian có thể vượt timeout của Bash dù mỗi repo đều chạy trong giới hạn của mình.
 - Glob không phân biệt hoa thường trên mọi hệ điều hành.
 
 **Tự bảo vệ và override**
 
+- Doctor kiểm tra bản ghi cài plugin phiên bản 2 và thư mục trong `CLAUDE_CONFIG_DIR` (mặc định `~/.claude`); nó không chứng minh được plugin đang bật hay skill load được.
 - Chỉ `dist/` của verid được bảo vệ: sửa `i18n/*.json` đổi được thông báo, không đổi được quyết định.
 - Agent không ghi được định nghĩa agent hay plugin nhưng vẫn ghi được skill (`.claude/skills/`); hook trong frontmatter của skill hay subagent và trong plugin chạy mà không bị kiểm tra, có thể sửa input của tool sau khi verid đã xét.
 - Bash nhắc tới `.claude/agents` hay `.claude/plugins` bị chặn kể cả khi chỉ đọc (hãy dùng Read hoặc Glob); subagent của project do developer sửa, không phải agent.
 - Bash nhắc tới bất kỳ file nào tên `manifest.yaml` bị chặn kể cả khi chỉ đọc, như `cat .verid/manifest.yaml`: hãy dùng Read, hoặc `/verid tip`.
 - Xoá `.verid` làm mọi lần gọi tool bị chặn.
-- Lệnh của developer và `CLAUDECODE` được chặn khỏi Bash của agent chỉ theo tên: qua script, biến hay chuỗi ghép lúc chạy, agent có thể tự ghi baseline, tự duyệt hay tự đóng module của mình, hoặc ở auto tự ký design hay chạy tiếp một drive đang kẹt.
+- Lệnh của developer và `CLAUDECODE` được chặn khỏi Bash của agent chỉ theo tên: qua script, biến hay chuỗi ghép lúc chạy, agent có thể tự cập nhật cài đặt bằng upgrade, tự ghi baseline, tự duyệt hay tự đóng module của mình, hoặc ở auto tự ký design hay chạy tiếp một drive đang kẹt.
 - Bash của agent thừa hưởng `CLAUDE_CODE_SESSION_ATTENDED`: lệnh nhắc tới hook của verid bị chặn, nhưng qua bản copy của hook, một script hay đường dẫn ghép lúc chạy, agent có thể tự cấp override cho mình.
 - Công cụ giả terminal như `node-pty` có thể mở một phiên lồng mà Claude Code coi là có người ngồi.
 - Mã xác nhận vẫn nằm trong transcript trên đĩa, nơi agent bị chặn đọc.

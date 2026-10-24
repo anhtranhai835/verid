@@ -1,5 +1,5 @@
 import { readdirSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import {
   bannerLines,
   paint,
@@ -12,7 +12,6 @@ import type { MessageKey } from "../core/errors.js";
 import {
   DRIVES,
   IGNORE_GLOBS,
-  manifestUpgrade,
   MODES,
   parseManifest,
   suggestManifest,
@@ -22,31 +21,19 @@ import {
   type Repo,
 } from "../core/manifest.js";
 import { fileRole } from "../core/tdd.js";
+import { setupPreview } from "../core/setup-plan.js";
 import { bilingual, setLanguage } from "../adapters/i18n.js";
 import { loadManifest } from "../adapters/manifest.js";
 import { findRunners } from "../adapters/test-runner.js";
 import { languageOf, VeridError } from "../adapters/state-store.js";
+import { restorePlugins } from "../adapters/plugins.js";
+import { detectLayout } from "../adapters/workspace.js";
 import { ask, select, type Io } from "../adapters/terminal.js";
-import { planCook, projectFacts, servedLine, upgradeLines, type Action } from "./init.js";
+import { planCook, projectFacts, servedLine, manifestUpgradeLines } from "./init.js";
 import type { CliResult } from "./test.js";
 
 const MODE_EMOJI: Record<Mode, string> = { prep: "🥕", recipe: "📖", remix: "🍲" };
-/** Each file verid cook writes, as a step of the recipe: its emoji and its message key. */
-const STEPS: Record<
-  string,
-  [string, "state" | "gitignore" | "manifest" | "settings" | "commands"]
-> = {
-  ".verid/.state/state.json": ["🔪", "state"],
-  ".verid/.gitignore": ["🧂", "gitignore"],
-  ".verid/manifest.yaml": ["📜", "manifest"],
-  ".claude/settings.local.json": ["🔥", "settings"],
-  ".claude/commands/verid/": ["🍴", "commands"],
-};
-const ACTION_COLOR: Record<Action, Rgb> = {
-  created: [60, 179, 113],
-  updated: [255, 215, 0],
-  kept: [150, 150, 150],
-};
+const SUCCESS_COLOR: Rgb = [60, 179, 113];
 
 const say = (key: MessageKey, params: Record<string, string> = {}) => bilingual(key, params);
 
@@ -79,7 +66,7 @@ export async function interactiveCook(project: string, io: Io, locale: string): 
   };
   const cancelled = () => finish(say("cook.cancelled"));
   const check = (label: string, value: string) =>
-    line(`${paint("✔", ACTION_COLOR.created, io.color)} ${label.padEnd(30)} ${value}`);
+    line(`${paint("✔", SUCCESS_COLOR, io.color)} ${label.padEnd(30)} ${value}`);
   /** Asks until the answer passes `problem`, saying what is wrong each time; empty cancels. */
   const askUntil = async (question: string, problem: (answer: string) => string | null) => {
     for (;;) {
@@ -159,11 +146,15 @@ export async function interactiveCook(project: string, io: Io, locale: string): 
   setLanguage(lang);
   const flags: InitFlags = { lang, src: [], tests: [], ignore: [] };
 
-  const manifest = await loadManifest(project);
+  const manifest = await loadManifest(project, { readOnly: true, checkPaths: false });
+  const detected = manifest ? null : detectLayout(project);
+  let layout = manifest?.layout ?? detected?.layout ?? "monorepo";
+  const repoPaths =
+    layout === "workspace" ? (detected?.repos.map((repo) => repo.path) ?? []) : ["."];
   const existing = manifest?.repos[0];
   if (existing) {
     // A manifest from an older verid: the defaults it lacks, added only if the developer says so.
-    const items = upgradeLines(manifestUpgrade(existing, manifest?.roles));
+    const items = manifest ? manifestUpgradeLines(manifest) : [];
     if (items.length > 0) {
       for (const item of items) line(item);
       const add = await select(
@@ -176,7 +167,7 @@ export async function interactiveCook(project: string, io: Io, locale: string): 
       flags.upgrade = add === 0;
     }
   } else {
-    const facts = projectFacts(project);
+    const facts = projectFacts(project, repoPaths);
     const mode = await select(
       io,
       say("cook.mode"),
@@ -196,11 +187,45 @@ export async function interactiveCook(project: string, io: Io, locale: string): 
       );
       if (drive === null) return cancelled();
       flags.drive = DRIVES[drive];
+
+      const iterations = await select(
+        io,
+        say("cook.iterations"),
+        [{ label: say("cook.iterations_no") }, { label: say("cook.iterations_yes") }],
+        0,
+      );
+      if (iterations === null) return cancelled();
+      if (iterations === 1) {
+        const settings = { duration: "2 weeks", start_date: "2000-01-01", demo_day: "Friday" };
+        for (const field of ["duration", "start_date", "demo_day"] as const) {
+          const answer = await askUntil(say(`cook.iterations_${field}`), (value) => {
+            const r = parseManifest({
+              schemaVersion: 1,
+              mode: flags.mode,
+              repos: [suggestManifest(flags)],
+              iterations: { ...settings, [field]: value },
+            });
+            return r.ok ? null : r.detail.replace(/^[\w.]+: /, "");
+          });
+          if (answer === null) return cancelled();
+          settings[field] = answer;
+        }
+        flags.iterations = true;
+        flags.duration = settings.duration;
+        flags.startDate = settings.start_date;
+        flags.demoDay = settings.demo_day;
+      }
     }
 
     // verid finds the runners at each run; the plan says which it sees. With none yet, the
     // developer may still type their own command.
-    if (findRunners(project, layoutOf(suggestManifest(flags))).runners.length === 0) {
+    if (
+      repoPaths.every(
+        (path) =>
+          findRunners(resolve(project, path), layoutOf(suggestManifest(flags))).runners.length ===
+          0,
+      )
+    ) {
       const runner = await select(
         io,
         say("cook.runner"),
@@ -223,15 +248,9 @@ export async function interactiveCook(project: string, io: Io, locale: string): 
     const plan = await planCook(project, flags);
     line();
     line(say("cook.plan"));
-    for (const { action, rel } of plan.steps) {
-      const [emoji, key] = STEPS[rel] ?? ["•", "state"];
-      const label = say(`cook.step.${key}`).padEnd(16);
-      const done = paint(say(`cook.${action}`).padEnd(10), ACTION_COLOR[action], io.color);
-      line(`${emoji} ${label} ${rel.padEnd(28)} ${done} — ${say(`cook.why.${key}`)}`);
-    }
+    for (const row of setupPreview(plan.files, plan.notes)) line(row);
     const { repo } = plan;
     if (repo) summary(repo);
-    for (const note of plan.notes) line(note);
     line();
     const go = await select(
       io,
@@ -242,18 +261,27 @@ export async function interactiveCook(project: string, io: Io, locale: string): 
         { label: say("cook.cancel") },
       ],
       0,
+      { y: 0, n: repo ? 2 : 1 },
     );
-    if (go === 0) break;
+    if (go === 0) {
+      const fresh = await planCook(project, flags);
+      if (fresh.revision !== plan.revision) continue;
+      const result = fresh.apply();
+      if (result.stdout) line(result.stdout.trimEnd());
+      if (result.failed) return { exit: 1, stdout: "", stderr: result.stderr };
+      const warnings = await restorePlugins(project, { io });
+      if (warnings.length) return { exit: 1, stdout: "", stderr: `${warnings.join("\n")}\n` };
+      layout = fresh.layout;
+      break;
+    }
     if (!(repo && go === 1)) return cancelled();
     codeDirs ??= topDirs(project).filter((d) => fileRole(`${d}/x`, layoutOf(repo)) === "code");
     const unlocked = await unlock(codeDirs, unlockedOf(repo));
     if (unlocked === null) return cancelled();
     flags.ignore = unlocked;
   }
-  // Checked again: a file written while the question waited is kept, not overwritten.
-  (await planCook(project, flags)).apply();
   line();
-  line(say("init.done"));
+  line(say(layout === "workspace" ? "workspace.done" : "init.done"));
   line();
   return finish(await servedLine(project));
 }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { decideRole, splitOn, subagentHold, writerOf, type Writer } from "../../src/core/roles.js";
+import { isOverridable } from "../../src/core/errors.js";
 
 describe("roles", () => {
   it("names the writer from the payload, a role only with an agent_id", () => {
@@ -27,6 +28,65 @@ describe("roles", () => {
     expect(Object.fromEntries(rows.map(([n, roles]) => [n, splitOn(roles)]))).toEqual(
       Object.fromEntries(rows.map(([n, , want]) => [n, want])),
     );
+  });
+
+  it("recognises each new role only for its mapped subagent", () => {
+    const roles = {
+      researcher: ["custom:research"],
+      architect: ["custom:architecture"],
+      planner: ["custom:plan"],
+      qa: ["custom:qa"],
+    };
+    const rows = [
+      ["a", "custom:research", "researcher"],
+      ["a", "custom:architecture", "architect"],
+      ["a", "custom:plan", "planner"],
+      ["a", "custom:qa", "qa"],
+      [undefined, "custom:research", "main"],
+      ["a", "verid:qa", "other"],
+    ] as const;
+    for (const [id, type, want] of rows) expect(writerOf(id, type, roles)).toBe(want);
+  });
+
+  it("keeps each drafting role to its own project document regardless of the split", () => {
+    const rows = [
+      ["researcher", false, ".verid/research.md", "allow"],
+      ["architect", true, ".verid/design.md", "allow"],
+      ["planner", true, ".verid/plan.md", "allow"],
+      ["researcher", false, ".verid/design.md", "VERID_BURNT_ROLE_DOC_ONLY"],
+      ["architect", true, ".verid/plan.md", "VERID_BURNT_ROLE_DOC_ONLY"],
+      ["planner", false, "README.md", "VERID_BURNT_ROLE_DOC_ONLY"],
+      ["researcher", true, "test/a.test.ts", "VERID_BURNT_ROLE_DOC_ONLY"],
+      ["architect", false, "src/a.ts", "VERID_BURNT_ROLE_DOC_ONLY"],
+      ["planner", true, null, "VERID_BURNT_ROLE_DOC_ONLY"],
+    ] as const;
+    for (const [writer, split, path, want] of rows) {
+      const d = decideRole(writer, split, path === null ? "outside" : "free", "display", path);
+      expect(d.kind === "deny" ? d.code : d.kind, `${writer} ${path}`).toBe(want);
+    }
+  });
+
+  it("allows qa only end-to-end tests and keeps them available to the split tester", () => {
+    const rows = [
+      ["qa", false, "e2e", "allow"],
+      ["qa", true, "e2e", "allow"],
+      ["tester", true, "e2e", "allow"],
+      ["coder", true, "e2e", "VERID_BURNT_ROLE_TESTER_ONLY"],
+      ["main", true, "e2e", "VERID_BURNT_ROLE_TESTER_ONLY"],
+      ["qa", false, "test", "VERID_BURNT_ROLE_QA_E2E_ONLY"],
+      ["qa", true, "code", "VERID_BURNT_ROLE_QA_E2E_ONLY"],
+      ["qa", false, "free", "VERID_BURNT_ROLE_QA_E2E_ONLY"],
+      ["qa", true, "outside", "VERID_BURNT_ROLE_QA_E2E_ONLY"],
+    ] as const;
+    for (const [writer, split, file, want] of rows) {
+      const d = decideRole(writer, split, file, "display");
+      expect(d.kind === "deny" ? d.code : d.kind, `${writer} ${file}`).toBe(want);
+    }
+  });
+
+  it("lets the developer override the new role restrictions", () => {
+    const rows = ["VERID_BURNT_ROLE_DOC_ONLY", "VERID_BURNT_ROLE_QA_E2E_ONLY"] as const;
+    for (const code of rows) expect(isOverridable(code), code).toBe(true);
   });
 
   it("lets each writer write only what its role allows", () => {
@@ -66,6 +126,9 @@ describe("roles", () => {
         ["coder", true, "RAW", true, false, "stop.stub"],
         ["tester", true, "RAW", true, false, null],
         ["reviewer", false, "COOKING", false, true, null],
+        ["qa", true, "COOKING", false, true, "stop.unverified"],
+        ["qa", false, "RAW", true, false, null],
+        ["qa", true, "COOKING", false, false, null],
       ];
     const name = (r: (typeof rows)[number]) => r.slice(0, 5).join(" ");
     expect(

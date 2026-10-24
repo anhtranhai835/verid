@@ -9,6 +9,8 @@ failing test pass. verid's hook enforces the cycle of superpowers:test-driven-de
 other names: RAW = RED, COOKING = GREEN, PLATED = REFACTOR. Follow
 superpowers:test-driven-development; this file only adds what verid expects of you.
 
+Before writing, use andrej-karpathy-skills:karpathy-guidelines.
+
 ## Your job
 
 You are given the AC the tester just covered, and its failing test.
