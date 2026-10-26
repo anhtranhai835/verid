@@ -505,11 +505,12 @@ A hook is not an OS sandbox: verid closes the usual shortcuts, not every path a 
 
 ```bash
 npm test             # build, then unit and end-to-end tests
+npm run test:full    # the same plus the installer tests
 npm run typecheck
 npm run format
 ```
 
-There is no CI: `test/e2e/hook.e2e.test.ts` replays payloads recorded on Windows, so run `npm test` on Windows before each commit.
+There is no CI: `test/e2e/hook.e2e.test.ts` replays payloads recorded on Windows, so run `npm test` on Windows before each commit, and `npm run test:full` when `install.ps1`, `install.sh` or their tests change.
 
 ## Credits
 

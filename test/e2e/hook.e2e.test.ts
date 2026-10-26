@@ -4,6 +4,7 @@ import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { verifyAuditChain } from "../../src/adapters/audit-log.js";
+import { runHook } from "./in-process.js";
 
 // Runs the built hook as a real process, the way Claude Code does, fed with recorded payloads.
 const root = join(import.meta.dirname, "..", "..");
@@ -103,6 +104,46 @@ describe("1. the hook really blocks forbidden actions", () => {
     expect(r.stderr).toMatch(/^vi: .+/m);
     expect(r.stderr).toMatch(/^en: .+/m);
     expect(state().counters.blocked_actions).toBe(1);
+  });
+
+  // Tables of cases call the hook in process; the spawned rows above prove the built file runs it.
+  it("runs one payload in process as the built hook does, without reading stdin on import", async () => {
+    // Importing the hook must not start it: a started hook reads stdin and sets the exit code.
+    expect(process.exitCode).toBeUndefined();
+    const codex = (tool_input: Payload) =>
+      JSON.stringify({
+        hook_event_name: "PreToolUse",
+        session_id: "codex-session",
+        transcript_path: null,
+        cwd: project,
+        model: "gpt-6-luna",
+        permission_mode: "default",
+        turn_id: "codex-turn",
+        tool_name: "Read",
+        tool_use_id: "codex-call",
+        tool_input,
+      });
+    const rows = [
+      [fixture("pre-tool-use-write-verid-state"), [], 2, "", "VERID_BURNT_STATE_PROTECTED"],
+      [fixture("pre-tool-use-read"), [], 0, "", ""],
+      ["{", [], 2, "", "VERID_BURNT_PAYLOAD"],
+      [fixture("pre-tool-use-read"), ["--provider", "cursor"], 2, "", "VERID_BURNT_PAYLOAD"],
+      [
+        codex({ file_path: ".verid/.state/state.json" }),
+        ["--provider", "codex"],
+        0,
+        '"permissionDecision":"deny"',
+        "",
+      ],
+    ] as const;
+    for (const [input, args, code, stdout, stderr] of rows) {
+      const r = await runHook(input, { CLAUDE_PROJECT_DIR: project }, [...args]);
+      expect.soft(r.code, input).toBe(code);
+      if (stdout) expect.soft(r.stdout, input).toContain(stdout);
+      else expect.soft(r.stdout, input).toBe("");
+      if (stderr) expect.soft(r.stderr, input).toContain(stderr);
+      else expect.soft(r.stderr, input).toBe("");
+    }
   });
 
   it("denies reading state (through mixed slashes, case and ..), secrets and transcripts", () => {

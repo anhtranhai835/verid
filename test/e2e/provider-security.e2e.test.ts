@@ -1,10 +1,9 @@
-import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { runHook } from "./in-process.js";
 
-const HOOK = join(import.meta.dirname, "../../dist/hook.js");
 let project: string;
 beforeEach(() => {
   project = mkdtempSync(join(tmpdir(), "verid-provider-security-"));
@@ -24,20 +23,12 @@ function manifest(extra: Record<string, unknown> = {}): void {
     }),
   );
 }
+// In process: hook.e2e proves the built hook runs the same code.
 function hook(payload: Record<string, unknown>, attended = false) {
-  const env = Object.fromEntries(
-    Object.entries(process.env).filter(([k]) => !k.startsWith("CLAUDE")),
-  );
-  const r = spawnSync(process.execPath, [HOOK], {
-    input: JSON.stringify({ session_id: "provider-security", cwd: project, ...payload }),
-    encoding: "utf8",
-    env: {
-      ...env,
-      CLAUDE_PROJECT_DIR: project,
-      ...(attended ? { CLAUDE_CODE_SESSION_ATTENDED: "1" } : {}),
-    },
+  return runHook(JSON.stringify({ session_id: "provider-security", cwd: project, ...payload }), {
+    CLAUDE_PROJECT_DIR: project,
+    ...(attended ? { CLAUDE_CODE_SESSION_ATTENDED: "1" } : {}),
   });
-  return { code: r.status, stderr: r.stderr, stdout: r.stdout };
 }
 const call = (tool_name: string, tool_input: Record<string, unknown>, extra = {}) => ({
   hook_event_name: "PreToolUse",
@@ -45,8 +36,8 @@ const call = (tool_name: string, tool_input: Record<string, unknown>, extra = {}
   tool_input,
   ...extra,
 });
-function approve(): void {
-  const r = hook(
+async function approve(): Promise<void> {
+  const r = await hook(
     { hook_event_name: "UserPromptSubmit", prompt: "/verid tip developer reviewed this action" },
     true,
   );
@@ -54,12 +45,13 @@ function approve(): void {
   const code = /\/verid confirm ([A-Z2-9]{6})/.exec(r.stderr)?.[1];
   expect(code).toHaveLength(6);
   expect(
-    hook({ hook_event_name: "UserPromptSubmit", prompt: `/verid confirm ${code}` }, true).code,
+    (await hook({ hook_event_name: "UserPromptSubmit", prompt: `/verid confirm ${code}` }, true))
+      .code,
   ).toBe(0);
 }
 
 describe("Claude provider dispatch allowlists", () => {
-  it("allows only fixed skill namespaces, exact additions and namespace wildcard additions", () => {
+  it("allows only fixed skill namespaces, exact additions and namespace wildcard additions", async () => {
     manifest({ allowed_skills: ["team:approved", "company:*"] });
     const rows = [
       ["verid:build", 0],
@@ -74,7 +66,7 @@ describe("Claude provider dispatch allowlists", () => {
       ["superpowers-evil:fork", 2],
     ] as const;
     for (const [skill, code] of rows) {
-      const r = hook(call("Skill", { skill }));
+      const r = await hook(call("Skill", { skill }));
       expect(r.code, skill).toBe(code);
       if (code === 2) {
         expect(r.stderr).toContain("VERID_BURNT_SKILL_NOT_ALLOWED");
@@ -84,7 +76,7 @@ describe("Claude provider dispatch allowlists", () => {
       }
     }
   });
-  it("checks Agent and Task dispatch against all mapped roles plus exact allowed_agents", () => {
+  it("checks Agent and Task dispatch against all mapped roles plus exact allowed_agents", async () => {
     manifest({
       roles: { reviewer: ["verid:reviewer"], researcher: ["custom:researcher"] },
       allowed_agents: ["team:helper"],
@@ -99,7 +91,7 @@ describe("Claude provider dispatch allowlists", () => {
       ["Task", "team:other", 2],
     ] as const;
     for (const [tool, subagent_type, code] of rows) {
-      const r = hook(call(tool, { subagent_type, prompt: "work" }));
+      const r = await hook(call(tool, { subagent_type, prompt: "work" }));
       expect(r.code, `${tool} ${subagent_type}`).toBe(code);
       if (code === 2) {
         expect(r.stderr).toContain("VERID_BURNT_AGENT_NOT_ALLOWED");
@@ -109,20 +101,22 @@ describe("Claude provider dispatch allowlists", () => {
       }
     }
   });
-  it("uses default skill namespaces and no unmapped agent permissions for old or absent manifests", () => {
+  it("uses default skill namespaces and no unmapped agent permissions for old or absent manifests", async () => {
     const rows = [false, true] as const;
     for (const old of rows) {
       if (old) manifest();
-      expect(hook(call("Skill", { skill: "superpowers:test-driven-development" })).code).toBe(0);
-      expect(hook(call("Skill", { skill: "unknown:fork" })).stderr).toContain(
+      expect(
+        (await hook(call("Skill", { skill: "superpowers:test-driven-development" }))).code,
+      ).toBe(0);
+      expect((await hook(call("Skill", { skill: "unknown:fork" }))).stderr).toContain(
         "VERID_BURNT_SKILL_NOT_ALLOWED",
       );
-      expect(hook(call("Agent", { subagent_type: "general-purpose" })).stderr).toContain(
+      expect((await hook(call("Agent", { subagent_type: "general-purpose" }))).stderr).toContain(
         "VERID_BURNT_AGENT_NOT_ALLOWED",
       );
     }
   });
-  it("lets the developer override a denied skill or agent for the exact call once", () => {
+  it("lets the developer override a denied skill or agent for the exact call once", async () => {
     manifest();
     const rows = [
       ["Skill", { skill: "unknown:fork" }],
@@ -131,18 +125,18 @@ describe("Claude provider dispatch allowlists", () => {
     ] as const;
     for (const [tool, input] of rows) {
       const payload = call(tool, input);
-      expect(hook(payload).code).toBe(2);
-      approve();
-      expect(hook(call(tool, { ...input, prompt: "changed" })).code).toBe(2);
-      expect(hook(payload).code).toBe(0);
-      expect(hook(payload).code).toBe(2);
+      expect((await hook(payload)).code).toBe(2);
+      await approve();
+      expect((await hook(call(tool, { ...input, prompt: "changed" }))).code).toBe(2);
+      expect((await hook(payload)).code).toBe(0);
+      expect((await hook(payload)).code).toBe(2);
     }
   });
-  it("does not let an allowlisted dispatch bypass an existing shell denial", () => {
+  it("does not let an allowlisted dispatch bypass an existing shell denial", async () => {
     manifest();
     const rows = ["Skill", "Agent", "Task"];
     for (const tool of rows) {
-      const r = hook(
+      const r = await hook(
         call(tool, {
           skill: "superpowers:test-driven-development",
           subagent_type: "unknown:agent",
@@ -152,7 +146,7 @@ describe("Claude provider dispatch allowlists", () => {
       expect(r.stderr).toContain("VERID_BURNT_SHELL_UNSUPPORTED");
     }
   });
-  it("keeps role and TDD checks on an allowed general-purpose agent", () => {
+  it("keeps role and TDD checks on an allowed general-purpose agent", async () => {
     const rows = [
       {
         roles: { tester: ["verid:tester"], coder: ["verid:coder"] },
@@ -168,10 +162,10 @@ describe("Claude provider dispatch allowlists", () => {
     ];
     for (const { roles, path, code } of rows) {
       manifest({ allowed_agents: ["general-purpose"], roles });
-      expect(hook(call("Agent", { subagent_type: "general-purpose", prompt: "work" })).code).toBe(
-        0,
-      );
-      const r = hook(
+      expect(
+        (await hook(call("Agent", { subagent_type: "general-purpose", prompt: "work" }))).code,
+      ).toBe(0);
+      const r = await hook(
         call(
           "Write",
           { file_path: join(project, path), content: "code" },
@@ -186,7 +180,7 @@ describe("Claude provider dispatch allowlists", () => {
 
 describe("verid instruction block protection", () => {
   const block = "<!-- verid:begin -->\nProtected instructions\n<!-- verid:end -->";
-  it("compares LF and CRLF blocks while allowing multiline edits only outside them", () => {
+  it("compares LF and CRLF blocks while allowing multiline edits only outside them", async () => {
     manifest();
     const rows = [
       ["Edit", { old_string: "Before\nUser text", new_string: "Notes\nMore notes" }, 0],
@@ -207,7 +201,7 @@ describe("verid instruction block protection", () => {
           `Before\nUser text\n${block}\nAfter`.replaceAll("\n", ending),
         );
         for (const [tool, input, code] of rows) {
-          const r = hook(call(tool, { file_path: join(project, file), ...input }));
+          const r = await hook(call(tool, { file_path: join(project, file), ...input }));
           expect(r.code, `${file} ${JSON.stringify(ending)} ${tool} ${JSON.stringify(input)}`).toBe(
             code,
           );
@@ -216,7 +210,7 @@ describe("verid instruction block protection", () => {
       }
     }
   });
-  it("allows direct edits outside either block and denies changes, removal or unverifiable writes", () => {
+  it("allows direct edits outside either block and denies changes, removal or unverifiable writes", async () => {
     manifest();
     const rows = [
       ["Write", { content: `Changed user text\n${block}\nAfter` }, 0],
@@ -262,13 +256,13 @@ describe("verid instruction block protection", () => {
         };
         // Preserve the existing unsupported-shell rule on tools with command input.
         if (tool !== "Bash") delete (target as Record<string, unknown>).command;
-        const r = hook(call(tool, target));
+        const r = await hook(call(tool, target));
         expect(r.code, `${file} ${tool} ${JSON.stringify(input)}`).toBe(code);
         if (code === 2) expect(r.stderr).toContain("VERID_BURNT_INSTRUCTIONS_PROTECTED");
       }
     }
   });
-  it("fails closed on malformed blocks and protects parent deletion while allowing ordinary files", () => {
+  it("fails closed on malformed blocks and protects parent deletion while allowing ordinary files", async () => {
     manifest();
     writeFileSync(join(project, "CLAUDE.md"), "<!-- verid:begin -->\nbroken");
     const rows = [
@@ -277,23 +271,23 @@ describe("verid instruction block protection", () => {
       ["Write", { file_path: "README.md", content: "user docs" }, 0],
     ] as const;
     for (const [tool, input, code] of rows) {
-      const result = hook(call(tool, input));
+      const result = await hook(call(tool, input));
       expect(result.code).toBe(code);
       if (code === 2) expect(result.stderr).toContain("VERID_BURNT_INSTRUCTIONS_PROTECTED");
     }
   });
-  it("grants an exact one-call exception without lifting the reviewer read-only rule", () => {
+  it("grants an exact one-call exception without lifting the reviewer read-only rule", async () => {
     manifest({ roles: { reviewer: ["verid:reviewer"] } });
     writeFileSync(join(project, "CLAUDE.md"), `Before\n${block}\nAfter`);
     const payload = call("Write", { file_path: "CLAUDE.md", content: "developer replacement" });
-    expect(hook(payload).stderr).toContain("VERID_BURNT_INSTRUCTIONS_PROTECTED");
-    approve();
-    expect(hook(payload).code).toBe(0);
-    expect(hook(payload).code).toBe(2);
+    expect((await hook(payload)).stderr).toContain("VERID_BURNT_INSTRUCTIONS_PROTECTED");
+    await approve();
+    expect((await hook(payload)).code).toBe(0);
+    expect((await hook(payload)).code).toBe(2);
     const reviewer = { ...payload, agent_id: "reviewer-1", agent_type: "verid:reviewer" };
-    expect(hook(reviewer).code).toBe(2);
-    approve();
-    expect(hook(reviewer).stderr).toContain("VERID_BURNT_ROLE_READ_ONLY");
+    expect((await hook(reviewer)).code).toBe(2);
+    await approve();
+    expect((await hook(reviewer)).stderr).toContain("VERID_BURNT_ROLE_READ_ONLY");
     expect(readFileSync(join(project, "CLAUDE.md"), "utf8")).toContain(block);
   });
 });

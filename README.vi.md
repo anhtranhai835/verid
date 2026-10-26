@@ -505,11 +505,12 @@ Hook không phải sandbox của hệ điều hành: verid bịt các lối tắ
 
 ```bash
 npm test             # build, rồi chạy unit test và end-to-end test
+npm run test:full    # như trên, thêm test của installer
 npm run typecheck
 npm run format
 ```
 
-Không có CI: `test/e2e/hook.e2e.test.ts` chạy lại payload ghi từ Windows, nên hãy chạy `npm test` trên Windows trước mỗi commit.
+Không có CI: `test/e2e/hook.e2e.test.ts` chạy lại payload ghi từ Windows, nên hãy chạy `npm test` trên Windows trước mỗi commit, và `npm run test:full` khi đổi `install.ps1`, `install.sh` hay test của chúng.
 
 ## Ghi nhận
 

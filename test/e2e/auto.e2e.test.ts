@@ -14,13 +14,13 @@ import {
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { runCli, runHook } from "./in-process.js";
 
-// Runs the built CLI and hook as real processes, on a prep project driven by auto. The manifest's
+// Runs the CLI and hook in process, on a prep project driven by auto. The manifest's
 // test command is a fake runner that copies recorded vitest JUnit reports, so scenario.json picks
 // each run's outcome. Paths are built with join(), so these tests run on Windows and POSIX alike.
 const root = join(import.meta.dirname, "..", "..");
 const CLI = join(root, "dist", "cli.js");
-const HOOK = join(root, "dist", "hook.js");
 const RUNNER = join(import.meta.dirname, "fake-runner.mjs");
 const FIXTURES = join(root, "test", "fixtures", "claude-code");
 const SESSION = "11111111-2222-3333-4444-555555555555";
@@ -77,35 +77,18 @@ function fixture(name: string, edit?: (p: Payload) => void): string {
   return JSON.stringify(payload);
 }
 
-// Claude Code sets CLAUDE_* for hooks and Bash; start clean so the test machine's session leaks nothing.
-function env(extra: Record<string, string> = {}): NodeJS.ProcessEnv {
-  const base = Object.fromEntries(
-    Object.entries(process.env).filter(([k]) => !k.startsWith("CLAUDE")),
-  );
-  return { ...base, CLAUDE_PROJECT_DIR: project, ...extra };
-}
-
 interface Run {
   code: number | null;
   stdout: string;
   stderr: string;
 }
 
-function hook(input: string, extra: Record<string, string> = {}): Run {
-  const r = spawnSync(process.execPath, [HOOK], { input, env: env(extra), encoding: "utf8" });
-  return { code: r.status, stdout: r.stdout, stderr: r.stderr };
-}
-
-function cliWith(extra: Record<string, string>, ...args: string[]): Run {
-  const r = spawnSync(process.execPath, [CLI, ...args], {
-    cwd: project,
-    env: env(extra),
-    encoding: "utf8",
-  });
-  return { code: r.status, stdout: r.stdout, stderr: r.stderr };
-}
-
-const cli = (...args: string[]): Run => cliWith({}, ...args);
+// In process; hook.e2e and tdd.e2e spawn the built hook and CLI.
+const hook = (input: string, extra: Record<string, string> = {}): Promise<Run> =>
+  runHook(input, { CLAUDE_PROJECT_DIR: project, ...extra });
+const cliWith = (extra: Record<string, string>, ...args: string[]): Promise<Run> =>
+  runCli(args, project, { CLAUDE_PROJECT_DIR: project, ...extra });
+const cli = (...args: string[]): Promise<Run> => cliWith({}, ...args);
 
 const scenario = (exit: number, junit: string | null, output = "fake runner output", delay = 0) =>
   writeFileSync(join(project, "scenario.json"), JSON.stringify({ exit, junit, output, delay }));
@@ -125,12 +108,12 @@ const prompt = (text: string) => fixture("user-prompt-submit-verid-tip", (p) => 
 const verdict = (r: Run) => (r.code === 0 ? "exit 0" : /verid \[(\w+)\]/.exec(r.stderr)?.[1]);
 
 // The developer, at the terminal, allows the action that was just blocked.
-function allowOnce(reason = "hotfix"): void {
+async function allowOnce(reason = "hotfix"): Promise<void> {
   const attended = { CLAUDE_CODE_SESSION_ATTENDED: "1" };
-  const warned = hook(prompt(`/verid tip ${reason}`), attended);
+  const warned = await hook(prompt(`/verid tip ${reason}`), attended);
   const code = /\/verid confirm ([A-Z0-9]{6})/.exec(warned.stderr)?.[1];
   expect(code).toBeDefined();
-  expect(hook(prompt(`/verid confirm ${code}`), attended).code).toBe(0);
+  expect((await hook(prompt(`/verid confirm ${code}`), attended)).code).toBe(0);
 }
 
 const put = (rel: string, text: string) => writeFileSync(join(project, ...rel.split("/")), text);
@@ -160,26 +143,26 @@ function seed(partial: Payload): void {
 }
 
 // The developer has approved research and design, and a plan is written.
-function signed(): void {
+async function signed(): Promise<void> {
   put(".verid/research.md", "# Research\n");
   put(".verid/design.md", "# Design\n");
   writePlan(CALC_AND_PRODUCT);
-  cli("order");
+  await cli("order");
 }
 
 // The reviewer has passed the plan as it stands.
 const planPassed = (): void => seed({ auto: { plan_sha256: sha(".verid/plan.md") } });
 
 // A subagent stops: the mapped reviewer with its report, or the coder c1, held once as Stop is.
-const reviewerStop = (report: string): Run =>
-  hook(
+const reviewerStop = async (report: string): Promise<Run> =>
+  await hook(
     fixture("subagent-stop-reviewer", (p) => {
       p.agent_type = "verid:reviewer";
       p.last_assistant_message = report;
     }),
   );
-const coderStop = (active: boolean): Run =>
-  hook(
+const coderStop = async (active: boolean): Promise<Run> =>
+  await hook(
     fixture("subagent-stop-reviewer", (p) => {
       p.agent_type = "verid:coder";
       p.agent_id = "c1";
@@ -187,8 +170,8 @@ const coderStop = (active: boolean): Run =>
     }),
   );
 // The main thread stops; Claude Code sets stop_hook_active on the stop that follows a hold.
-const stop = (active = false): Run =>
-  hook(
+const stop = async (active = false): Promise<Run> =>
+  await hook(
     fixture("stop", (p) => {
       p.stop_hook_active = active;
     }),
@@ -196,9 +179,9 @@ const stop = (active = false): Run =>
 
 // The roles are split, so each write comes from the agent that owns the file: a main-thread
 // write would be denied by a role rule and hide the auto rule.
-const writeAs = (agent: string, rel: string) =>
+const writeAs = async (agent: string, rel: string) =>
   verdict(
-    hook(
+    await hook(
       fixture("pre-tool-use-write-from-plugin-agent", (p) => {
         p.agent_type = agent;
         p.tool_input.file_path = join(project, ...rel.split("/"));
@@ -241,15 +224,15 @@ const told = (r: Run | undefined, key: string, params: Record<string, string>) =
   String((JSON.parse(r.stdout || "{}") as Payload).systemMessage).includes(enMessage(key, params));
 
 describe("verid order and verid serve in an auto drive", () => {
-  it("refuses what auto does itself, and what it cannot sign", () => {
+  it("refuses what auto does itself, and what it cannot sign", async () => {
     const rows: Record<string, string | undefined> = {};
-    rows["no research"] = verdict(cli("order"));
+    rows["no research"] = verdict(await cli("order"));
     put(".verid/research.md", "# Research\n");
-    rows["no design"] = verdict(cli("order"));
+    rows["no design"] = verdict(await cli("order"));
     put(".verid/design.md", "# Design\n");
-    rows["a module"] = verdict(cli("order", "calc"));
-    rows.serve = verdict(cli("serve", "calc"));
-    rows.sign = verdict(cli("order"));
+    rows["a module"] = verdict(await cli("order", "calc"));
+    rows.serve = verdict(await cli("serve", "calc"));
+    rows.sign = verdict(await cli("order"));
     expect(rows).toEqual({
       "no research": "VERID_BURNT_RESEARCH_MISSING",
       "no design": "VERID_BURNT_DESIGN_MISSING",
@@ -259,11 +242,11 @@ describe("verid order and verid serve in an auto drive", () => {
     });
   });
 
-  it("signs research and design, and on a resume keeps the plan only if neither changed", () => {
+  it("signs research and design, and on a resume keeps the plan only if neither changed", async () => {
     put(".verid/research.md", "# Research\n");
     put(".verid/design.md", "# Design\n");
     writePlan(CALC_AND_PRODUCT);
-    cli("order");
+    await cli("order");
     const signed = state().auto.signed;
     // The design changes below, so its hash is taken now.
     const files = [sha(".verid/research.md"), sha(".verid/design.md")];
@@ -279,10 +262,10 @@ describe("verid order and verid serve in an auto drive", () => {
       },
     });
     put(".verid/blocked.md", "need a key");
-    cli("order");
+    await cli("order");
     const kept = state().auto;
     appendFileSync(join(project, ".verid", "design.md"), "\nmore");
-    cli("order");
+    await cli("order");
     expect({
       hashes: [signed.research_sha256, signed.design_sha256],
       kept: { ...kept, signed: null },
@@ -307,23 +290,23 @@ describe("verid order and verid serve in an auto drive", () => {
     });
   });
 
-  it("records at signing whether the project is in a git repository", () => {
+  it("records at signing whether the project is in a git repository", async () => {
     put(".verid/research.md", "# Research\n");
     put(".verid/design.md", "# Design\n");
     writePlan(CALC_AND_PRODUCT);
-    cli("order");
+    await cli("order");
     const outside = state().auto.signed.git;
     gitRepo();
-    cli("order");
+    await cli("order");
     expect({ outside, inside: state().auto.signed.git }).toEqual({ outside: false, inside: true });
   });
 
-  it("says what was signed and the one next step, naming the mapped reviewer", () => {
+  it("says what was signed and the one next step, naming the mapped reviewer", async () => {
     put(".verid/research.md", "# Research\n");
     put(".verid/design.md", "# Design\n");
-    const noPlan = cli("order").stdout;
+    const noPlan = (await cli("order")).stdout;
     writePlan(CALC_AND_PRODUCT);
-    const toReview = cli("order").stdout;
+    const toReview = (await cli("order")).stdout;
     expect({
       signed: noPlan.split("\n")[0],
       "no plan": /^en: Next: write `\.verid\/plan\.md`/m.test(noPlan),
@@ -335,31 +318,31 @@ describe("verid order and verid serve in an auto drive", () => {
     });
   });
 
-  it("reopens a served module whose section changed when the developer resumes", () => {
+  it("reopens a served module whose section changed when the developer resumes", async () => {
     put(".verid/research.md", "# Research\n");
     put(".verid/design.md", "# Design\n");
     writePlan(CALC_AND_PRODUCT);
     // calc was served for the sha256 of an older section, and plan.md no longer has a module gone
     const old = { sha256: "old", acs: ["AC-1"], at: "t", served_at: "t", design_sha256: "d" };
     seed({ modules: { calc: old, gone: old } });
-    cli("order");
+    await cli("order");
     expect(state().modules).toEqual({});
   });
 });
 
 describe("writes in an auto drive", () => {
-  it("locks production code until a module is open, and code and tests while stuck", () => {
+  it("locks production code until a module is open, and code and tests while stuck", async () => {
     const rows: Record<string, string | undefined> = {};
-    rows.unsigned = code();
-    signed();
-    rows["plan pending"] = code();
+    rows.unsigned = await code();
+    await signed();
+    rows["plan pending"] = await code();
     planPassed();
     setTdd("COOKING");
-    rows.open = code();
+    rows.open = await code();
     put(".verid/blocked.md", "need a key");
-    rows["stuck code"] = code();
-    rows["stuck test"] = test();
-    rows["stuck notes"] = notes();
+    rows["stuck code"] = await code();
+    rows["stuck test"] = await test();
+    rows["stuck notes"] = await notes();
     expect(rows).toEqual({
       unsigned: "VERID_BURNT_AUTO_NO_MODULE",
       "plan pending": "VERID_BURNT_AUTO_NO_MODULE",
@@ -370,44 +353,44 @@ describe("writes in an auto drive", () => {
     });
   });
 
-  it("latches blocked.md at the first write it sees, so a Bash rm of it does not resume", () => {
-    signed();
+  it("latches blocked.md at the first write it sees, so a Bash rm of it does not resume", async () => {
+    await signed();
     put(".verid/blocked.md", "need a key\n");
-    const rm = hook(
+    const rm = await hook(
       fixture("pre-tool-use-bash", (p) => (p.tool_input.command = "rm .verid/blocked.md")),
     );
     rmSync(join(project, ".verid", "blocked.md")); // what the rm does once it runs
     expect([
       verdict(rm),
       state().auto.blocked,
-      code(),
+      await code(),
       audit().some((e) => e.event === "auto_stuck" && e.reason === "blocked"),
     ]).toEqual(["exit 0", "need a key", "VERID_BURNT_AUTO_STUCK", true]);
   });
 
-  it("lets the developer tip past an auto lock once", () => {
-    signed();
+  it("lets the developer tip past an auto lock once", async () => {
+    await signed();
     setTdd("COOKING");
-    const first = code();
-    allowOnce();
-    expect([first, code(), code()]).toEqual([
+    const first = await code();
+    await allowOnce();
+    expect([first, await code(), await code()]).toEqual([
       "VERID_BURNT_AUTO_NO_MODULE",
       "exit 0",
       "VERID_BURNT_AUTO_NO_MODULE",
     ]);
   });
 
-  it("holds a test to the cycle even after the developer tipped past the stuck lock", () => {
-    signed();
+  it("holds a test to the cycle even after the developer tipped past the stuck lock", async () => {
+    await signed();
     planPassed();
     put(".verid/blocked.md", "need a key");
-    const tipped = (cycle: string) => {
+    const tipped = async (cycle: string) => {
       setTdd(cycle);
-      const first = test();
-      allowOnce();
-      return [first, test(), state().tdd.state];
+      const first = await test();
+      await allowOnce();
+      return [first, await test(), state().tdd.state];
     };
-    expect({ cooking: tipped("COOKING"), plated: tipped("PLATED") }).toEqual({
+    expect({ cooking: await tipped("COOKING"), plated: await tipped("PLATED") }).toEqual({
       cooking: ["VERID_BURNT_AUTO_STUCK", "VERID_BURNT_TDD_TEST_FROZEN", "COOKING"],
       plated: ["VERID_BURNT_AUTO_STUCK", "exit 0", "RAW"],
     });
@@ -415,13 +398,13 @@ describe("writes in an auto drive", () => {
 });
 
 describe("subagents stopping in an auto drive", () => {
-  it("passes the plan on the reviewer's pass, and counts every other report as a fail", () => {
-    signed();
+  it("passes the plan on the reviewer's pass, and counts every other report as a fail", async () => {
+    await signed();
     const rows: Record<string, unknown> = {};
-    reviewerStop("looks wrong\nVerdict: fail");
-    reviewerStop("no verdict at all");
+    await reviewerStop("looks wrong\nVerdict: fail");
+    await reviewerStop("no verdict at all");
     rows.counted = state().auto.plan_reviews;
-    reviewerStop("**Verdict:** pass");
+    await reviewerStop("**Verdict:** pass");
     rows.passed = state().auto.plan_sha256 === sha(".verid/plan.md");
     rows.reset = state().auto.plan_reviews;
     rows.reports = readdirSync(join(project, ".verid", ".state", "reviews")).filter((f) =>
@@ -439,21 +422,21 @@ describe("subagents stopping in an auto drive", () => {
     });
   });
 
-  it("fails the plan review of a plan auto cannot run, whatever the reviewer says", () => {
+  it("fails the plan review of a plan auto cannot run, whatever the reviewer says", async () => {
     put(".verid/research.md", "# Research\n");
     put(".verid/design.md", "# Design\n");
     writePlan("## Module: calc\n- AC-1: adds\n");
-    cli("order");
-    reviewerStop("Verdict: pass");
+    await cli("order");
+    await reviewerStop("Verdict: pass");
     expect([state().auto.plan_sha256, state().auto.plan_reviews]).toEqual([null, 1]);
   });
 
-  it("records the module review's verdict and counts a failing one", () => {
-    signed();
+  it("records the module review's verdict and counts a failing one", async () => {
+    await signed();
     planPassed();
-    reviewerStop("Verdict: fail");
+    await reviewerStop("Verdict: fail");
     const failed = state();
-    reviewerStop("Verdict: pass");
+    await reviewerStop("Verdict: pass");
     const passed = state();
     expect([
       [failed.review?.module, failed.review?.verdict, failed.auto.module_reviews],
@@ -462,8 +445,8 @@ describe("subagents stopping in an auto drive", () => {
     ]).toEqual([["calc", "fail", 1], ["pass", 1], "fail"]);
   });
 
-  it("counts a coder round that ends red against the ACs its red tests name", () => {
-    signed();
+  it("counts a coder round that ends red against the ACs its red tests name", async () => {
+    await signed();
     planPassed();
     // c1 wrote code, so its first stop while red is held, as today
     seed({
@@ -475,14 +458,14 @@ describe("subagents stopping in an auto drive", () => {
         passed_acs: [],
       },
     });
-    const held = coderStop(false); // held once, not a round yet
+    const held = await coderStop(false); // held once, not a round yet
     const heldRounds = state().auto.coder_rounds;
-    coderStop(true);
+    await coderStop(true);
     const red = state().auto.coder_rounds;
     seed({
       tdd: { state: "PLATED", last_run: null, failing: [], passed_acs: ["AC-1"], dirty: false },
     });
-    coderStop(true);
+    await coderStop(true);
     expect([held.code, heldRounds, red, state().auto.coder_rounds]).toEqual([
       2,
       {},
@@ -507,9 +490,15 @@ describe("Stop in an auto drive", () => {
     passed_acs: ["AC-1"],
   };
 
-  it("holds every stop of a signed drive, and lets go after three holds with no progress", () => {
-    signed(); // plan not reviewed yet: same outcome every time
-    const runs = [stop(false), stop(true), stop(true), stop(true), stop(true)];
+  it("holds every stop of a signed drive, and lets go after three holds with no progress", async () => {
+    await signed(); // plan not reviewed yet: same outcome every time
+    const runs = [
+      await stop(false),
+      await stop(true),
+      await stop(true),
+      await stop(true),
+      await stop(true),
+    ];
     // hold 1 sets the outcome; holds 2 and 3 see no progress; the 4th stop is the third with none
     expect([
       runs.map((r) => r.code),
@@ -519,48 +508,48 @@ describe("Stop in an auto drive", () => {
     ]).toEqual([[2, 2, 2, 0, 0], 3, true, true]);
   });
 
-  it("tells the developer why it lets the agent go: done, or stuck", () => {
-    signed();
+  it("tells the developer why it lets the agent go: done, or stuck", async () => {
+    await signed();
     planPassed();
     gitRepo();
     seed({ tdd: { ...calcGreen, passed_acs: ["AC-1", "AC-9"], passed_e2e_acs: ["AC-9"] } });
-    reviewerStop("Verdict: pass"); // serves calc
-    reviewerStop("Verdict: pass"); // serves product, the last module
-    const done = stop(false);
+    await reviewerStop("Verdict: pass"); // serves calc
+    await reviewerStop("Verdict: pass"); // serves product, the last module
+    const done = await stop(false);
     put(".verid/blocked.md", "need a key\n");
-    const blocked = stop(false);
+    const blocked = await stop(false);
     expect({
       done: told(done, "auto.done", {}),
       blocked: told(blocked, "auto.stuck.blocked", { detail: "need a key" }),
     }).toEqual({ done: true, blocked: true });
   });
 
-  it("starts the count of holds with no progress over when the outcome changes", () => {
-    signed();
-    stop(false);
-    stop(true); // no progress since the first hold
-    reviewerStop("Verdict: fail"); // a counter moved
-    stop(true);
+  it("starts the count of holds with no progress over when the outcome changes", async () => {
+    await signed();
+    await stop(false);
+    await stop(true); // no progress since the first hold
+    await reviewerStop("Verdict: fail"); // a counter moved
+    await stop(true);
     expect(state().auto.stop_holds).toBe(0);
   });
 
-  it("counts a rerun of verid taste and a passing review on a dirty tree as no progress", () => {
-    signed();
+  it("counts a rerun of verid taste and a passing review on a dirty tree as no progress", async () => {
+    await signed();
     planPassed();
     scenario(0, "vitest-ac.xml"); // AC-1 passes again, as calcGreen already says
     gitRepo();
     seed({ tdd: calcGreen });
     put("dirty.txt", "x"); // untracked, so the passing review cannot close calc
     const holds: unknown[] = [];
-    const hold = (active: boolean) => {
-      const r = stop(active);
+    const hold = async (active: boolean) => {
+      const r = await stop(active);
       holds.push([r.code, state().auto.stop_holds]);
     };
-    hold(false);
-    const taste = cli("taste");
-    hold(true);
-    reviewerStop("Verdict: pass");
-    hold(true);
+    await hold(false);
+    const taste = await cli("taste");
+    await hold(true);
+    await reviewerStop("Verdict: pass");
+    await hold(true);
     expect({
       holds,
       taste: [taste.code, state().tdd.last_run !== "r1"],
@@ -578,31 +567,31 @@ describe("Stop in an auto drive", () => {
     });
   });
 
-  it("does not hold before the developer signs", () => {
+  it("does not hold before the developer signs", async () => {
     put(".verid/research.md", "# Research\n");
-    expect(stop(false).code).toBe(0);
+    expect((await stop(false)).code).toBe(0);
   });
 
-  it("latches blocked.md: the agent may stop, and deleting the file does not resume", () => {
-    signed();
+  it("latches blocked.md: the agent may stop, and deleting the file does not resume", async () => {
+    await signed();
     put(".verid/blocked.md", "need a key\n");
-    const r = stop(false);
+    const r = await stop(false);
     rmSync(join(project, ".verid", "blocked.md"));
     expect([
       r.code,
       state().auto.blocked,
-      code(),
+      await code(),
       audit().some((e) => e.event === "auto_stuck" && e.reason === "blocked"),
     ]).toEqual([0, "need a key", "VERID_BURNT_AUTO_STUCK", true]);
   });
 
-  it("closes the open module on green evidence, a passing review and a clean tree, then opens the next", () => {
-    signed();
+  it("closes the open module on green evidence, a passing review and a clean tree, then opens the next", async () => {
+    await signed();
     planPassed();
     gitRepo();
     seed({ tdd: calcGreen, auto: { module_reviews: 1, coder_rounds: { "AC-1": 1 } } });
-    reviewerStop("Verdict: pass");
-    const r = stop(false);
+    await reviewerStop("Verdict: pass");
+    const r = await stop(false);
     const { modules, review, auto } = state();
     expect({
       calc: [
@@ -625,14 +614,14 @@ describe("Stop in an auto drive", () => {
     });
   });
 
-  it("keeps the module open while the tree is dirty, and asks for a commit", () => {
-    signed();
+  it("keeps the module open while the tree is dirty, and asks for a commit", async () => {
+    await signed();
     planPassed();
     gitRepo();
     seed({ tdd: calcGreen });
     put("src-new.txt", "x"); // untracked before the review, so it cannot close then
-    reviewerStop("Verdict: pass");
-    const r = stop(false);
+    await reviewerStop("Verdict: pass");
+    const r = await stop(false);
     expect([
       state().modules.calc,
       r.code,
@@ -640,19 +629,19 @@ describe("Stop in an auto drive", () => {
     ]).toEqual([undefined, 2, true]);
   });
 
-  it("does not close a module signed inside git once the repository is gone, and closes it when it is back", () => {
-    signed();
+  it("does not close a module signed inside git once the repository is gone, and closes it when it is back", async () => {
+    await signed();
     gitRepo();
-    cli("order"); // signed again, now inside the repository
+    await cli("order"); // signed again, now inside the repository
     planPassed();
     seed({ tdd: calcGreen });
     // git answers "not a git repository" from here on
     renameSync(join(project, ".git"), join(project, ".git-moved"));
-    reviewerStop("Verdict: pass");
-    const away = stop(false);
+    await reviewerStop("Verdict: pass");
+    const away = await stop(false);
     const servedAway = state().modules.calc;
     renameSync(join(project, ".git-moved"), join(project, ".git"));
-    const back = stop(false);
+    const back = await stop(false);
     expect({
       "served while gone": servedAway,
       "asks for a commit": [
@@ -669,16 +658,16 @@ describe("Stop in an auto drive", () => {
     });
   });
 
-  it("closes the reviewed module at the stop after the agent commits, and says so", () => {
-    signed();
+  it("closes the reviewed module at the stop after the agent commits, and says so", async () => {
+    await signed();
     planPassed();
     gitRepo();
     seed({ tdd: calcGreen });
     put("src-new.txt", "x");
-    reviewerStop("Verdict: pass");
+    await reviewerStop("Verdict: pass");
     git("add", "-A");
     git("commit", "-q", "-m", "calc");
-    const r = stop(false);
+    const r = await stop(false);
     expect([
       typeof state().modules.calc?.served_at,
       r.code,
@@ -686,18 +675,18 @@ describe("Stop in an auto drive", () => {
     ]).toEqual(["string", 2, true]);
   });
 
-  it("drops the module's passing review once an edited plan passes its review again", () => {
-    signed();
+  it("drops the module's passing review once an edited plan passes its review again", async () => {
+    await signed();
     planPassed();
     gitRepo();
     seed({ tdd: calcGreen });
     put("src-new.txt", "x"); // untracked, so the passing review cannot close calc yet
-    reviewerStop("Verdict: pass");
+    await reviewerStop("Verdict: pass");
     writePlan(CALC_AND_PRODUCT.replace("AC-1: adds two numbers", "AC-1: adds two integers"));
-    reviewerStop("Verdict: pass"); // the edited plan passes
+    await reviewerStop("Verdict: pass"); // the edited plan passes
     git("add", "-A");
     git("commit", "-q", "-m", "calc");
-    const r = stop(false);
+    const r = await stop(false);
     expect([
       state().modules.calc,
       r.code,
@@ -705,33 +694,37 @@ describe("Stop in an auto drive", () => {
     ]).toEqual([undefined, 2, true]);
   });
 
-  it("lets the agent stop once the product module is served last", () => {
-    signed();
+  it("lets the agent stop once the product module is served last", async () => {
+    await signed();
     planPassed();
     gitRepo();
     seed({ tdd: { ...calcGreen, passed_acs: ["AC-1", "AC-9"], passed_e2e_acs: ["AC-9"] } });
-    reviewerStop("Verdict: pass"); // serves calc
-    reviewerStop("Verdict: pass"); // serves product, the last module
-    const last = stop(false).code;
+    await reviewerStop("Verdict: pass"); // serves calc
+    await reviewerStop("Verdict: pass"); // serves product, the last module
+    const last = (await stop(false)).code;
     const { modules } = state();
     // calc served again after product: product's review of the whole has to run again
     seed({ modules: { ...modules, calc: { ...modules.calc, served_at: "9999-12-31T00:00:00Z" } } });
-    expect([Object.keys(modules), last, stop(false).code]).toEqual([["calc", "product"], 0, 2]);
+    expect([Object.keys(modules), last, (await stop(false)).code]).toEqual([
+      ["calc", "product"],
+      0,
+      2,
+    ]);
   });
 });
 
 describe("menu, peek and session start in an auto drive", () => {
-  it("shows where an auto drive stands and its one next step", () => {
+  it("shows where an auto drive stands and its one next step", async () => {
     put(".verid/research.md", "# Research\n");
     put(".verid/design.md", "# Design\n");
-    const unsigned = cli("menu").stdout.split("\n");
-    signed();
-    const pending = cli("menu").stdout.split("\n");
+    const unsigned = (await cli("menu")).stdout.split("\n");
+    await signed();
+    const pending = (await cli("menu")).stdout.split("\n");
     planPassed();
     seed({ auto: { coder_rounds: { "AC-1": 2 }, module_reviews: 1 } });
-    const open = cli("menu").stdout.split("\n");
+    const open = (await cli("menu")).stdout.split("\n");
     appendFileSync(join(project, ".verid", "design.md"), "\nmore");
-    const stuck = cli("menu").stdout;
+    const stuck = (await cli("menu")).stdout;
     expect({
       unsigned: unsigned[0],
       pending: pending.slice(0, 2),
@@ -755,16 +748,16 @@ describe("menu, peek and session start in an auto drive", () => {
     });
   });
 
-  it("gives peek and /verid:menu the same next step as the menu", () => {
-    signed();
+  it("gives peek and /verid:menu the same next step as the menu", async () => {
+    await signed();
     planPassed();
     const step = enMessage("menu.cook", {
       module: "calc",
       tester: "verid:tester",
       coder: "verid:coder",
     });
-    const peek = cli("peek").stdout;
-    const prompted = hook(prompt("/verid:menu")).stderr;
+    const peek = (await cli("peek")).stdout;
+    const prompted = (await hook(prompt("/verid:menu"))).stderr;
     expect({
       peek: peek.includes(step),
       "/verid:menu":
@@ -772,9 +765,9 @@ describe("menu, peek and session start in an auto drive", () => {
     }).toEqual({ peek: true, "/verid:menu": true });
   });
 
-  it("tells the agent the auto rules at session start", () => {
-    signed();
-    const out = hook(fixture("session-start")).stdout;
+  it("tells the agent the auto rules at session start", async () => {
+    await signed();
+    const out = (await hook(fixture("session-start"))).stdout;
     expect(out.includes(enMessage("drive.auto", {}))).toBe(true);
   });
 });

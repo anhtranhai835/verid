@@ -34,11 +34,12 @@
     "README.vi.md"
   ],
   "scripts": {
-    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && esbuild hook=src/hook.ts cli=src/cli/main.ts --bundle --splitting --platform=node --format=esm --target=node22 --outdir=dist --log-level=warning \"--banner:js=import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);\"",
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && esbuild hook=src/hook-entry.ts cli=src/cli/entry.ts --bundle --splitting --platform=node --format=esm --target=node22 --outdir=dist --log-level=warning \"--banner:js=import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);\"",
     "typecheck": "tsc --noEmit",
-    "test": "npm run build && vitest run",
+    "test": "npm run build && vitest run --exclude test/e2e/installers.e2e.test.ts",
+    "test:full": "npm run build && vitest run",
     "format": "prettier --write .",
-    "prepublishOnly": "npm run typecheck && npm test"
+    "prepublishOnly": "npm run typecheck && npm run test:full"
   },
   "devDependencies": {
     "@types/node": "^22.20.5",

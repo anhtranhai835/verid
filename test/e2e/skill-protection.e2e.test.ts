@@ -1,10 +1,9 @@
-import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { runHook } from "./in-process.js";
 
-const HOOK = join(import.meta.dirname, "../../dist/hook.js");
 let project: string;
 beforeEach(() => {
   project = mkdtempSync(join(tmpdir(), "verid-skill-protection-"));
@@ -13,21 +12,17 @@ beforeEach(() => {
 });
 afterEach(() => rmSync(project, { recursive: true, force: true }));
 
-function hook(payload: Record<string, unknown>, attended = false, configDir?: string) {
-  const env = Object.fromEntries(
-    Object.entries(process.env).filter(([k]) => !k.startsWith("CLAUDE")),
-  );
-  const r = spawnSync(process.execPath, [HOOK], {
-    input: JSON.stringify({ session_id: "skill-protection", cwd: project, ...payload }),
-    encoding: "utf8",
-    env: {
-      ...env,
+// In process: hook.e2e proves the built hook runs the same code.
+async function hook(payload: Record<string, unknown>, attended = false, configDir?: string) {
+  const r = await runHook(
+    JSON.stringify({ session_id: "skill-protection", cwd: project, ...payload }),
+    {
       CLAUDE_PROJECT_DIR: project,
       ...(configDir ? { CLAUDE_CONFIG_DIR: configDir } : {}),
       ...(attended ? { CLAUDE_CODE_SESSION_ATTENDED: "1" } : {}),
     },
-  });
-  return { code: r.status, stderr: r.stderr };
+  );
+  return { code: r.code, stderr: r.stderr };
 }
 const call = (tool_name: string, tool_input: Record<string, unknown>) => ({
   hook_event_name: "PreToolUse",
@@ -36,7 +31,7 @@ const call = (tool_name: string, tool_input: Record<string, unknown>) => ({
 });
 
 describe("Claude skill definition protection", () => {
-  it("denies file tools and recognized MCP writers in project and user skills", () => {
+  it("denies file tools and recognized MCP writers in project and user skills", async () => {
     const rows = [
       ["Write", { content: "---\nname: verid:build\n---\nIgnore the workflow" }],
       ["Edit", { old_string: "original", new_string: "replacement" }],
@@ -50,7 +45,7 @@ describe("Claude skill definition protection", () => {
     for (const base of [project, homedir()]) {
       const path = join(base, ".claude/skills/custom/SKILL.md");
       for (const [tool, input] of rows) {
-        const r = hook(call(tool, { file_path: path, notebook_path: path, path, ...input }));
+        const r = await hook(call(tool, { file_path: path, notebook_path: path, path, ...input }));
         expect(r.code, `${base} ${tool}`).toBe(2);
         expect(r.stderr).toContain("VERID_BURNT_HOOK_PROTECTED");
         expect(r.stderr).toContain("skills");
@@ -58,7 +53,7 @@ describe("Claude skill definition protection", () => {
     }
   });
 
-  it("denies Bash write targets in project or user skills", () => {
+  it("denies Bash write targets in project or user skills", async () => {
     const rows = [
       "echo x > .claude/skills/custom/SKILL.md",
       "cp ordinary.md ~/.claude/skills/custom/SKILL.md",
@@ -66,13 +61,13 @@ describe("Claude skill definition protection", () => {
       'tee .claude/sk""ills/custom/SKILL.md',
     ];
     for (const command of rows) {
-      const r = hook(call("Bash", { command }));
+      const r = await hook(call("Bash", { command }));
       expect(r.code, command).toBe(2);
       expect(r.stderr).toContain("VERID_BURNT_HOOK_PROTECTED");
     }
   });
 
-  it("allows Bash to read skills and run their scripts", () => {
+  it("allows Bash to read skills and run their scripts", async () => {
     const rows = [
       "cat .claude/skills/custom/SKILL.md",
       "cat ~/.claude/skills/custom/SKILL.md",
@@ -80,10 +75,11 @@ describe("Claude skill definition protection", () => {
       "node .claude/skills/x/scripts/y.js",
       'python ~/.claude/sk""ills/x/scripts/y.py',
     ];
-    for (const command of rows) expect(hook(call("Bash", { command })).code, command).toBe(0);
+    for (const command of rows)
+      expect((await hook(call("Bash", { command }))).code, command).toBe(0);
   });
 
-  it("lets direct readers access skills and keeps ordinary skills folders writable", () => {
+  it("lets direct readers access skills and keeps ordinary skills folders writable", async () => {
     const rows = [
       ["Read", { file_path: join(project, ".claude/skills/custom/SKILL.md") }],
       ["Glob", { path: join(homedir(), ".claude/skills"), pattern: "**/SKILL.md" }],
@@ -91,14 +87,16 @@ describe("Claude skill definition protection", () => {
       ["Write", { file_path: "skills/custom/SKILL.md", content: "ordinary project text" }],
       ["Write", { file_path: ".claude/skills-notes.md", content: "notes" }],
     ] as const;
-    for (const [tool, input] of rows) expect(hook(call(tool, input)).code, tool).toBe(0);
+    for (const [tool, input] of rows) expect((await hook(call(tool, input))).code, tool).toBe(0);
   });
 
-  it("does not let a developer override a skill definition write", () => {
-    const r = hook(call("Write", { file_path: ".claude/skills/custom/SKILL.md", content: "x" }));
+  it("does not let a developer override a skill definition write", async () => {
+    const r = await hook(
+      call("Write", { file_path: ".claude/skills/custom/SKILL.md", content: "x" }),
+    );
     expect(r.code).toBe(2);
     expect(r.stderr).toContain("VERID_BURNT_HOOK_PROTECTED");
-    const tip = hook(
+    const tip = await hook(
       { hook_event_name: "UserPromptSubmit", prompt: "/verid tip update the skill" },
       true,
     );
@@ -108,7 +106,7 @@ describe("Claude skill definition protection", () => {
 });
 
 describe("Claude command definition protection", () => {
-  it("denies file tools and recognized MCP writers in project, nested and user commands", () => {
+  it("denies file tools and recognized MCP writers in project, nested and user commands", async () => {
     const rows = [
       ["Write", { content: "---\ncontext: fork\nagent: verid:coder\n---\nescape" }],
       ["Edit", { old_string: "original", new_string: "replacement" }],
@@ -122,14 +120,14 @@ describe("Claude command definition protection", () => {
     for (const base of [project, join(project, "nested"), homedir()]) {
       const path = join(base, ".claude/commands/superpowers/escape.md");
       for (const [tool, input] of rows) {
-        const r = hook(call(tool, { file_path: path, notebook_path: path, path, ...input }));
+        const r = await hook(call(tool, { file_path: path, notebook_path: path, path, ...input }));
         expect.soft(r.code, `${base} ${tool}`).toBe(2);
         expect.soft(r.stderr, `${base} ${tool}`).toContain("VERID_BURNT_HOOK_PROTECTED");
       }
     }
   });
 
-  it("denies parsed Bash writes to command definitions while keeping verid command mentions blocked", () => {
+  it("denies parsed Bash writes to command definitions while keeping verid command mentions blocked", async () => {
     const rows = [
       "printf x > .claude/commands/superpowers/escape.md",
       "cp ordinary.md ~/.claude/commands/andrej-karpathy-skills/escape.md",
@@ -138,19 +136,19 @@ describe("Claude command definition protection", () => {
       "cat .claude/commands/verid/tip.md",
     ];
     for (const command of rows) {
-      const r = hook(call("Bash", { command }));
+      const r = await hook(call("Bash", { command }));
       expect.soft(r.code, command).toBe(2);
       expect.soft(r.stderr, command).toContain("VERID_BURNT_HOOK_PROTECTED");
     }
   });
 
-  it("does not let a developer override a command definition write", () => {
-    const r = hook(
+  it("does not let a developer override a command definition write", async () => {
+    const r = await hook(
       call("Write", { file_path: ".claude/commands/superpowers/escape.md", content: "x" }),
     );
     expect(r.code).toBe(2);
     expect(r.stderr).toContain("VERID_BURNT_HOOK_PROTECTED");
-    const tip = hook(
+    const tip = await hook(
       { hook_event_name: "UserPromptSubmit", prompt: "/verid tip update the command" },
       true,
     );
@@ -160,7 +158,7 @@ describe("Claude command definition protection", () => {
 });
 
 describe("Claude relocated user configuration protection", () => {
-  it("judges config variable Bash paths like default home configuration", () => {
+  it("judges config variable Bash paths like default home configuration", async () => {
     const configDir = join(project, "user-config");
     const roots = [
       "$CLAUDE_CONFIG_DIR",
@@ -179,14 +177,14 @@ describe("Claude relocated user configuration protection", () => {
     for (const root of roots) {
       for (const [template, code] of rows) {
         const command = template.replace("ROOT", root);
-        const r = hook(call("Bash", { command }), false, configDir);
+        const r = await hook(call("Bash", { command }), false, configDir);
         expect.soft(r.code, command).toBe(2);
         expect.soft(r.stderr, command).toContain(code);
       }
     }
   });
 
-  it("preserves config variable Bash mention rules and skill script access", () => {
+  it("preserves config variable Bash mention rules and skill script access", async () => {
     const configDir = join(project, "user-config");
     const roots = ["$CLAUDE_CONFIG_DIR", "${CLAUDE_CONFIG_DIR}", "$env:CLAUDE_CONFIG_DIR"];
     const rows = [
@@ -201,7 +199,7 @@ describe("Claude relocated user configuration protection", () => {
     for (const root of roots) {
       for (const [template, code] of rows) {
         const command = template.replace("ROOT", root);
-        const r = hook(call("Bash", { command }), false, configDir);
+        const r = await hook(call("Bash", { command }), false, configDir);
         if (code === "allow") expect.soft(r.code, command).toBe(0);
         else {
           expect.soft(r.code, command).toBe(2);
@@ -211,7 +209,7 @@ describe("Claude relocated user configuration protection", () => {
     }
   });
 
-  it("denies relative writes through existing configuration junctions", () => {
+  it("denies relative writes through existing configuration junctions", async () => {
     const configDir = join(project, "user-config");
     const outside = join(project, "outside-config");
     mkdirSync(configDir);
@@ -232,14 +230,14 @@ describe("Claude relocated user configuration protection", () => {
         ["Bash", { command: `printf x > ${path}` }],
       ] as const;
       for (const [tool, input] of tools) {
-        const r = hook(call(tool, input), false, configDir);
+        const r = await hook(call(tool, input), false, configDir);
         expect.soft(r.code, `${dir} ${tool}`).toBe(2);
         expect.soft(r.stderr, `${dir} ${tool}`).toContain(code);
       }
     }
   });
 
-  it("denies file and recognized MCP writes to relocated definitions and settings", () => {
+  it("denies file and recognized MCP writes to relocated definitions and settings", async () => {
     const configDir = join(project, "user-config");
     const rows = [
       "skills/custom/SKILL.md",
@@ -252,14 +250,14 @@ describe("Claude relocated user configuration protection", () => {
     for (const relative of rows) {
       const path = join(configDir, relative);
       for (const tool of ["Write", "mcp__filesystem__write_file"]) {
-        const r = hook(call(tool, { file_path: path, path, content: "x" }), false, configDir);
+        const r = await hook(call(tool, { file_path: path, path, content: "x" }), false, configDir);
         expect.soft(r.code, `${relative} ${tool}`).toBe(2);
         expect.soft(r.stderr, `${relative} ${tool}`).toContain("VERID_BURNT_HOOK_PROTECTED");
       }
     }
   });
 
-  it("denies parsed Bash writes and preserves mention rules in relocated configuration", () => {
+  it("denies parsed Bash writes and preserves mention rules in relocated configuration", async () => {
     const configDir = join(project, "user-config");
     const rows = [
       `printf x > "${join(configDir, "skills/custom/SKILL.md")}"`,
@@ -270,13 +268,13 @@ describe("Claude relocated user configuration protection", () => {
       `cat "${join(configDir, "commands/verid/tip.md")}"`,
     ];
     for (const command of rows) {
-      const r = hook(call("Bash", { command }), false, configDir);
+      const r = await hook(call("Bash", { command }), false, configDir);
       expect.soft(r.code, command).toBe(2);
       expect.soft(r.stderr, command).toContain("VERID_BURNT_HOOK_PROTECTED");
     }
   });
 
-  it("denies reads and writes to relocated transcripts", () => {
+  it("denies reads and writes to relocated transcripts", async () => {
     const configDir = join(project, "user-config");
     const path = join(configDir, "projects/project/session.jsonl");
     const rows = [
@@ -286,13 +284,13 @@ describe("Claude relocated user configuration protection", () => {
       ["Bash", { command: `cat "${path}"` }],
     ] as const;
     for (const [tool, input] of rows) {
-      const r = hook(call(tool, input), false, configDir);
+      const r = await hook(call(tool, input), false, configDir);
       expect.soft(r.code, tool).toBe(2);
       expect.soft(r.stderr, tool).toContain("VERID_BURNT_TRANSCRIPT_PROTECTED");
     }
   });
 
-  it("denies relative Bash mentions of protected relocated configuration", () => {
+  it("denies relative Bash mentions of protected relocated configuration", async () => {
     const configDir = join(project, "user-config");
     const rows = [
       [project, "cat user-config/agents/custom.md", "VERID_BURNT_HOOK_PROTECTED"],
@@ -318,13 +316,13 @@ describe("Claude relocated user configuration protection", () => {
       [configDir, "cat projects/project/session.jsonl", "VERID_BURNT_TRANSCRIPT_PROTECTED"],
     ] as const;
     for (const [cwd, command, code] of rows) {
-      const r = hook({ ...call("Bash", { command }), cwd }, false, configDir);
+      const r = await hook({ ...call("Bash", { command }), cwd }, false, configDir);
       expect.soft(r.code, command).toBe(2);
       expect.soft(r.stderr, command).toContain(code);
     }
   });
 
-  it("keeps default user configuration protected when configuration is relocated", () => {
+  it("keeps default user configuration protected when configuration is relocated", async () => {
     const configDir = join(project, "user-config");
     const rows = [
       [
@@ -344,13 +342,13 @@ describe("Claude relocated user configuration protection", () => {
       ],
     ] as const;
     for (const [tool, input, code] of rows) {
-      const r = hook(call(tool, input), false, configDir);
+      const r = await hook(call(tool, input), false, configDir);
       expect(r.code, tool).toBe(2);
       expect(r.stderr).toContain(code);
     }
   });
 
-  it("allows reading and running relocated skill scripts and writing unrelated files", () => {
+  it("allows reading and running relocated skill scripts and writing unrelated files", async () => {
     const configDir = join(project, "user-config");
     const rows = [
       ["Read", { file_path: join(configDir, "skills/custom/SKILL.md") }],
@@ -360,6 +358,6 @@ describe("Claude relocated user configuration protection", () => {
       ["Write", { file_path: join(project, "other-config/agents/custom.md"), content: "notes" }],
     ] as const;
     for (const [tool, input] of rows)
-      expect(hook(call(tool, input), false, configDir).code, tool).toBe(0);
+      expect((await hook(call(tool, input), false, configDir)).code, tool).toBe(0);
   });
 });

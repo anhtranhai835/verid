@@ -16,10 +16,10 @@ import { join, resolve } from "node:path";
 import { afterEach, beforeEach, expect, it } from "vitest";
 import { verifyAuditChain } from "../../src/adapters/audit-log.js";
 import { inputHash } from "../../src/adapters/claude-code.js";
+import { runCli, runHook } from "./in-process.js";
 
 const ROOT = resolve(import.meta.dirname, "../..");
 const CLI = join(ROOT, "dist/cli.js");
-const HOOK = join(ROOT, "dist/hook.js");
 const RUNNER = join(import.meta.dirname, "fake-runner.mjs");
 let project: string;
 let fixture: string;
@@ -40,25 +40,24 @@ const put = (path: string, text: string) => {
   writeFileSync(join(project, path), text);
 };
 const json = (path: string) => JSON.parse(readFileSync(join(project, path), "utf8"));
-const cli = (args: string[], extra: NodeJS.ProcessEnv = {}) => {
-  const r = spawnSync(process.execPath, [CLI, ...args], {
-    cwd: project,
-    env: env(extra),
-    encoding: "utf8",
-  });
-  return { code: r.status, stdout: r.stdout, stderr: r.stderr };
-};
+// In process; the spawned `plugin add` below and hook.e2e prove the built CLI and hook run this code.
+const inProcessEnv = (extra: NodeJS.ProcessEnv) => ({
+  GIT_CONFIG_NOSYSTEM: "1",
+  GIT_CONFIG_GLOBAL: join(project, "gitconfig"),
+  XDG_CONFIG_HOME: project,
+  CLAUDE_PROJECT_DIR: project,
+  ...extra,
+});
+const cli = (args: string[], extra: NodeJS.ProcessEnv = {}) =>
+  runCli(args, project, inProcessEnv(extra));
 const hook = (
   tool: string,
   input: Record<string, unknown>,
   event = "PreToolUse",
   extra: NodeJS.ProcessEnv = {},
-) => {
-  const r = spawnSync(process.execPath, [HOOK], {
-    cwd: project,
-    env: env(extra),
-    encoding: "utf8",
-    input: JSON.stringify({
+) =>
+  runHook(
+    JSON.stringify({
       hook_event_name: event,
       cwd: project,
       session_id: "plugin-session",
@@ -66,9 +65,8 @@ const hook = (
       tool_input: input,
       ...input,
     }),
-  });
-  return { code: r.status, stdout: r.stdout, stderr: r.stderr };
-};
+    inProcessEnv(extra),
+  );
 const audit = (): Record<string, any>[] =>
   readFileSync(join(project, ".verid/.state/audit.jsonl"), "utf8")
     .trim()
@@ -108,8 +106,8 @@ beforeEach(() => {
 });
 afterEach(() => rmSync(project, { recursive: true, force: true }));
 
-it("adds a local copy, lists declarations, checks tools and removes code while preserving data", () => {
-  const added = cli(["plugin", "add", "./fixture", "--yes"]);
+it("adds a local copy, lists declarations, checks tools and removes code while preserving data", async () => {
+  const added = await cli(["plugin", "add", "./fixture", "--yes"]);
   expect(added.code, added.stderr).toBe(0);
   expect(added.stdout).toContain("board 1.0.0");
   expect(added.stdout).toContain("module-opened");
@@ -118,35 +116,35 @@ it("adds a local copy, lists declarations, checks tools and removes code while p
     { name: "board", source: "file:./fixture", resolved: "1.0.0" },
   ]);
   expect(readFileSync(join(project, ".verid/.gitignore"), "utf8")).toContain("plugins/\n");
-  expect(cli(["plugin", "list"]).stdout).toContain("board 1.0.0");
-  expect(cli(["plugin", "doctor"]).code).toBe(0);
-  expect(cli(["plugin", "run", "module-opened"]).code).toBe(0);
-  expect(cli(["plugin", "remove", "board"]).code).toBe(0);
+  expect((await cli(["plugin", "list"])).stdout).toContain("board 1.0.0");
+  expect((await cli(["plugin", "doctor"])).code).toBe(0);
+  expect((await cli(["plugin", "run", "module-opened"])).code).toBe(0);
+  expect((await cli(["plugin", "remove", "board"])).code).toBe(0);
   expect(json(".verid/plugins.json")).toEqual([]);
   expect(existsSync(join(project, ".verid/plugins/board"))).toBe(false);
   expect(existsSync(join(project, ".verid/plugin-data/board/events.jsonl"))).toBe(true);
-  expect(cli(["plugin", "list"]).stdout).not.toContain("board 1.0.0");
+  expect((await cli(["plugin", "list"])).stdout).not.toContain("board 1.0.0");
 });
 
-it("requires explicit consent for every source before registering or executing it", () => {
-  const r = cli(["plugin", "add", "file:./fixture"]);
+it("requires explicit consent for every source before registering or executing it", async () => {
+  const r = await cli(["plugin", "add", "file:./fixture"]);
   expect(r.code).toBe(2);
   expect(r.stderr).toContain("VERID_BURNT_PLUGIN_CONFIRM");
   expect(existsSync(join(project, ".verid/plugins.json"))).toBe(false);
   expect(existsSync(join(project, ".verid/plugin-data/board/events.jsonl"))).toBe(false);
 });
 
-it("refuses every plugin subcommand inside Claude Code before parsing or touching sources", () => {
+it("refuses every plugin subcommand inside Claude Code before parsing or touching sources", async () => {
   const rows = [["add", "x"], ["remove", "board"], ["list"], ["doctor"], ["run", "taste"], ["bad"]];
   for (const args of rows) {
-    const r = cli(["plugin", ...args], { CLAUDECODE: "1" });
+    const r = await cli(["plugin", ...args], { CLAUDECODE: "1" });
     expect(r.code).toBe(2);
     expect(r.stderr).toContain("VERID_BURNT_PLUGIN_IN_AGENT");
   }
 });
 
-it("refuses missing required tools, unsafe scripts and duplicate names without replacing installed code", () => {
-  expect(cli(["plugin", "add", "file:./fixture", "--yes"]).code).toBe(0);
+it("refuses missing required tools, unsafe scripts and duplicate names without replacing installed code", async () => {
+  expect((await cli(["plugin", "add", "file:./fixture", "--yes"])).code).toBe(0);
   const installed = readFileSync(join(project, ".verid/plugins/board/record.mjs"), "utf8");
   const rows = [
     [{ ...pluginManifest(), requires: ["verid-no-such-tool-123"] }, "VERID_BURNT_PLUGIN_REQUIRES"],
@@ -155,25 +153,25 @@ it("refuses missing required tools, unsafe scripts and duplicate names without r
   ] as const;
   for (const [manifest, code] of rows) {
     writeFileSync(join(fixture, "verid-plugin.json"), JSON.stringify(manifest));
-    const r = cli(["plugin", "add", "./fixture", "--yes"]);
+    const r = await cli(["plugin", "add", "./fixture", "--yes"]);
     expect(r.code).toBe(2);
     expect(r.stderr).toContain(code);
     expect(readFileSync(join(project, ".verid/plugins/board/record.mjs"), "utf8")).toBe(installed);
   }
 });
 
-it("restores missing pinned local plugins through cook and upgrade, and dry-run writes nothing", () => {
+it("restores missing pinned local plugins through cook and upgrade, and dry-run writes nothing", async () => {
   for (const command of ["cook", "upgrade"]) {
     put(
       ".verid/plugins.json",
       JSON.stringify([{ name: "board", source: "file:./fixture", resolved: "1.0.0" }]),
     );
     rmSync(join(project, ".verid/plugins"), { recursive: true, force: true });
-    const preview = cli([command, "--dry-run"]);
+    const preview = await cli([command, "--dry-run"]);
     expect(preview.code, preview.stderr).toBe(0);
     expect(preview.stdout).toContain("board");
     expect(existsSync(join(project, ".verid/plugins/board"))).toBe(false);
-    const restored = cli([command, "--yes"]);
+    const restored = await cli([command, "--yes"]);
     expect(restored.code, restored.stderr).toBe(0);
     expect(existsSync(join(project, ".verid/plugins/board/record.mjs"))).toBe(true);
     expect(json(".verid/plugins.json")).toEqual([
@@ -182,12 +180,12 @@ it("restores missing pinned local plugins through cook and upgrade, and dry-run 
   }
 });
 
-it("does not restore plugins without consent, or accept a changed local version", () => {
+it("does not restore plugins without consent, or accept a changed local version", async () => {
   put(
     ".verid/plugins.json",
     JSON.stringify([{ name: "board", source: "file:./fixture", resolved: "1.0.0" }]),
   );
-  const skipped = cli(["cook"]);
+  const skipped = await cli(["cook"]);
   expect(skipped.code).toBe(1);
   expect(skipped.stderr).toContain("VERID_BURNT_PLUGIN_CONFIRM");
   expect(existsSync(join(project, ".verid/plugins/board"))).toBe(false);
@@ -195,15 +193,15 @@ it("does not restore plugins without consent, or accept a changed local version"
     join(fixture, "verid-plugin.json"),
     JSON.stringify({ ...pluginManifest(), version: "2.0.0" }),
   );
-  const mismatch = cli(["cook", "--yes"]);
+  const mismatch = await cli(["cook", "--yes"]);
   expect(mismatch.code).toBe(1);
   expect(mismatch.stderr).toContain("VERID_BURNT_PLUGIN_INVALID");
 });
 
-it("delivers sample JSON and an absolute data environment without accepting a plugin decision", () => {
-  expect(cli(["plugin", "add", "./fixture", "--yes"]).code).toBe(0);
+it("delivers sample JSON and an absolute data environment without accepting a plugin decision", async () => {
+  expect((await cli(["plugin", "add", "./fixture", "--yes"])).code).toBe(0);
   const rows = ["module-opened", "module-served", "taste", "drive-stuck", "drive-done"];
-  for (const event of rows) expect(cli(["plugin", "run", event]).code).toBe(0);
+  for (const event of rows) expect((await cli(["plugin", "run", event])).code).toBe(0);
   expect(events().map((e) => [e.payload.event, e.payload.sample])).toEqual([
     ["module-opened", true],
     ["module-served", true],
@@ -214,10 +212,10 @@ it("delivers sample JSON and an absolute data environment without accepting a pl
   expect(events()[0]?.data).toBe(join(project, ".verid/plugin-data/board"));
   expect(events()[0]?.cwd).toBe(join(project, ".verid/plugins/board"));
   expect(json(".verid/.state/state.json").tdd).toBeUndefined();
-  expect(cli(["plugin", "run", "bogus"]).code).toBe(2);
+  expect((await cli(["plugin", "run", "bogus"])).code).toBe(2);
 });
 
-it("records failure and crash as warnings while manual module decisions stay successful", () => {
+it("records failure and crash as warnings while manual module decisions stay successful", async () => {
   const rows = [
     ["process.exit(7)", "exit"],
     ["throw new Error('crash')", "exit"],
@@ -226,8 +224,8 @@ it("records failure and crash as warnings while manual module decisions stay suc
   put(".verid/plan.md", "## Module: calc\n- AC-1: sums\n");
   for (const [script, reason] of rows) {
     writeFileSync(join(fixture, "record.mjs"), script!);
-    expect(cli(["plugin", "add", "./fixture", "--yes"]).code).toBe(0);
-    const ordered = cli(["order", "calc"]);
+    expect((await cli(["plugin", "add", "./fixture", "--yes"])).code).toBe(0);
+    const ordered = await cli(["order", "calc"]);
     expect(ordered.code, ordered.stderr).toBe(0);
     expect(ordered.stderr).toContain("VERID_BURNT_PLUGIN_EVENT");
     expect(json(".verid/.state/state.json").modules.calc.served_at).toBe(null);
@@ -236,12 +234,12 @@ it("records failure and crash as warnings while manual module decisions stay suc
         .filter((e) => e.event === "plugin_failed")
         .at(-1)?.reason,
     ).toBe(reason);
-    expect(cli(["plugin", "remove", "board"]).code).toBe(0);
+    expect((await cli(["plugin", "remove", "board"])).code).toBe(0);
   }
   expect(verifyAuditChain(join(project, ".verid/.state/audit.jsonl")).ok).toBe(true);
 });
 
-it("protects plugin files and data through the real hook and refuses /verid tip", () => {
+it("protects plugin files and data through the real hook and refuses /verid tip", async () => {
   const rows = [
     ["Write", { file_path: ".verid/plugins.json" }],
     ["Edit", { file_path: ".verid/plugins/board/record.mjs" }],
@@ -254,19 +252,19 @@ it("protects plugin files and data through the real hook and refuses /verid tip"
     ["mcp__filesystem__remove_directory", { path: ".verid" }],
   ] as const;
   for (const [tool, input] of rows) {
-    const r = hook(tool, input);
+    const r = await hook(tool, input);
     expect(r.code, JSON.stringify(input)).toBe(2);
     expect(r.stderr).toContain("VERID_BURNT_PLUGIN_PROTECTED");
-    const tip = hook("", { prompt: "/verid tip update plugin" }, "UserPromptSubmit", {
+    const tip = await hook("", { prompt: "/verid tip update plugin" }, "UserPromptSubmit", {
       CLAUDE_CODE_SESSION_ATTENDED: "1",
     });
     expect(tip.code).toBe(2);
     expect(tip.stderr).toContain("VERID_BURNT_OVERRIDE_FORBIDDEN");
   }
-  expect(hook("Read", { file_path: ".verid/plugins.json" }).code).toBe(0);
+  expect((await hook("Read", { file_path: ".verid/plugins.json" })).code).toBe(0);
 });
 
-it("keeps reviewed developer-command bypass forms out of the real hook's Bash", () => {
+it("keeps reviewed developer-command bypass forms out of the real hook's Bash", async () => {
   const rows = [
     "node cli.js plugin add x",
     'env -i PATH="$PATH" node cli.js plugin add x',
@@ -274,7 +272,7 @@ it("keeps reviewed developer-command bypass forms out of the real hook's Bash", 
     "verid.cmd plugin run x",
   ];
   for (const command of rows) {
-    const r = hook("Bash", { command });
+    const r = await hook("Bash", { command });
     expect(r.code).toBe(2);
     expect(r.stderr).toContain("VERID_BURNT_PLUGIN_PROTECTED");
   }
@@ -282,7 +280,7 @@ it("keeps reviewed developer-command bypass forms out of the real hook's Bash", 
 
 it.skipIf(process.platform !== "win32")(
   "denies NTFS stream aliases for new and existing protected targets through the real hook",
-  () => {
+  async () => {
     const rows = [
       [".verid/plugins.json::$DATA", ".verid/plugins.json", "VERID_BURNT_PLUGIN_PROTECTED"],
       [
@@ -304,7 +302,7 @@ it.skipIf(process.platform !== "win32")(
       for (const [path, plain, code] of rows) {
         if (existing && !existsSync(join(project, plain))) put(plain, "[]");
         for (const tool of ["Write", "mcp__filesystem__write_file"]) {
-          const result = hook(tool, { file_path: path, path });
+          const result = await hook(tool, { file_path: path, path });
           const label = `${tool} ${path} existing=${existing}`;
           expect.soft(result.code, label).toBe(2);
           expect.soft(result.stderr, label).toContain(code);
@@ -314,7 +312,7 @@ it.skipIf(process.platform !== "win32")(
   },
 );
 
-it("denies named plugin Bash aliases through the real hook", () => {
+it("denies named plugin Bash aliases through the real hook", async () => {
   const rows = [
     "cd .verid && cp ../x.json plugins.json",
     "git -C .verid checkout HEAD~1 -- plugins.json",
@@ -325,13 +323,13 @@ it("denies named plugin Bash aliases through the real hook", () => {
     "echo plugin-data-backup",
   ];
   for (const command of rows) {
-    const result = hook("Bash", { command });
+    const result = await hook("Bash", { command });
     expect.soft(result.code, command).toBe(2);
     expect.soft(result.stderr, command).toContain("VERID_BURNT_PLUGIN_PROTECTED");
   }
 });
 
-it("allows workspace git commits and application plugins paths through the real hook", () => {
+it("allows workspace git commits and application plugins paths through the real hook", async () => {
   const rows = [
     "git -C .verid add -A",
     "git -C .verid commit -m x",
@@ -343,12 +341,12 @@ it("allows workspace git commits and application plugins paths through the real 
     "npx vitest run plugins/",
   ];
   for (const command of rows) {
-    const result = hook("Bash", { command });
+    const result = await hook("Bash", { command });
     expect.soft(result.code, `${command}: ${result.stderr}`).toBe(0);
   }
 });
 
-it("denies versioned and scoped developer commands through the real hook", () => {
+it("denies versioned and scoped developer commands through the real hook", async () => {
   const rows = [
     ["env -i PATH=$PATH npx verid@1.1.0 plugin add ./x --yes", "VERID_BURNT_PLUGIN_PROTECTED"],
     ["npx verid@latest plugin run x", "VERID_BURNT_PLUGIN_PROTECTED"],
@@ -372,13 +370,13 @@ it("denies versioned and scoped developer commands through the real hook", () =>
     ['env -i PATH="$PATH" npm exec verid -- upgrade --yes', "VERID_BURNT_BASH_DEVELOPER_ONLY"],
   ] as const;
   for (const [command, code] of rows) {
-    const result = hook("Bash", { command });
+    const result = await hook("Bash", { command });
     expect.soft(result.code, command).toBe(2);
     expect.soft(result.stderr, command).toContain(code);
   }
 });
 
-it("keeps plugin commands denied with an active exact-action Bash developer override", () => {
+it("keeps plugin commands denied with an active exact-action Bash developer override", async () => {
   const rows = [
     "CLAUDECODE= verid plugin add ./evil --yes",
     "env -i PATH=$PATH npx verid@1.1.0 plugin add ./x --yes",
@@ -397,15 +395,15 @@ it("keeps plugin commands denied with an active exact-action Bash developer over
       used: false,
     };
     put(".verid/.state/state.json", JSON.stringify({ schemaVersion: 1, overrides: [override] }));
-    const result = hook("Bash", input);
+    const result = await hook("Bash", input);
     expect.soft(result.code, command).toBe(2);
     expect.soft(result.stderr, command).toContain("VERID_BURNT_PLUGIN_PROTECTED");
     expect.soft(json(".verid/.state/state.json").overrides[0].used, command).toBe(false);
   }
 });
 
-it("rejects installed script links at execution even when the manifest itself is valid", () => {
-  expect(cli(["plugin", "add", "./fixture", "--yes"]).code).toBe(0);
+it("rejects installed script links at execution even when the manifest itself is valid", async () => {
+  expect((await cli(["plugin", "add", "./fixture", "--yes"])).code).toBe(0);
   const outside = join(project, "outside");
   mkdirSync(outside);
   writeFileSync(join(outside, "record.mjs"), "process.exit(0)");
@@ -414,14 +412,14 @@ it("rejects installed script links at execution even when the manifest itself is
     ".verid/plugins/board/verid-plugin.json",
     JSON.stringify(pluginManifest({ taste: "linked/record.mjs" })),
   );
-  const r = cli(["plugin", "run", "taste"]);
+  const r = await cli(["plugin", "run", "taste"]);
   expect(r.code).toBe(0);
   expect(r.stderr).toContain("VERID_BURNT_PLUGIN_EVENT");
   expect(audit().at(-1)?.event).toBe("plugin_failed");
-  expect(cli(["plugin", "doctor"]).code).toBe(1);
+  expect((await cli(["plugin", "doctor"])).code).toBe(1);
 });
 
-it("installs a local bare git source and restores the recorded commit after its branch moves", () => {
+it("installs a local bare git source and restores the recorded commit after its branch moves", async () => {
   const git = (cwd: string, args: string[]) => {
     const r = spawnSync("git", ["-c", "user.name=test", "-c", "user.email=t@t", ...args], {
       cwd,
@@ -437,7 +435,7 @@ it("installs a local bare git source and restores the recorded commit after its 
   const commit = git(fixture, ["rev-parse", "HEAD"]);
   const bare = join(project, "board.git");
   git(project, ["clone", "--bare", "--", fixture, bare]);
-  const added = cli(["plugin", "add", "git:./board.git", "--yes"]);
+  const added = await cli(["plugin", "add", "git:./board.git", "--yes"]);
   expect(added.code, added.stderr).toBe(0);
   expect(json(".verid/plugins.json")[0].resolved).toBe(commit);
   writeFileSync(join(fixture, "record.mjs"), "process.exit(9)");
@@ -448,14 +446,14 @@ it("installs a local bare git source and restores the recorded commit after its 
   git(fixture, ["push", "--", bare, "HEAD:refs/heads/master"]);
   expect(git(bare, ["rev-parse", "HEAD"])).toBe(moved);
   rmSync(join(project, ".verid/plugins/board"), { recursive: true, force: true });
-  const restored = cli(["upgrade", "--yes"]);
+  const restored = await cli(["upgrade", "--yes"]);
   expect(restored.code, restored.stderr).toBe(0);
   expect(json(".verid/plugins.json")[0].resolved).toBe(commit);
   expect(readFileSync(join(project, ".verid/plugins/board/record.mjs"), "utf8")).toBe(recordScript);
   expect(existsSync(join(project, ".verid/plugins/board/.git"))).toBe(false);
 });
 
-const autoProject = () => {
+const autoProject = async () => {
   put(".verid/research.md", "# Research\n");
   put(".verid/design.md", "# Design\n");
   put(
@@ -469,10 +467,10 @@ const autoProject = () => {
       'mode: prep\ndrive: auto\nroles:\n  reviewer: ["verid:reviewer"]\n  tester: ["verid:tester"]\n  coder: ["verid:coder"]',
     ),
   );
-  expect(cli(["order"]).code).toBe(0);
+  expect((await cli(["order"])).code).toBe(0);
 };
-const review = () =>
-  hook(
+const review = async () =>
+  await hook(
     "",
     { agent_id: "r1", agent_type: "verid:reviewer", last_assistant_message: "Verdict: pass" },
     "SubagentStop",
@@ -491,8 +489,8 @@ const tempGit = (cwd: string, args: string[]) => {
   return result.stdout.trim();
 };
 
-it("records plugin approvals in protected state on developer add, remove and restore", () => {
-  expect(cli(["plugin", "add", "./fixture", "--yes"]).code).toBe(0);
+it("records plugin approvals in protected state on developer add, remove and restore", async () => {
+  expect((await cli(["plugin", "add", "./fixture", "--yes"])).code).toBe(0);
   const approved = json(INTEGRITY);
   expect(approved.manifest_sha256).toBe(
     createHash("sha256")
@@ -506,20 +504,20 @@ it("records plugin approvals in protected state on developer add, remove and res
     "mcp__filesystem__read_file",
     "mcp__filesystem__write_file",
   ]) {
-    const result = hook(tool, { file_path: INTEGRITY, path: INTEGRITY });
+    const result = await hook(tool, { file_path: INTEGRITY, path: INTEGRITY });
     expect(result.code, result.stderr).toBe(2);
     expect(result.stderr).toContain("VERID_BURNT_STATE_PROTECTED");
   }
-  expect(cli(["plugin", "remove", "board"]).code).toBe(0);
+  expect((await cli(["plugin", "remove", "board"])).code).toBe(0);
   expect(json(INTEGRITY).plugins).toEqual({});
   expect(json(INTEGRITY).manifest_sha256).not.toBe(approved.manifest_sha256);
-  expect(cli(["plugin", "run", "taste"]).stderr).toBe("");
-  expect(cli(["plugin", "add", "./fixture", "--yes"]).code).toBe(0);
+  expect((await cli(["plugin", "run", "taste"])).stderr).toBe("");
+  expect((await cli(["plugin", "add", "./fixture", "--yes"])).code).toBe(0);
   rmSync(join(project, ".verid/plugins/board"), { recursive: true, force: true });
-  const restored = cli(["cook", "--yes"]);
+  const restored = await cli(["cook", "--yes"]);
   expect(restored.code, restored.stderr).toBe(0);
-  expect(cli(["plugin", "doctor"]).code).toBe(0);
-  expect(cli(["plugin", "run", "taste"]).stderr).toBe("");
+  expect((await cli(["plugin", "doctor"])).code).toBe(0);
+  expect((await cli(["plugin", "run", "taste"])).stderr).toBe("");
   expect(events()).toHaveLength(1);
 });
 
@@ -532,17 +530,17 @@ const resetAutoPluginRow = (state: string) => {
   ])
     rmSync(join(project, file), { force: true });
 };
-const prepareIntegrityChanges = () => {
-  autoProject();
+const prepareIntegrityChanges = async () => {
+  await autoProject();
   writeFileSync(join(fixture, "another.mjs"), recordScript);
   mkdirSync(join(fixture, "support"));
   writeFileSync(join(fixture, "support/helper.json"), "original");
-  expect(cli(["plugin", "add", "./fixture", "--yes"]).code).toBe(0);
+  expect((await cli(["plugin", "add", "./fixture", "--yes"])).code).toBe(0);
   return readFileSync(join(project, ".verid/.state/state.json"), "utf8");
 };
-const checkIntegrityChange = (change: string, state: string) => {
+const checkIntegrityChange = async (change: string, state: string) => {
   resetAutoPluginRow(state);
-  expect(cli(["plugin", "run", "taste"]).stderr).toBe("");
+  expect((await cli(["plugin", "run", "taste"])).stderr).toBe("");
   const registry = readFileSync(join(project, ".verid/plugins.json"), "utf8");
   const before = readFileSync(join(project, INTEGRITY), "utf8");
   switch (change) {
@@ -581,15 +579,15 @@ const checkIntegrityChange = (change: string, state: string) => {
       break;
   }
   for (const event of Object.keys(pluginManifest().events)) {
-    const result = cli(["plugin", "run", event]);
+    const result = await cli(["plugin", "run", event]);
     expect.soft(result.code, result.stderr).toBe(0);
     expect.soft(result.stderr).toContain("VERID_BURNT_PLUGIN_INTEGRITY");
     expect.soft(result.stderr).toContain("verid plugin add");
   }
-  const doctor = cli(["plugin", "doctor"]);
+  const doctor = await cli(["plugin", "doctor"]);
   expect.soft(doctor.code, doctor.stderr).toBe(1);
   expect.soft(doctor.stderr).toContain("VERID_BURNT_PLUGIN_INTEGRITY");
-  const observed = review();
+  const observed = await review();
   expect.soft(observed.code, observed.stderr).toBe(0);
   expect.soft(observed.stderr).toContain("VERID_BURNT_PLUGIN_INTEGRITY");
   expect.soft(events()).toHaveLength(1);
@@ -604,45 +602,45 @@ const checkIntegrityChange = (change: string, state: string) => {
   if (change !== "missing approval" && change !== "corrupt approval")
     expect.soft(readFileSync(join(project, INTEGRITY), "utf8")).toBe(before);
   put(".verid/plugins.json", registry);
-  const preview = cli(["cook", "--dry-run"]);
+  const preview = await cli(["cook", "--dry-run"]);
   expect(preview.code, preview.stderr).toBe(0);
   if (change !== "registry bytes" && change !== "registry source")
     expect(preview.stdout).toContain("board");
-  const restored = cli(["cook", "--yes"]);
+  const restored = await cli(["cook", "--yes"]);
   expect(restored.code, restored.stderr).toBe(0);
-  expect(cli(["plugin", "doctor"]).code).toBe(0);
-  expect(cli(["plugin", "run", "taste"]).stderr).toBe("");
+  expect((await cli(["plugin", "doctor"])).code).toBe(0);
+  expect((await cli(["plugin", "run", "taste"])).stderr).toBe("");
   expect(events()).toHaveLength(2);
   expect(verifyAuditChain(join(project, ".verid/.state/audit.jsonl")).ok).toBe(true);
 };
 
-it("refuses script and nested dependency content changes in CLI and hook events until developer restore", () => {
+it("refuses script and nested dependency content changes in CLI and hook events until developer restore", async () => {
   const rows = ["script content", "nested dependency"] as const;
-  const state = prepareIntegrityChanges();
-  for (const change of rows) checkIntegrityChange(change, state);
+  const state = await prepareIntegrityChanges();
+  for (const change of rows) await checkIntegrityChange(change, state);
 });
 
-it("refuses added, removed and renamed plugin files in CLI and hook events until developer restore", () => {
+it("refuses added, removed and renamed plugin files in CLI and hook events until developer restore", async () => {
   const rows = ["added file", "removed file", "renamed file"] as const;
-  const state = prepareIntegrityChanges();
-  for (const change of rows) checkIntegrityChange(change, state);
+  const state = await prepareIntegrityChanges();
+  for (const change of rows) await checkIntegrityChange(change, state);
 });
 
-it("refuses registry byte and source changes in CLI and hook events until developer restore", () => {
+it("refuses registry byte and source changes in CLI and hook events until developer restore", async () => {
   const rows = ["registry bytes", "registry source"] as const;
-  const state = prepareIntegrityChanges();
-  for (const change of rows) checkIntegrityChange(change, state);
+  const state = await prepareIntegrityChanges();
+  for (const change of rows) await checkIntegrityChange(change, state);
 });
 
-it("refuses missing and corrupt approvals in CLI and hook events until developer restore", () => {
+it("refuses missing and corrupt approvals in CLI and hook events until developer restore", async () => {
   const rows = ["missing approval", "corrupt approval"] as const;
-  const state = prepareIntegrityChanges();
-  for (const change of rows) checkIntegrityChange(change, state);
+  const state = await prepareIntegrityChanges();
+  for (const change of rows) await checkIntegrityChange(change, state);
 });
 
-const prepareTreeReplacement = (kind: "git" | "workspace git" | "copy" | "tar") => {
-  autoProject();
-  expect(cli(["plugin", "add", "./fixture", "--yes"]).code).toBe(0);
+const prepareTreeReplacement = async (kind: "git" | "workspace git" | "copy" | "tar") => {
+  await autoProject();
+  expect((await cli(["plugin", "add", "./fixture", "--yes"])).code).toBe(0);
   const workspace = kind === "workspace git";
   const cwd = workspace ? join(project, ".verid") : project;
   if (kind === "git" || workspace) {
@@ -673,11 +671,11 @@ const prepareTreeReplacement = (kind: "git" | "workspace git" | "copy" | "tar") 
   }
   return readFileSync(join(project, ".verid/.state/state.json"), "utf8");
 };
-const checkTreeReplacement = (command: string, state: string) => {
+const checkTreeReplacement = async (command: string, state: string) => {
   resetAutoPluginRow(state);
   const workspace = command.includes("-C .verid") || command.startsWith("cd .verid");
   const cwd = workspace ? join(project, ".verid") : project;
-  const allowed = hook("Bash", { command });
+  const allowed = await hook("Bash", { command });
   expect(allowed.code, allowed.stderr).toBe(0);
   if (command.startsWith("git") || command.startsWith("cd")) {
     const args = command.startsWith("cd")
@@ -698,9 +696,9 @@ const checkTreeReplacement = (command: string, state: string) => {
   expect(readFileSync(join(project, ".verid/plugins/board/record.mjs"), "utf8")).toBe(
     tamperedScript,
   );
-  const result = cli(["plugin", "run", "taste"]);
+  const result = await cli(["plugin", "run", "taste"]);
   expect.soft(result.stderr).toContain("VERID_BURNT_PLUGIN_INTEGRITY");
-  const observed = review();
+  const observed = await review();
   expect.soft(observed.code, observed.stderr).toBe(0);
   expect.soft(observed.stderr).toContain("VERID_BURNT_PLUGIN_INTEGRITY");
   expect.soft(existsSync(join(project, ".verid/plugin-data/board/events.jsonl"))).toBe(false);
@@ -712,72 +710,72 @@ const checkTreeReplacement = (command: string, state: string) => {
         .at(-1),
     )
     .toMatchObject({ reason: "integrity" });
-  const restored = cli(["upgrade", "--yes"]);
+  const restored = await cli(["upgrade", "--yes"]);
   expect(restored.code, restored.stderr).toBe(0);
-  expect(cli(["plugin", "run", "taste"]).stderr).toBe("");
+  expect((await cli(["plugin", "run", "taste"])).stderr).toBe("");
   expect(events()).toHaveLength(1);
   expect(existsSync(join(project, ".verid/plugin-data/board/tampered-ran"))).toBe(false);
   put(".verid/blocked.md", "developer needed");
-  const stopped = hook("", {}, "Stop");
+  const stopped = await hook("", {}, "Stop");
   expect(stopped.code, stopped.stderr).toBe(0);
   expect(stopped.stderr).not.toContain("VERID_BURNT_PLUGIN_INTEGRITY");
   expect(events().map((entry) => entry.payload.event)).toEqual(["taste", "drive-stuck"]);
   expect(verifyAuditChain(join(project, ".verid/.state/audit.jsonl")).ok).toBe(true);
 };
 
-it("blocks execution after repository restore and checkout replace the approved plugin tree", () => {
+it("blocks execution after repository restore and checkout replace the approved plugin tree", async () => {
   const rows = ["git restore --source=evil -- .verid/.", "git checkout evil -- .verid/."];
-  const state = prepareTreeReplacement("git");
-  for (const command of rows) checkTreeReplacement(command, state);
+  const state = await prepareTreeReplacement("git");
+  for (const command of rows) await checkTreeReplacement(command, state);
 });
 
-it("blocks execution after plugin tree checkout through normalized repository paths", () => {
+it("blocks execution after plugin tree checkout through normalized repository paths", async () => {
   const rows = ["git checkout evil -- ./.verid/./", "git checkout evil -- .verid/x/../plugins"];
-  const state = prepareTreeReplacement("git");
-  for (const command of rows) checkTreeReplacement(command, state);
+  const state = await prepareTreeReplacement("git");
+  for (const command of rows) await checkTreeReplacement(command, state);
 });
 
-it("blocks execution after workspace git reset and checkout replace the approved plugin tree", () => {
+it("blocks execution after workspace git reset and checkout replace the approved plugin tree", async () => {
   const rows = [
     "git -C .verid/. reset --hard evil",
     "git -C .verid/. checkout evil -- .",
     "cd .verid/. && git checkout evil -- .",
   ];
-  const state = prepareTreeReplacement("workspace git");
-  for (const command of rows) checkTreeReplacement(command, state);
+  const state = await prepareTreeReplacement("workspace git");
+  for (const command of rows) await checkTreeReplacement(command, state);
 });
 
-it("blocks execution after archive extraction replaces the approved plugin tree", () => {
+it("blocks execution after archive extraction replaces the approved plugin tree", async () => {
   const rows = ["tar -xf evil.tar -C .verid/.", "unzip -o evil.zip -d .verid/."];
-  const state = prepareTreeReplacement("tar");
-  for (const command of rows) checkTreeReplacement(command, state);
+  const state = await prepareTreeReplacement("tar");
+  for (const command of rows) await checkTreeReplacement(command, state);
 });
 
-it("blocks execution after copying a replacement plugin tree", () => {
+it("blocks execution after copying a replacement plugin tree", async () => {
   const rows = ["rsync -a evil/ .verid/."];
-  const state = prepareTreeReplacement("copy");
-  for (const command of rows) checkTreeReplacement(command, state);
+  const state = await prepareTreeReplacement("copy");
+  for (const command of rows) await checkTreeReplacement(command, state);
 });
 
-it("runs reviewed source again after developer remove and plugin add re-approval", () => {
-  expect(cli(["plugin", "add", "./fixture", "--yes"]).code).toBe(0);
+it("runs reviewed source again after developer remove and plugin add re-approval", async () => {
+  expect((await cli(["plugin", "add", "./fixture", "--yes"])).code).toBe(0);
   const before = json(INTEGRITY).plugins.board.sha256;
   put(".verid/plugins/board/record.mjs", tamperedScript);
-  expect(cli(["plugin", "run", "taste"]).stderr).toContain("VERID_BURNT_PLUGIN_INTEGRITY");
+  expect((await cli(["plugin", "run", "taste"])).stderr).toContain("VERID_BURNT_PLUGIN_INTEGRITY");
   expect(existsSync(join(project, ".verid/plugin-data/board/events.jsonl"))).toBe(false);
   writeFileSync(join(fixture, "record.mjs"), `${recordScript}\n// developer reviewed update`);
-  expect(cli(["plugin", "remove", "board"]).code).toBe(0);
-  expect(cli(["plugin", "add", "./fixture", "--yes"]).code).toBe(0);
+  expect((await cli(["plugin", "remove", "board"])).code).toBe(0);
+  expect((await cli(["plugin", "add", "./fixture", "--yes"])).code).toBe(0);
   expect(json(INTEGRITY).plugins.board.sha256).not.toBe(before);
-  expect(cli(["plugin", "run", "taste"]).stderr).toBe("");
+  expect((await cli(["plugin", "run", "taste"])).stderr).toBe("");
   expect(events()).toHaveLength(1);
   expect(existsSync(join(project, ".verid/plugin-data/board/tampered-ran"))).toBe(false);
 });
 
-it("delivers auto open, close and done from the real hook once per transition", () => {
-  autoProject();
-  expect(cli(["plugin", "add", "./fixture", "--yes"]).code).toBe(0);
-  expect(review().code).toBe(0);
+it("delivers auto open, close and done from the real hook once per transition", async () => {
+  await autoProject();
+  expect((await cli(["plugin", "add", "./fixture", "--yes"])).code).toBe(0);
+  expect((await review()).code).toBe(0);
   expect(events().map((e) => [e.payload.event, e.payload.module ?? null])).toEqual([
     ["module-opened", "calc"],
   ]);
@@ -795,7 +793,7 @@ it("delivers auto open, close and done from the real hook once per transition", 
       passed_e2e_acs: [ac],
     };
     put(".verid/.state/state.json", JSON.stringify(state));
-    expect(review().code, module).toBe(0);
+    expect((await review()).code, module).toBe(0);
   }
   expect(events().map((e) => [e.payload.event, e.payload.module ?? null])).toEqual([
     ["module-opened", "calc"],
@@ -804,26 +802,26 @@ it("delivers auto open, close and done from the real hook once per transition", 
     ["module-served", "product"],
     ["drive-done", null],
   ]);
-  expect(hook("", {}, "Stop").code).toBe(0);
+  expect((await hook("", {}, "Stop")).code).toBe(0);
   expect(events()).toHaveLength(5);
 });
 
-it("times out hook events within a shared budget and keeps the auto Stop denial", () => {
-  autoProject();
+it("times out hook events within a shared budget and keeps the auto Stop denial", async () => {
+  await autoProject();
   writeFileSync(join(fixture, "record.mjs"), "setInterval(() => {}, 1000)");
-  expect(cli(["plugin", "add", "./fixture", "--yes"]).code).toBe(0);
+  expect((await cli(["plugin", "add", "./fixture", "--yes"])).code).toBe(0);
   writeFileSync(
     join(fixture, "verid-plugin.json"),
     JSON.stringify({ ...pluginManifest(), name: "other" }),
   );
-  expect(cli(["plugin", "add", "./fixture", "--yes"]).code).toBe(0);
+  expect((await cli(["plugin", "add", "./fixture", "--yes"])).code).toBe(0);
   const state = json(".verid/.state/state.json");
   state.auto.plan_sha256 = createHash("sha256")
     .update(readFileSync(join(project, ".verid/plan.md")))
     .digest("hex");
   put(".verid/.state/state.json", JSON.stringify(state));
   const started = Date.now();
-  const stopped = hook("", {}, "Stop");
+  const stopped = await hook("", {}, "Stop");
   expect(stopped.code, stopped.stderr).toBe(2);
   expect(stopped.stderr).toContain("VERID_BURNT_PLUGIN_EVENT");
   expect(Date.now() - started).toBeLessThan(4000);
@@ -838,11 +836,11 @@ it("times out hook events within a shared budget and keeps the auto Stop denial"
       .map((e) => e.plugin),
   ).toEqual(["board", "other"]);
   expect(json(".verid/.state/state.json").auto.stop_holds).toBe(0);
-  expect(hook("Write", { file_path: "src/a.ts" }).code).toBe(2);
+  expect((await hook("Write", { file_path: "src/a.ts" })).code).toBe(2);
 });
 
-it("kills plugin descendants on hook timeout while preserving the Stop denial", () => {
-  autoProject();
+it("kills plugin descendants on hook timeout while preserving the Stop denial", async () => {
+  await autoProject();
   const state = json(".verid/.state/state.json");
   state.auto.plan_sha256 = createHash("sha256")
     .update(readFileSync(join(project, ".verid/plan.md")))
@@ -857,10 +855,10 @@ const child = spawn(process.execPath, ['-e', 'require("node:fs").writeFileSync(p
 fs.writeFileSync(path.join(process.env.VERID_PLUGIN_DATA, 'child.pid'), String(child.pid));
 setInterval(() => {}, 1000);`,
   );
-  expect(cli(["plugin", "add", "./fixture", "--yes"]).code).toBe(0);
+  expect((await cli(["plugin", "add", "./fixture", "--yes"])).code).toBe(0);
   let pid: number | undefined;
   try {
-    const result = hook("", {}, "Stop");
+    const result = await hook("", {}, "Stop");
     pid = Number(readFileSync(join(project, ".verid/plugin-data/board/child.pid"), "utf8"));
     expect(Number.isInteger(pid) && pid > 0).toBe(true);
     expect(readFileSync(join(project, ".verid/plugin-data/board/child.ready"), "utf8")).toBe(
@@ -891,34 +889,39 @@ setInterval(() => {}, 1000);`,
   }
 });
 
-it("reports drive-stuck as an observer and ignores malicious plugin stdout", () => {
-  autoProject();
-  expect(cli(["plugin", "add", "./fixture", "--yes"]).code).toBe(0);
+it("reports drive-stuck as an observer and ignores malicious plugin stdout", async () => {
+  await autoProject();
+  expect((await cli(["plugin", "add", "./fixture", "--yes"])).code).toBe(0);
   put(".verid/blocked.md", "need developer");
-  const stopped = hook("", {}, "Stop");
+  const stopped = await hook("", {}, "Stop");
   expect(stopped.code).toBe(0);
   expect(events().map((e) => [e.payload.event, e.payload.reason])).toEqual([
     ["drive-stuck", "blocked"],
   ]);
   expect(
-    hook("Write", { file_path: "test/a.test.ts", agent_id: "t1", agent_type: "verid:tester" })
-      .stderr,
+    (
+      await hook("Write", {
+        file_path: "test/a.test.ts",
+        agent_id: "t1",
+        agent_type: "verid:tester",
+      })
+    ).stderr,
   ).toContain("VERID_BURNT_AUTO_STUCK");
-  expect(hook("", {}, "Stop").code).toBe(0);
+  expect((await hook("", {}, "Stop")).code).toBe(0);
   expect(events()).toHaveLength(1);
 });
 
-it("does not dispatch plugins when verid cannot read its own auto state", () => {
-  autoProject();
-  expect(cli(["plugin", "add", "./fixture", "--yes"]).code).toBe(0);
+it("does not dispatch plugins when verid cannot read its own auto state", async () => {
+  await autoProject();
+  expect((await cli(["plugin", "add", "./fixture", "--yes"])).code).toBe(0);
   put(".verid/.state/state.json", "invalid");
-  const r = hook("Write", { file_path: "src/a.ts" });
+  const r = await hook("Write", { file_path: "src/a.ts" });
   expect(r.code).toBe(2);
   expect(r.stderr).toContain("VERID_BURNT_STATE_CORRUPT");
   expect(existsSync(join(project, ".verid/plugin-data/board/events.jsonl"))).toBe(false);
 });
 
-it("delivers manual module open and serve payloads after the decision is saved", () => {
+it("delivers manual module open and serve payloads after the decision is saved", async () => {
   writeFileSync(join(fixture, "record.mjs"), recordScript + "\nprocess.exit(7)");
   put(".verid/design.md", "# Design\n");
   put(".verid/plan.md", "## Module: calc\n- AC-1: sums\n");
@@ -929,8 +932,8 @@ it("delivers manual module open and serve payloads after the decision is saved",
       'mode: prep\nroles:\n  reviewer: ["verid:reviewer"]',
     ),
   );
-  expect(cli(["plugin", "add", "./fixture", "--yes"]).code).toBe(0);
-  expect(cli(["order", "calc"]).code).toBe(0);
+  expect((await cli(["plugin", "add", "./fixture", "--yes"])).code).toBe(0);
+  expect((await cli(["order", "calc"])).code).toBe(0);
   const state = json(".verid/.state/state.json");
   state.tdd = {
     ...state.tdd,
@@ -940,8 +943,8 @@ it("delivers manual module open and serve payloads after the decision is saved",
     passed_acs: ["AC-1"],
   };
   put(".verid/.state/state.json", JSON.stringify(state));
-  expect(review().code).toBe(0);
-  const served = cli(["serve", "calc"]);
+  expect((await review()).code).toBe(0);
+  const served = await cli(["serve", "calc"]);
   expect(served.code).toBe(0);
   expect(served.stderr).toContain("VERID_BURNT_PLUGIN_EVENT");
   expect(events().map((e) => [e.payload.event, e.payload.module])).toEqual([
@@ -951,16 +954,16 @@ it("delivers manual module open and serve payloads after the decision is saved",
   expect(json(".verid/.state/state.json").modules.calc.served_at).not.toBeNull();
 });
 
-it("delivers taste outcomes and counts without changing passing or failing evidence", () => {
+it("delivers taste outcomes and counts without changing passing or failing evidence", async () => {
   writeFileSync(join(fixture, "record.mjs"), recordScript + "\nprocess.exit(7)");
-  expect(cli(["plugin", "add", "./fixture", "--yes"]).code).toBe(0);
+  expect((await cli(["plugin", "add", "./fixture", "--yes"])).code).toBe(0);
   const rows = [
     [0, "vitest-green.xml", true, { passed: 3, failed: 0, skipped: 1 }, 0],
     [1, "vitest-red-assert.xml", false, { passed: 1, failed: 2, skipped: 1 }, 1],
   ] as const;
   for (const [exit, junit, passed, counts, expected] of rows) {
     put("scenario.json", JSON.stringify({ exit, junit, output: "fixture" }));
-    const r = cli(["taste"]);
+    const r = await cli(["taste"]);
     expect(r.code, r.stderr).toBe(expected);
     expect(r.stderr).toContain("VERID_BURNT_PLUGIN_EVENT");
     expect(events().at(-1)?.payload).toEqual({ event: "taste", passed, counts });
@@ -968,9 +971,9 @@ it("delivers taste outcomes and counts without changing passing or failing evide
   }
 });
 
-it("delivers an auto close on Stop while preserving the hold for the next module", () => {
-  autoProject();
-  expect(cli(["plugin", "add", "./fixture", "--yes"]).code).toBe(0);
+it("delivers an auto close on Stop while preserving the hold for the next module", async () => {
+  await autoProject();
+  expect((await cli(["plugin", "add", "./fixture", "--yes"])).code).toBe(0);
   const state = json(".verid/.state/state.json");
   state.auto.plan_sha256 = createHash("sha256")
     .update(readFileSync(join(project, ".verid/plan.md")))
@@ -991,7 +994,7 @@ it("delivers an auto close on Stop while preserving the hold for the next module
     verdict: "pass",
   };
   put(".verid/.state/state.json", JSON.stringify(state));
-  const r = hook("", {}, "Stop");
+  const r = await hook("", {}, "Stop");
   expect(r.code).toBe(2);
   expect(r.stderr).toContain("product");
   expect(r.stdout).not.toContain("decision");
@@ -1002,12 +1005,12 @@ it("delivers an auto close on Stop while preserving the hold for the next module
   expect(json(".verid/.state/state.json").modules.calc.served_at).not.toBeNull();
 });
 
-it("logs observer setup errors without changing an already computed Stop denial", () => {
-  autoProject();
-  expect(cli(["plugin", "add", "./fixture", "--yes"]).code).toBe(0);
-  expect(review().code).toBe(0);
+it("logs observer setup errors without changing an already computed Stop denial", async () => {
+  await autoProject();
+  expect((await cli(["plugin", "add", "./fixture", "--yes"])).code).toBe(0);
+  expect((await review()).code).toBe(0);
   put(".verid/.state/plugin-drive.json", "broken");
-  const r = hook("", {}, "Stop");
+  const r = await hook("", {}, "Stop");
   expect(r.code).toBe(2);
   expect(r.stderr).toContain("VERID_BURNT_PLUGIN_EVENT");
   expect(
@@ -1018,27 +1021,27 @@ it("logs observer setup errors without changing an already computed Stop denial"
   expect(events().map((e) => e.payload.event)).toEqual(["module-opened"]);
 });
 
-it("refuses linked data directories before publishing any new plugin registration", () => {
+it("refuses linked data directories before publishing any new plugin registration", async () => {
   const outside = join(project, "outside-data");
   mkdirSync(outside);
   symlinkSync(outside, join(project, ".verid/plugin-data"), "junction");
-  const r = cli(["plugin", "add", "./fixture", "--yes"]);
+  const r = await cli(["plugin", "add", "./fixture", "--yes"]);
   expect(r.code).toBe(2);
   expect(r.stderr).toContain("VERID_BURNT_PLUGIN_INVALID");
   expect(existsSync(join(project, ".verid/plugins.json"))).toBe(false);
   expect(existsSync(join(project, ".verid/plugins/board"))).toBe(false);
 });
 
-it("reports missing local sources as plugin errors without registering anything", () => {
-  const r = cli(["plugin", "add", "file:./missing-plugin", "--yes"]);
+it("reports missing local sources as plugin errors without registering anything", async () => {
+  const r = await cli(["plugin", "add", "file:./missing-plugin", "--yes"]);
   expect(r.code).toBe(2);
   expect(r.stderr).toContain("VERID_BURNT_PLUGIN_INVALID");
   expect(existsSync(join(project, ".verid/plugins.json"))).toBe(false);
 });
 
-it("refuses a data file where a directory is required before publishing plugin code", () => {
+it("refuses a data file where a directory is required before publishing plugin code", async () => {
   put(".verid/plugin-data/board", "keep this");
-  const r = cli(["plugin", "add", "./fixture", "--yes"]);
+  const r = await cli(["plugin", "add", "./fixture", "--yes"]);
   expect(r.code).toBe(2);
   expect(r.stderr).toContain("VERID_BURNT_PLUGIN_INVALID");
   expect(existsSync(join(project, ".verid/plugins.json"))).toBe(false);
@@ -1046,7 +1049,7 @@ it("refuses a data file where a directory is required before publishing plugin c
   expect(readFileSync(join(project, ".verid/plugin-data/board"), "utf8")).toBe("keep this");
 });
 
-it("resolves an added local source from the invoking subdirectory and records a restorable project path", () => {
+it("resolves an added local source from the invoking subdirectory and records a restorable project path", async () => {
   const nested = join(project, "nested");
   mkdirSync(nested);
   cpSync(fixture, join(nested, "fixture"), { recursive: true });
@@ -1060,11 +1063,11 @@ it("resolves an added local source from the invoking subdirectory and records a 
     { name: "board", source: "file:nested/fixture", resolved: "1.0.0" },
   ]);
   rmSync(join(project, ".verid/plugins/board"), { recursive: true, force: true });
-  expect(cli(["cook", "--yes"]).code).toBe(0);
+  expect((await cli(["cook", "--yes"])).code).toBe(0);
   expect(existsSync(join(project, ".verid/plugins/board/record.mjs"))).toBe(true);
 });
 
-it("refuses untrusted committed sources during setup before fetching or executing code", () => {
+it("refuses untrusted committed sources during setup before fetching or executing code", async () => {
   const rows = [
     "git:-evil",
     "git:\\\\host\\share",
@@ -1073,7 +1076,7 @@ it("refuses untrusted committed sources during setup before fetching or executin
   ];
   for (const source of rows) {
     put(".verid/plugins.json", JSON.stringify([{ name: "board", source, resolved: "1.0.0" }]));
-    const r = cli(["cook", "--yes"]);
+    const r = await cli(["cook", "--yes"]);
     expect(r.code).toBe(2);
     expect(r.stderr).toContain("VERID_BURNT_PLUGIN_INVALID");
     expect(existsSync(join(project, ".verid/plugins"))).toBe(false);

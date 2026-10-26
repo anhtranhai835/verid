@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 import type { ErrorCode, MessageKey } from "../core/errors.js";
 import { inAgentShell } from "../adapters/agent-environment.js";
 import { existsSync, readFileSync, rmSync } from "node:fs";
@@ -55,10 +54,21 @@ import { emitPluginEvent } from "../adapters/plugins.js";
 import { initCommand, setupCodexCommand } from "./init.js";
 import { baselineCommand, lastRefusal, testCommand, type CliResult } from "./test.js";
 
-/** verid CLI. Exit 2 means verid refused or failed, and nothing counted as evidence. */
-async function main(): Promise<void> {
+/** `dist/cli.js`: the command line in, its output and exit code out. */
+export async function main(): Promise<void> {
+  const r = await runCli(process.argv.slice(2));
+  process.stdout.write(r.stdout);
+  process.stderr.write(r.stderr);
+  process.exitCode = r.exit;
+}
+
+/**
+ * One verid command run in the current folder; tests call it in process. Exit 2 means verid
+ * refused or failed, and nothing counted as evidence.
+ */
+export async function runCli(args: readonly string[]): Promise<CliResult> {
   const project = findProject(process.cwd());
-  const [cmd, ...rest] = process.argv.slice(2);
+  const [cmd, ...rest] = args;
   setLanguage(languageOf(project));
   let r: CliResult;
   try {
@@ -96,9 +106,7 @@ async function main(): Promise<void> {
         : { detail: err instanceof Error ? err.message : String(err) };
     r = { exit: 2, stdout: "", stderr: `verid [${code}]\n${bilingual(code, params)}\n` };
   }
-  process.stdout.write(r.stdout);
-  process.stderr.write(r.stderr);
-  process.exitCode = r.exit;
+  return r;
 }
 
 const COOK_OPTIONS = {
@@ -597,5 +605,3 @@ function readJson(file: string): unknown {
     return null; // missing or broken: it registers nothing
   }
 }
-
-await main();

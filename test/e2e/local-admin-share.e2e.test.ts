@@ -11,8 +11,8 @@ import {
 import { homedir, hostname, tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { runHook } from "./in-process.js";
 
-const HOOK = join(import.meta.dirname, "../../dist/hook.js");
 let project: string;
 beforeEach(() => {
   project = mkdtempSync(join(tmpdir(), "verid-admin-share-"));
@@ -25,35 +25,27 @@ function share(path: string, prefix = "\\\\localhost\\", separator = "\\"): stri
   return `${prefix}${path[0]}$${path.slice(2).replace(/[\\/]/g, separator)}`;
 }
 
-function hook(tool_name: string, path: string, configDir?: string, projectDir = project) {
-  const env = Object.fromEntries(
-    Object.entries(process.env).filter(([key]) => !key.startsWith("CLAUDE")),
-  );
-  const r = spawnSync(process.execPath, [HOOK], {
-    input: JSON.stringify({
-      hook_event_name: "PreToolUse",
-      session_id: "local-admin-share",
-      cwd: project,
-      tool_name,
-      tool_input:
-        tool_name === "Bash"
-          ? { command: path }
-          : { file_path: path, path, content: "replacement" },
-    }),
-    encoding: "utf8",
-    env: {
-      ...env,
-      CLAUDE_PROJECT_DIR: projectDir,
-      ...(configDir ? { CLAUDE_CONFIG_DIR: configDir } : {}),
-    },
+// In process: these tables are about path spellings; hook.e2e proves the built hook runs the same code.
+async function hook(tool_name: string, path: string, configDir?: string, projectDir = project) {
+  const input = JSON.stringify({
+    hook_event_name: "PreToolUse",
+    session_id: "local-admin-share",
+    cwd: project,
+    tool_name,
+    tool_input:
+      tool_name === "Bash" ? { command: path } : { file_path: path, path, content: "replacement" },
   });
-  return { code: r.status, stderr: r.stderr };
+  const r = await runHook(input, {
+    CLAUDE_PROJECT_DIR: projectDir,
+    ...(configDir ? { CLAUDE_CONFIG_DIR: configDir } : {}),
+  });
+  return { code: r.code, stderr: r.stderr };
 }
 
 describe.skipIf(process.platform !== "win32")(
   "local administrative shares through the hook",
   () => {
-    it("protects share-rooted projects through a drive mapped to the administrative share", (ctx) => {
+    it("protects share-rooted projects through a drive mapped to the administrative share", async (ctx) => {
       writeFileSync(
         join(project, ".verid/manifest.yaml"),
         "schemaVersion: 1\nmode: remix\nrepos:\n  - path: .\n    source_globs: ['**']\n    test_globs: ['**/*.test.ts']\n    ignore_globs: ['**/*.md']\n",
@@ -98,7 +90,7 @@ describe.skipIf(process.platform !== "win32")(
           for (const [relative, direct, mcp, expected] of rows)
             for (const tool of [direct, mcp]) {
               const path = join(mappedProject, relative);
-              const r = hook(tool, path, undefined, projectDir);
+              const r = await hook(tool, path, undefined, projectDir);
               expect.soft(r.code, `${projectDir} ${path} ${tool}`).toBe(2);
               expect.soft(r.stderr, `${projectDir} ${path} ${tool}`).toContain(expected);
             }
@@ -108,7 +100,7 @@ describe.skipIf(process.platform !== "win32")(
       }
     });
 
-    it("protects Bash mentions of relocated configuration through any-host administrative shares", () => {
+    it("protects Bash mentions of relocated configuration through any-host administrative shares", async () => {
       const configDir = `${project}-user-config`;
       const aliases = [
         ["//localhost/", "/"],
@@ -125,20 +117,20 @@ describe.skipIf(process.platform !== "win32")(
       ] as const;
       for (const [program, relative, expected] of rows) {
         const path = join(configDir, relative);
-        const local = hook("Bash", `${program} '${path}'`, configDir);
+        const local = await hook("Bash", `${program} '${path}'`, configDir);
         expect.soft(local.code, path).toBe(2);
         expect.soft(local.stderr, path).toContain(expected);
         for (const [prefix, separator] of aliases) {
           const spelling = share(path, prefix, separator).toLowerCase();
           const command = `${program} '${spelling}'`;
-          const r = hook("Bash", command, configDir);
+          const r = await hook("Bash", command, configDir);
           expect.soft(r.code, command).toBe(2);
           expect.soft(r.stderr, command).toContain(expected);
         }
       }
-    }, 60_000); // 25 real hook spawns: slow on a busy machine
+    });
 
-    it("protects Bash default paths with repeated separators and dot segments", () => {
+    it("protects Bash default paths with repeated separators and dot segments", async () => {
       const rows = [
         ["cat", "~/.claude/projects/project/session.jsonl", 2, "VERID_BURNT_TRANSCRIPT_PROTECTED"],
         ["cat", ".verid/.state/state.json", 2, "VERID_BURNT_STATE_PROTECTED"],
@@ -157,14 +149,14 @@ describe.skipIf(process.platform !== "win32")(
       for (const [program, path, code, expected] of rows)
         for (const separator of ["/", "//", "/./"]) {
           const command = `${program} ${path.replace(/\//g, separator)}`;
-          const r = hook("Bash", command);
+          const r = await hook("Bash", command);
           expect.soft(r.code, command).toBe(code);
           if (expected) expect.soft(r.stderr, command).toContain(expected);
           else expect.soft(r.stderr, command).toBe("");
         }
-    }, 60_000);
+    });
 
-    it("protects Bash drive and share paths with repeated separators and dot segments", () => {
+    it("protects Bash drive and share paths with repeated separators and dot segments", async () => {
       const configDir = `${project}-user-config`;
       const aliases = [
         ["drive", "/"],
@@ -203,15 +195,15 @@ describe.skipIf(process.platform !== "win32")(
               clean.slice(start).replace(/[\\/]/g, `${separator}.${separator}`),
           ]) {
             const command = `${program} '${spelling}'`;
-            const r = hook("Bash", command, configDir);
+            const r = await hook("Bash", command, configDir);
             expect.soft(r.code, command).toBe(code);
             if (expected) expect.soft(r.stderr, command).toContain(expected);
             else expect.soft(r.stderr, command).toBe("");
           }
         }
-    }, 180_000); // 234 real hook spawns: allow the same load headroom as the 84-spawn test
+    });
 
-    it("protects Bash UNC option values with repeated separators and dot segments", () => {
+    it("protects Bash UNC option values with repeated separators and dot segments", async () => {
       const configDir = `${project}-user-config`;
       const clean = share(configDir, "//localhost/", "/");
       const rows = [
@@ -225,13 +217,13 @@ describe.skipIf(process.platform !== "win32")(
         for (const separator of ["/", "//", "/./"]) {
           const spelling = `//${clean.slice(2).replace(/\//g, separator)}`;
           const command = template.replace("ROOT", spelling);
-          const r = hook("Bash", command, configDir);
+          const r = await hook("Bash", command, configDir);
           expect.soft(r.code, command).toBe(2);
           expect.soft(r.stderr, command).toContain(expected);
         }
     });
 
-    it("protects state, manifest, transcripts and default Claude configuration through local shares", () => {
+    it("protects state, manifest, transcripts and default Claude configuration through local shares", async () => {
       const rows = [
         [
           join(project, ".verid/.state/state.json"),
@@ -290,13 +282,13 @@ describe.skipIf(process.platform !== "win32")(
       ] as const;
       for (const [path, direct, mcp, expected] of rows)
         for (const tool of [direct, mcp]) {
-          const r = hook(tool, share(path));
+          const r = await hook(tool, share(path));
           expect.soft(r.code, `${path} ${tool}`).toBe(2);
           expect.soft(r.stderr, `${path} ${tool}`).toContain(expected);
         }
     });
 
-    it("protects relocated Claude configuration through local shares", () => {
+    it("protects relocated Claude configuration through local shares", async () => {
       const configDir = join(project, "user-config");
       const rows = [
         [
@@ -333,13 +325,13 @@ describe.skipIf(process.platform !== "win32")(
       ] as const;
       for (const [relative, direct, mcp, expected] of rows)
         for (const tool of [direct, mcp]) {
-          const r = hook(tool, share(join(configDir, relative)), configDir);
+          const r = await hook(tool, share(join(configDir, relative)), configDir);
           expect.soft(r.code, `${relative} ${tool}`).toBe(2);
           expect.soft(r.stderr, `${relative} ${tool}`).toContain(expected);
         }
     });
 
-    it("recognizes loopback, hostname, extended and forward-slash local share spellings", () => {
+    it("recognizes loopback, hostname, extended and forward-slash local share spellings", async () => {
       const configDir = join(project, "user-config");
       const aliases = [
         ["\\\\127.0.0.1\\", "\\"],
@@ -380,13 +372,13 @@ describe.skipIf(process.platform !== "win32")(
         for (const [path, direct, mcp, expected] of rows)
           for (const tool of [direct, mcp]) {
             const spelling = share(path, prefix, separator);
-            const r = hook(tool, spelling, configDir);
+            const r = await hook(tool, spelling, configDir);
             expect.soft(r.code, `${spelling} ${tool}`).toBe(2);
             expect.soft(r.stderr, `${spelling} ${tool}`).toContain(expected);
           }
-    }, 60_000); // 56 real hook spawns: slow on a busy machine
+    });
 
-    it("protects the same drive paths through administrative shares on any host", () => {
+    it("protects the same drive paths through administrative shares on any host", async () => {
       const configDir = join(project, "user-config");
       const aliases = [
         ["\\\\.\\UNC\\localhost\\", "\\"],
@@ -436,19 +428,19 @@ describe.skipIf(process.platform !== "win32")(
       ] as const;
       for (const [path, direct, mcp, expected] of rows)
         for (const tool of [direct, mcp]) {
-          const local = hook(tool, path, configDir);
+          const local = await hook(tool, path, configDir);
           expect.soft(local.code, `${path} ${tool}`).toBe(2);
           expect.soft(local.stderr, `${path} ${tool}`).toContain(expected);
           for (const [prefix, separator] of aliases) {
             const spelling = share(path, prefix, separator);
-            const r = hook(tool, spelling, configDir);
+            const r = await hook(tool, spelling, configDir);
             expect.soft(r.code, `${spelling} ${tool}`).toBe(2);
             expect.soft(r.stderr, `${spelling} ${tool}`).toContain(expected);
           }
         }
-    }, 60_000); // 84 real hook spawns: slow on a busy machine
+    });
 
-    it("keeps ordinary UNC share writes outside relocated config protection", () => {
+    it("keeps ordinary UNC share writes outside relocated config protection", async () => {
       const configDir = join(project, "user-config");
       const rows = [
         ["Write", "\\\\localhost\\shared\\user-config\\settings.json", 0],
@@ -459,7 +451,7 @@ describe.skipIf(process.platform !== "win32")(
         ],
       ] as const;
       for (const [tool, path, expected] of rows) {
-        const r = hook(tool, path, configDir);
+        const r = await hook(tool, path, configDir);
         expect.soft(r.code, `${path} ${tool}`).toBe(expected);
         expect.soft(r.stderr, `${path} ${tool}`).toBe("");
       }

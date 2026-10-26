@@ -23,10 +23,18 @@ export function veridCommand(cli: string, exists: (path: string) => boolean): st
   return `node "${path}"`;
 }
 
-// Worked out once, and only when a message names the CLI.
+// Worked out once, and only when a message names the CLI. From dist/ the CLI sits beside this
+// chunk; from src/adapters/ (tests in process) it is the build in dist/.
 let verid: string | undefined;
-export const veridName = () =>
-  (verid ??= veridCommand(fileURLToPath(new URL("./cli.js", import.meta.url)), existsSync));
+export const veridName = () => {
+  const [beside, built] = ["./cli.js", "../../dist/cli.js"].map((path) =>
+    fileURLToPath(new URL(path, import.meta.url)),
+  );
+  return (verid ??= veridCommand(
+    existsSync(beside!) || !existsSync(built!) ? beside! : built!,
+    existsSync,
+  ));
+};
 
 export function t(lang: Lang, key: string, params: Record<string, string>): string {
   if (!catalogs.has(lang)) {

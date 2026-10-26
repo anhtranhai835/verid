@@ -106,21 +106,33 @@ interface Result {
 
 const LENIENT = new Set(["Stop", "SubagentStop", "SessionStart"]);
 // Provider selection is an explicit invocation contract, never inferred from stdin.
-const CODEX = process.argv[2] === "--provider" && process.argv[3] === "codex";
-const projectDir = CODEX ? codexProject : claudeProjectDir;
-const writerFor = CODEX ? singleWriterOf : writerOf;
-const splitFor = CODEX ? () => false : splitOn;
+// ponytail: one module-wide flag set by each run(); overlapping runs in one process would race.
+let CODEX = false;
+const projectDir = (cwd: string) => (CODEX ? codexProject : claudeProjectDir)(cwd);
+const writerFor: typeof writerOf = (...args) => (CODEX ? singleWriterOf : writerOf)(...args);
+const splitFor = (roles: Roles | undefined) => !CODEX && splitOn(roles);
 const mappedNames = (roles: Roles | undefined) => mappedAgents(roles, CODEX);
 
-async function main(): Promise<void> {
+/** `dist/hook.js`: one payload from stdin, the result on stdout, stderr and the exit code. */
+export async function main(): Promise<void> {
   let raw = "";
   process.stdin.setEncoding("utf8");
   for await (const chunk of process.stdin) raw += chunk;
+  const result = await run(raw, process.argv.slice(2));
+  if (result.stdout) process.stdout.write(result.stdout);
+  if (result.stderr) process.stderr.write(result.stderr);
+  process.exitCode = result.exit;
+}
+
+/** The whole hook for one payload, with the hook's arguments; tests call it in process. */
+export async function run(raw: string, args: readonly string[]): Promise<Result> {
+  CODEX = args[0] === "--provider" && args[1] === "codex";
+  // A payload that names no project gets both languages, as in a fresh process.
+  setLanguage(null);
   // Only for routing errors when the payload is not even JSON.
   let event = /"hook_event_name"\s*:\s*"(\w+)"/.exec(raw)?.[1];
   let result: Result;
   try {
-    const args = process.argv.slice(2);
     if (
       args.length !== 0 &&
       !(
@@ -138,10 +150,7 @@ async function main(): Promise<void> {
   } catch (err) {
     result = onError(event, err);
   }
-  if (CODEX) result = codexOutput(event, result);
-  if (result.stdout) process.stdout.write(result.stdout);
-  if (result.stderr) process.stderr.write(result.stderr);
-  process.exitCode = result.exit;
+  return CODEX ? codexOutput(event, result) : result;
 }
 
 async function handle(payload: unknown): Promise<Result> {
@@ -1000,5 +1009,3 @@ const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 function newCode(): string {
   return Array.from({ length: 6 }, () => CODE_ALPHABET[randomInt(CODE_ALPHABET.length)]).join("");
 }
-
-await main();

@@ -29,9 +29,9 @@ Phần cảm hứng của README (cả hai bản) chỉ nêu hai nguồn: [super
 ## Quy ước
 
 - Code: TypeScript strict, ESM, Prettier; tên file kebab-case, chỉ named export. `src/core` là hàm thuần, không I/O; lỗi dự kiến trả về dưới dạng giá trị, lỗi bất ngờ thành deny `VERID_BURNT_INTERNAL`. Mỗi mã `VERID_BURNT_<VÙNG>_<TÊN>` có key ở cả `i18n/vi.json` lẫn `i18n/en.json`.
-- Test: Vitest. Mỗi `it` là một hành vi; các trường hợp của nó là một bảng literal bên trong `it` (không dùng `it.each`), expected là literal. E2E spawn `dist/hook.js` và `dist/cli.js` thật, không chép logic của hook vào test.
+- Test: Vitest. Mỗi `it` là một hành vi; các trường hợp của nó là một bảng literal bên trong `it` (không dùng `it.each`), expected là literal. E2E: mỗi event của hook (theo từng provider) và mỗi lệnh CLI chính giữ ít nhất một test spawn `dist/hook.js` / `dist/cli.js` thật; các bảng case còn lại gọi `run()` của hook và `runCli()` ngay trong process, qua `test/e2e/in-process.ts`. Không chép logic của hook vào test.
 - Repo giữ gọn: `README.md` và bản dịch `README.vi.md` là tài liệu duy nhất, không có thư mục `docs/`. Sửa một bản thì sửa cả bản kia.
 - Commit theo Conventional Commits và không nhắc tới AI.
 - Làm trực tiếp trên nhánh `main` cho tới khi hoàn thành.
 - Phát triển chính verid cũng theo TDD: viết test fail trước, xem nó fail, rồi mới viết code.
-- Windows là nền tảng chính. Không có CI: chạy `npm test` trên Windows trước khi commit.
+- Windows là nền tảng chính. Không có CI: chạy `npm test` trên Windows trước khi commit; khi đổi `install.ps1`, `install.sh` hay test của chúng thì chạy `npm run test:full`.

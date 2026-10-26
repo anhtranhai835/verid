@@ -13,20 +13,20 @@ import { dirname, join } from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { parse, stringify } from "yaml";
 import { codexHookKeys } from "../../src/adapters/codex-settings.js";
+import { runCli } from "./in-process.js";
 
 const root = join(import.meta.dirname, "../..");
-const CLI = join(root, "dist/cli.js");
 let dir: string;
 let project: string;
 let config: string;
 let fixture: string;
 let fixtureDir: string;
 let sequence = 0;
-beforeAll(() => {
+beforeAll(async () => {
   fixtureDir = mkdtempSync(join(tmpdir(), "verid-doctor-fixture-"));
   dir = fixtureDir;
   config = join(dir, "claude-config");
-  createHealthy();
+  await createHealthy();
   fixture = project;
 });
 afterAll(() => rmSync(fixtureDir, { recursive: true, force: true }));
@@ -44,13 +44,14 @@ const env = () => ({
   CLAUDE_CONFIG_DIR: config,
   CODEX_HOME: join(dir, "codex"),
 });
-const cli = (args: string[], extra = {}) => {
-  const r = spawnSync(process.execPath, [CLI, ...args], {
-    cwd: project,
-    env: { ...env(), ...extra },
-    encoding: "utf8",
+// In process; setup.e2e and tdd.e2e spawn the built CLI.
+const cli = async (args: string[], extra = {}) => {
+  const r = await runCli(args, project, {
+    CLAUDE_CONFIG_DIR: config,
+    CODEX_HOME: join(dir, "codex"),
+    ...extra,
   });
-  return { code: r.status, out: r.stdout, err: r.stderr };
+  return { code: r.code, out: r.stdout, err: r.stderr };
 };
 const git = (...args: string[]) => {
   const r = spawnSync("git", args, { cwd: project, env: env(), encoding: "utf8" });
@@ -82,11 +83,11 @@ const plugins = (entries: Record<string, unknown>) =>
     join(config, "plugins/installed_plugins.json"),
     JSON.stringify({ version: 2, plugins: entries }),
   );
-const createHealthy = () => {
+const createHealthy = async () => {
   project = join(dir, `project-${sequence++}`);
   mkdirSync(project);
   put(join(project, "package.json"), '{"devDependencies":{"vitest":"^5.0.0"}}');
-  expect(cli(["cook", "--yes", "--lang", "en"]).code).toBe(0);
+  expect((await cli(["cook", "--yes", "--lang", "en"])).code).toBe(0);
   manifest((m) => {
     m.repos[0].default_branch = "main";
   });
@@ -133,14 +134,14 @@ const trustCodex = () => {
 };
 
 describe("verid doctor", () => {
-  it("reports intact LF and CRLF instruction blocks as current for both providers", () => {
+  it("reports intact LF and CRLF instruction blocks as current for both providers", async () => {
     const rows = [{ ending: "\n" }, { ending: "\r\n" }];
     for (const { ending } of rows) {
       healthy();
       manifest((m) => {
         m.providers = ["claude-code", "codex"];
       });
-      expect(cli(["upgrade", "--yes"]).code).toBe(0);
+      expect((await cli(["upgrade", "--yes"])).code).toBe(0);
       trustCodex();
       for (const file of ["CLAUDE.md", "AGENTS.md"]) {
         const path = join(project, file);
@@ -148,14 +149,14 @@ describe("verid doctor", () => {
       }
       commit();
       const before = snapshot();
-      const result = cli(["doctor"]);
+      const result = await cli(["doctor"]);
       expect(result.code, result.err + result.out).toBe(0);
       expect(result.out).toContain("CLAUDE.md: verid instruction block is current");
       expect(result.out).toContain("AGENTS.md: verid instruction block is current");
       expect(snapshot()).toEqual(before);
     }
   });
-  it("reports missing and edited managed instructions without changing the file", () => {
+  it("reports missing and edited managed instructions without changing the file", async () => {
     const rows = [
       { content: null },
       { content: "developer text\n<!-- verid:begin -->\nedited\n<!-- verid:end -->\n" },
@@ -166,7 +167,7 @@ describe("verid doctor", () => {
       if (row.content === null) rmSync(file, { force: true });
       else put(file, row.content);
       const before = snapshot();
-      const r = cli(["doctor"]);
+      const r = await cli(["doctor"]);
       expect(r.code, r.err + r.out).toBe(1);
       expect(r.out).toContain("! instructions.claude-code:");
       expect(r.out).toContain("CLAUDE.md");
@@ -175,12 +176,12 @@ describe("verid doctor", () => {
     }
   });
 
-  it("checks each selected provider and accepts user edits outside the block", () => {
+  it("checks each selected provider and accepts user edits outside the block", async () => {
     healthy();
     manifest((m) => {
       m.providers = ["claude-code", "codex"];
     });
-    expect(cli(["upgrade", "--yes"]).code).toBe(0);
+    expect((await cli(["upgrade", "--yes"])).code).toBe(0);
     trustCodex();
     const rows = [
       { file: "CLAUDE.md", finding: "! instructions.claude-code:" },
@@ -191,7 +192,7 @@ describe("verid doctor", () => {
       put(path, `user prefix\r\n${readFileSync(path, "utf8")}user suffix\r\n`);
     }
     commit();
-    expect(cli(["doctor"]).code).toBe(0);
+    expect((await cli(["doctor"])).code).toBe(0);
     for (const { file, finding } of rows) {
       const path = join(project, file);
       const text = readFileSync(path, "utf8");
@@ -204,7 +205,7 @@ describe("verid doctor", () => {
         if (content === null) rmSync(path);
         else put(path, content);
         const before = snapshot();
-        const result = cli(["doctor"]);
+        const result = await cli(["doctor"]);
         expect(result.code, result.err + result.out).toBe(1);
         expect(result.out).toContain(finding);
         expect(result.out).toContain(file);
@@ -214,18 +215,18 @@ describe("verid doctor", () => {
     }
   }, 60_000); // eight doctor runs, each asking Codex for its version: slow on a busy machine
 
-  it("does not require Claude wiring for a Codex-only project's instruction check", () => {
+  it("does not require Claude wiring for a Codex-only project's instruction check", async () => {
     healthy();
     manifest((m) => {
       m.providers = ["codex"];
     });
-    expect(cli(["upgrade", "--yes"]).code).toBe(0);
+    expect((await cli(["upgrade", "--yes"])).code).toBe(0);
     trustCodex();
     rmSync(join(project, ".claude"), { recursive: true, force: true });
     rmSync(join(config, "plugins/installed_plugins.json"));
     commit();
     const before = snapshot();
-    const result = cli(["doctor"]);
+    const result = await cli(["doctor"]);
     expect(result.code, result.err + result.out).toBe(0);
     expect(result.out).toContain("AGENTS.md: verid instruction block is current");
     expect(result.out).toContain("Codex hooks point at this install");
@@ -234,16 +235,16 @@ describe("verid doctor", () => {
     expect(snapshot()).toEqual(before);
   });
 
-  it("reports a healthy project with exit zero, also inside Claude Code, without writes", () => {
+  it("reports a healthy project with exit zero, also inside Claude Code, without writes", async () => {
     healthy();
     const before = snapshot();
-    const r = cli(["doctor"], { CLAUDECODE: "1" });
+    const r = await cli(["doctor"], { CLAUDECODE: "1" });
     expect(r.code, r.err + r.out).toBe(0);
     expect(r.out).toContain("No problems found.");
     expect(snapshot()).toEqual(before);
   });
 
-  it("reports every repo problem with a fix and exits one", () => {
+  it("reports every repo problem with a fix and exits one", async () => {
     const rows = [
       { kind: "folder", want: ["repo.folder"] },
       { kind: "git", want: ["repo.git"] },
@@ -278,7 +279,7 @@ describe("verid doctor", () => {
       if (["branch", "combined"].includes(row.kind)) git("checkout", "-qb", "feature");
       if (["dirty", "combined"].includes(row.kind)) put(join(project, "uncommitted.txt"), "change");
       const before = snapshot();
-      const r = cli(["doctor"]);
+      const r = await cli(["doctor"]);
       expect(r.code, r.err + r.out).toBe(1);
       for (const want of row.want) expect(r.out).toContain(`! ${want}`);
       for (const line of r.out.split("\n").filter((s) => s.startsWith("!")))
@@ -287,7 +288,7 @@ describe("verid doctor", () => {
     }
   });
 
-  it("checks all hook events against this install and explains stale or broken settings", () => {
+  it("checks all hook events against this install and explains stale or broken settings", async () => {
     const rows = [
       { kind: "stale" },
       { kind: "missing-event" },
@@ -302,19 +303,23 @@ describe("verid doctor", () => {
         const settings = JSON.parse(readFileSync(path, "utf8"));
         if (row.kind === "stale")
           settings.hooks.Stop[0].hooks[0].args = ["C:/old/verid/dist/hook.js"];
+        // The hook this install wrote, second: only its position is wrong.
         else if (row.kind === "wrong-arg")
-          settings.hooks.Stop[0].hooks[0].args = ["C:/other.js", join(root, "dist/hook.js")];
+          settings.hooks.Stop[0].hooks[0].args = [
+            "C:/other.js",
+            settings.hooks.Stop[0].hooks[0].args[0],
+          ];
         else delete settings.hooks.SessionStart;
         put(path, JSON.stringify(settings));
       }
-      const r = cli(["doctor"]);
+      const r = await cli(["doctor"]);
       expect(r.code, r.err + r.out).toBe(1);
       expect(r.out).toContain("! hooks");
       expect(r.out).toContain("verid upgrade --yes");
     }
   });
 
-  it("accepts the developer's hooks before or after verid in every event", () => {
+  it("accepts the developer's hooks before or after verid in every event", async () => {
     healthy();
     const path = join(project, ".claude/settings.local.json");
     const original = JSON.parse(readFileSync(path, "utf8"));
@@ -329,14 +334,14 @@ describe("verid doctor", () => {
       }
       put(path, JSON.stringify(settings));
       const before = snapshot();
-      const r = cli(["doctor"]);
+      const r = await cli(["doctor"]);
       expect(r.code, r.err + r.out).toBe(0);
       expect(r.out).not.toContain("! hooks");
       expect(snapshot()).toEqual(before);
     }
   });
 
-  it("uses the chosen language or both languages for doctor findings and fixes", () => {
+  it("uses the chosen language or both languages for doctor findings and fixes", async () => {
     healthy();
     rmSync(join(config, "plugins/installed_plugins.json"));
     const state = join(project, ".verid/.state/state.json");
@@ -347,7 +352,7 @@ describe("verid doctor", () => {
     ];
     for (const { language, want, absent } of rows) {
       put(state, JSON.stringify({ schemaVersion: 1, ...(language && { language }) }));
-      const r = cli(["doctor"]);
+      const r = await cli(["doctor"]);
       expect(r.code, r.err + r.out).toBe(1);
       expect(r.out).toContain(want);
       expect(r.out).not.toContain(absent);
@@ -359,7 +364,7 @@ describe("verid doctor", () => {
     }
   });
 
-  it("finds plugins by name and applicable scope with an existing install directory", () => {
+  it("finds plugins by name and applicable scope with an existing install directory", async () => {
     const rows = [
       { kind: "absent", want: ["superpowers", "andrej-karpathy-skills", "verid"] },
       { kind: "other-project", want: ["verid"] },
@@ -379,14 +384,14 @@ describe("verid doctor", () => {
               : { scope: "user", installPath: join(dir, "gone") },
           ],
         });
-      const r = cli(["doctor"]);
+      const r = await cli(["doctor"]);
       expect(r.code, r.err + r.out).toBe(1);
       for (const name of row.want) expect(r.out).toContain(`! plugin.${name}`);
       expect(r.out).toContain("claude plugin install");
     }
   });
 
-  it("requires an applicable Karpathy plugin record and an existing install directory", () => {
+  it("requires an applicable Karpathy plugin record and an existing install directory", async () => {
     const rows = [
       { kind: "absent", scope: "user", code: 1 },
       { kind: "gone", scope: "user", code: 1 },
@@ -412,7 +417,7 @@ describe("verid doctor", () => {
         }),
       });
       const before = snapshot();
-      const r = cli(["doctor"]);
+      const r = await cli(["doctor"]);
       expect(r.code, r.err + r.out).toBe(row.code);
       if (row.code === 1) {
         expect(r.out).toContain("! plugin.andrej-karpathy-skills:");
@@ -425,7 +430,7 @@ describe("verid doctor", () => {
     }
   });
 
-  it("accepts a project plugin and a custom runner declaration without running tests", () => {
+  it("accepts a project plugin and a custom runner declaration without running tests", async () => {
     healthy();
     plugins({
       "superpowers@superpowers-marketplace": [{ scope: "user", installPath: config }],
@@ -436,17 +441,17 @@ describe("verid doctor", () => {
       m.repos[0].test_cmd = "node must-not-run.js {junit}";
     });
     commit();
-    const r = cli(["doctor"]);
+    const r = await cli(["doctor"]);
     expect(r.code, r.err + r.out).toBe(0);
     expect(r.out).toContain("custom test_cmd");
   });
 
-  it("reports corrupt or unsupported plugin records with a fix", () => {
+  it("reports corrupt or unsupported plugin records with a fix", async () => {
     const rows = [{ text: "{broken" }, { text: '{"version":99,"plugins":{}}' }];
     for (const { text } of rows) {
       healthy();
       put(join(config, "plugins/installed_plugins.json"), text);
-      const r = cli(["doctor"]);
+      const r = await cli(["doctor"]);
       expect(r.code, r.err + r.out).toBe(1);
       expect(r.out).toContain("! plugins.record:");
       for (const line of r.out.split("\n").filter((s) => s.startsWith("!")))
@@ -454,7 +459,7 @@ describe("verid doctor", () => {
     }
   });
 
-  it("reports a missing or invalid manifest as a fixable problem with exit one", () => {
+  it("reports a missing or invalid manifest as a fixable problem with exit one", async () => {
     const rows = [{ text: null }, { text: "schemaVersion: 99\n" }];
     for (const row of rows) {
       healthy();
@@ -462,7 +467,7 @@ describe("verid doctor", () => {
       if (row.text === null) rmSync(path);
       else put(path, row.text);
       const before = snapshot();
-      const r = cli(["doctor"]);
+      const r = await cli(["doctor"]);
       expect(r.code, r.err + r.out).toBe(1);
       expect(r.out).toContain("! manifest");
       expect(r.out).toContain("Fix:");
