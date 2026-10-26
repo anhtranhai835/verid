@@ -1,4 +1,5 @@
 import { existsSync } from "node:fs";
+import { inAgentShell } from "../adapters/agent-environment.js";
 import { relative, resolve } from "node:path";
 import { PLUGIN_EVENTS, pluginName, parsePluginSource } from "../core/plugins.js";
 import { bilingual } from "../adapters/i18n.js";
@@ -18,7 +19,7 @@ import type { CliResult } from "./test.js";
 
 export async function pluginCommand(project: string, args: string[], io?: Io): Promise<CliResult> {
   // All subcommands, including list, doctor and malformed requests, are developer commands.
-  if (process.env.CLAUDECODE) throw new VeridError("VERID_BURNT_PLUGIN_IN_AGENT");
+  if (process.env.CLAUDECODE || inAgentShell()) throw new VeridError("VERID_BURNT_PLUGIN_IN_AGENT");
   const [command, ...rest] = args;
   const usage = () =>
     new VeridError("VERID_BURNT_PLUGIN_INVALID", {

@@ -26,10 +26,14 @@ export function writerOf(
 }
 
 /** The agents mapped to each role as messages name them: comma-separated, or — for none. */
-export function mappedAgents(roles: Roles | undefined): Record<RoleName, string> {
-  const list = (agents: string[] | undefined) => agents?.join(", ") ?? "—";
+export function mappedAgents(
+  roles: Roles | undefined,
+  singleWriter = false,
+): Record<RoleName, string> {
+  const list = (agents: string[] | undefined) =>
+    singleWriter ? "main" : (agents?.join(", ") ?? "—");
   return {
-    reviewer: list(roles?.reviewer),
+    reviewer: roles?.reviewer?.join(", ") ?? "—",
     tester: list(roles?.tester),
     coder: list(roles?.coder),
     researcher: list(roles?.researcher),
@@ -41,6 +45,16 @@ export function mappedAgents(roles: Roles | undefined): Record<RoleName, string>
 
 /** Tests and production code have different writers once a tester and a coder are mapped. */
 export const splitOn = (roles: Roles | undefined): boolean => !!roles?.tester && !!roles.coder;
+
+/** A host with one writer keeps only reviewer identity, regardless of other role mappings. */
+export function singleWriterOf(
+  agentId: string | undefined,
+  agentType: string | undefined,
+  roles: Roles | undefined,
+): Writer {
+  if (agentId === undefined) return "main";
+  return agentType !== undefined && roles?.reviewer?.includes(agentType) ? "reviewer" : "other";
+}
 
 /**
  * What a writer may write, before the TDD gate says when: a reviewer writes nothing, and once

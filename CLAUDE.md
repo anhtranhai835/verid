@@ -1,6 +1,6 @@
 # verid: hướng dẫn khi làm việc trên repo này
 
-verid là harness TDD cho Claude Code. Mọi thay đổi đều theo ba hướng dưới đây.
+verid là harness TDD cho Claude Code và Codex. Mọi thay đổi đều theo ba hướng dưới đây.
 
 ## 1. superpowers: quy trình, gọi chứ không cài
 
@@ -10,8 +10,9 @@ verid là harness TDD cho Claude Code. Mọi thay đổi đều theo ba hướng
 
 ## 2. Nhẹ, nhưng hook và gate phải chặt
 
-- Nhẹ: verid không viết lại, copy hay đóng gói skill và agent đã có sẵn (superpowers, agent của plugin public) mà gọi chúng. Nhiều bước, nhiều cổng vẫn được, miễn không nặng vô cớ. Project của người dùng chỉ có `.verid/`, `.claude/commands/verid/` cùng `.claude/settings.local.json`.
-- Chặt: hook là lớp ép buộc, không phải lời khuyên. Gặp lỗi thì fail-closed. Agent không được vượt gate. Muốn ngoại lệ thì chỉ developer mở được bằng `/verid tip`, và audit ghi lại.
+- Nhẹ: verid không viết lại, copy hay đóng gói skill và agent đã có sẵn (superpowers, agent của plugin public) mà gọi chúng. Nhiều bước, nhiều cổng vẫn được, miễn không nặng vô cớ. Project của người dùng chỉ có `.verid/`, `.claude/commands/verid/`, `.claude/settings.local.json`, `.codex/hooks.json` và block giữa `<!-- verid:begin -->` / `<!-- verid:end -->` trong `CLAUDE.md` hoặc `AGENTS.md` theo provider; phần ngoài block thuộc người dùng. Không ghi skill hay agent vào project. Trên máy, verid ghép block có dấu `[agents.verid_reviewer]` vào `~/.codex/config.toml` (hay `$CODEX_HOME/config.toml`), trỏ tới overlay đi kèm bản cài và giữ nguyên TOML còn lại.
+- Chặt: hook là lớp ép buộc, không phải lời khuyên. Gặp lỗi bên trong verid thì fail-closed. Agent không được vượt gate. Muốn ngoại lệ thì chỉ developer mở được bằng `/verid tip` trên Claude Code, và audit ghi lại; Codex không tạo override.
+- Cả Claude Code và Codex có hook; Codex dùng JSON để từ chối và giữ Stop, luồng chính viết test lẫn code qua cổng TDD, reviewer chỉ đọc. Mức ép buộc phải chặt nhất trong khả năng host, phải ghi rõ giới hạn fail-open và hook chưa tin cậy của Codex, không hứa Codex ngang Claude Code. Agent có allowlist; allowlist skill chỉ là chỉ dẫn trên Codex vì không có hook kích hoạt. Block chỉ dẫn được bảo vệ; các bảo vệ mới chỉ thêm lần từ chối, không thu hẹp rule có sẵn.
 - Mỗi giới hạn mà hook chưa chặn được phải nằm trong mục "Limitations" của `README.md` và mục "Giới hạn" của `README.vi.md`.
 
 ## 3. Bốn tiêu chí của karpathy-guidelines

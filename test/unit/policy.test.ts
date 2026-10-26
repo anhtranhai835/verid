@@ -8,6 +8,16 @@ import {
   type PolicyContext,
 } from "../../src/core/policy.js";
 import type { RuleCode } from "../../src/core/errors.js";
+import {
+  bashWrites,
+  mcpFiles,
+  policyContext,
+  toAction,
+  writtenPath,
+} from "../../src/adapters/claude-code.js";
+import { homedir } from "node:os";
+import { join } from "node:path";
+import { vi } from "vitest";
 
 // Paths arrive already normalized by the adapter (absolute, lowercase on win32).
 const ctx: PolicyContext = {
@@ -27,7 +37,7 @@ const read = (path: string): Action => ({
   path,
   display: path,
 });
-const write = (path: string): Action => ({
+const write = (path: string): Extract<Action, { kind: "file" }> => ({
   kind: "file",
   tool: "Write",
   access: "write",
@@ -137,14 +147,31 @@ describe("decide: file tools", () => {
       ["write a user-level one", write("c:\\users\\u\\.claude\\commands\\verid\\menu.md"), HOOK],
       ["write the folder itself", write("c:\\proj\\.claude\\commands\\verid"), HOOK],
       ["read a /verid command", read("c:\\proj\\.claude\\commands\\verid\\tip.md"), ALLOW],
-      ["write another command", write("c:\\proj\\.claude\\commands\\deploy.md"), ALLOW],
-      ["write a look-alike", write("c:\\proj\\.claude\\commands\\verid-notes.md"), ALLOW],
+      ["write another command", write("c:\\proj\\.claude\\commands\\deploy.md"), HOOK],
+      ["write a sibling command", write("c:\\proj\\.claude\\commands\\verid-notes.md"), HOOK],
     ]);
     expectBash([
       ["echo x > .claude/commands/verid/tip.md", HOOK],
       ["rm -r .claude\\commands\\verid", HOOK],
       ["cat .claude/commands/deploy.md", ALLOW],
       ["cat .claude/commands/verid-notes.md", ALLOW],
+    ]);
+  });
+
+  it("denies command definitions that could claim an allowed skill namespace", () => {
+    expectFiles([
+      ["project command", write("c:/proj/.claude/commands/superpowers/escape.md"), HOOK],
+      ["user command", write("c:/users/u/.claude/commands/andrej-karpathy-skills/a.md"), HOOK],
+      ["nested command", write("c:/proj/sub/.Claude/Commands/verid/a.md"), HOOK],
+      ["commands directory", write("c:/proj/.claude/commands"), HOOK],
+      [
+        "linked command",
+        { ...write("c:/proj/a.md"), display: "c:/proj/.claude/commands/superpowers/a.md" },
+        HOOK,
+      ],
+      ["read command", read("c:/proj/.claude/commands/superpowers/a.md"), ALLOW],
+      ["ordinary commands", write("c:/proj/commands/a.md"), ALLOW],
+      ["look-alike", write("c:/proj/.claude/commands-notes.md"), ALLOW],
     ]);
   });
 
@@ -169,6 +196,368 @@ describe("decide: file tools", () => {
       ["echo agents plugins", ALLOW],
       ["cat .claude/agents-notes.md", ALLOW],
     ]);
+  });
+
+  it("denies writing project or user skills that could claim an allowed skill name", () => {
+    expectFiles([
+      ["project skill", write("c:\\proj\\.claude\\skills\\x\\SKILL.md"), HOOK],
+      ["user skill", write("c:\\users\\u\\.claude\\skills\\y\\SKILL.md"), HOOK],
+      ["skills directory", write("c:\\proj\\.claude\\skills"), HOOK],
+      ["mixed case", write("c:\\proj\\.Claude\\Skills\\x\\SKILL.md"), HOOK],
+      [
+        "link out of skills directory",
+        { ...write("c:\\proj\\notes.md"), display: "c:\\proj\\.claude\\skills\\x\\SKILL.md" },
+        HOOK,
+      ],
+      ["read skill", read("c:\\proj\\.claude\\skills\\x\\SKILL.md"), ALLOW],
+      ["ordinary skills", write("c:\\proj\\skills\\x\\SKILL.md"), ALLOW],
+      ["similar name", write("c:\\proj\\.claude\\skills-notes.md"), ALLOW],
+    ]);
+  });
+
+  it("judges Bash skill paths only by parsed write targets and lets skill scripts run", () => {
+    const rows = [
+      ["echo x > .claude/skills/x/SKILL.md", "VERID_BURNT_HOOK_PROTECTED"],
+      ["cp x.md ~/.claude/skills/x/SKILL.md", "VERID_BURNT_HOOK_PROTECTED"],
+      ["rm -r C:/Users/u/.Claude/Skills", "VERID_BURNT_HOOK_PROTECTED"],
+      ['tee .claude/sk""ills/x/SKILL.md', "VERID_BURNT_HOOK_PROTECTED"],
+      ['cat .claude/sk""ills/x/SKILL.md', "allow"],
+      ["cat .claude/skills/x/SKILL.md", "allow"],
+      ["python ~/.claude/skills/x/scripts/y.py", "allow"],
+      [
+        "python .claude/skills/x/scripts/y.py > .claude/skills/x/output.txt",
+        "VERID_BURNT_HOOK_PROTECTED",
+      ],
+      ["cd .claude/skills/x; python scripts/y.py", "allow"],
+    ] as const;
+    for (const [command, want] of rows) {
+      const decisions = [
+        decide({ kind: "bash", command }, ctx),
+        ...bashWrites(command, "c:/proj").map((action) => decide(action, ctx)),
+      ];
+      const denied = decisions.find((d) => d.kind === "deny");
+      expect(denied?.kind === "deny" ? denied.code : "allow", command).toBe(want);
+    }
+    expectBash([
+      ["cat .claude/agents/x.md", HOOK],
+      ["python ~/.claude/plugins/x/scripts/y.py", HOOK],
+      ["cat .claude/settings.json", HOOK],
+      ["cat .claude/commands/verid/tip.md", HOOK],
+      ["cat .claude/skills-notes.md", ALLOW],
+      ["echo skills", ALLOW],
+    ]);
+  });
+
+  it("adds config-directory protection without moving the existing home protections", () => {
+    vi.stubEnv("CLAUDE_CONFIG_DIR", join(homedir(), "verid-custom-config"));
+    try {
+      const config = join(homedir(), "verid-custom-config");
+      const configured = policyContext("c:/proj");
+      const rows = [
+        ["skills/x/SKILL.md", "write", "VERID_BURNT_HOOK_PROTECTED"],
+        ["commands/superpowers/x.md", "write", "VERID_BURNT_HOOK_PROTECTED"],
+        ["agents/x.md", "write", "VERID_BURNT_HOOK_PROTECTED"],
+        ["plugins/cache/x.md", "write", "VERID_BURNT_HOOK_PROTECTED"],
+        ["settings.json", "write", "VERID_BURNT_HOOK_PROTECTED"],
+        ["settings.local.json", "write", "VERID_BURNT_HOOK_PROTECTED"],
+        ["projects/p/s.jsonl", "read", "VERID_BURNT_TRANSCRIPT_PROTECTED"],
+        ["projects/p/s.jsonl", "write", "VERID_BURNT_TRANSCRIPT_PROTECTED"],
+        ["skills/x/SKILL.md", "read", "allow"],
+        ["settings.json", "read", "allow"],
+        ["skills-notes.md", "write", "allow"],
+      ] as const;
+      for (const [relative, access, expected] of rows) {
+        const path = writtenPath(join(config, relative));
+        const result = decide(
+          { kind: "file", tool: "Write", access, path, display: path },
+          configured,
+        );
+        expect(result.kind === "deny" ? result.code : result.kind, relative).toBe(expected);
+      }
+      for (const relative of ["agents/x.md", "skills/x/SKILL.md", "commands/x.md", "settings.json"])
+        expect(
+          decide(write(writtenPath(join(homedir(), ".claude", relative))), configured).kind,
+        ).toBe("deny");
+      expect(
+        decide(read(writtenPath(join(homedir(), ".claude/projects/p/s.jsonl"))), configured),
+      ).toMatchObject({ kind: "deny", code: "VERID_BURNT_TRANSCRIPT_PROTECTED" });
+
+      const bashRows = [
+        ["cat", "agents/x.md", "VERID_BURNT_HOOK_PROTECTED"],
+        ["python", "plugins/x/scripts/y.py", "VERID_BURNT_HOOK_PROTECTED"],
+        ["cat", "settings.json", "VERID_BURNT_HOOK_PROTECTED"],
+        ["cat", "commands/verid/tip.md", "VERID_BURNT_HOOK_PROTECTED"],
+        ["cat", "projects/p/s.jsonl", "VERID_BURNT_TRANSCRIPT_PROTECTED"],
+        ["python", "skills/x/scripts/y.py", "allow"],
+        ["cat", "commands/superpowers/x.md", "allow"],
+      ] as const;
+      for (const [program, relative, expected] of bashRows) {
+        const command = `${program} "${join(config, relative)}"`;
+        const result = decide({ kind: "bash", command }, configured);
+        expect(result.kind === "deny" ? result.code : result.kind, command).toBe(expected);
+      }
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("matches Bash protected-path mentions through administrative shares on any host", () => {
+    const configured: PolicyContext = { ...ctx, claudeConfigDirs: ["c:/cc"] };
+    const roots = [
+      "C:/cc",
+      "//localhost/C$/cc",
+      "//./UNC/localhost/C$/cc",
+      "//anyhost/c$/cc",
+      "//?/uNc/AnyHost/C$/cc",
+      "\\\\localhost\\C$\\cc",
+      "\\\\?\\UNC\\AnyHost\\c$\\cc",
+      "\\\\.\\uNc\\[::1]\\C$\\cc",
+    ];
+    const rows = [
+      ["cat ROOT/projects/p/s.jsonl", "VERID_BURNT_TRANSCRIPT_PROTECTED"],
+      ["cat ROOT/agents/x.md", "VERID_BURNT_HOOK_PROTECTED"],
+      ["cat ROOT/commands/verid/x.md", "VERID_BURNT_HOOK_PROTECTED"],
+      ["cat ROOT/settings.json", "VERID_BURNT_HOOK_PROTECTED"],
+      ["python ROOT/plugins/x/scripts/y.py", "VERID_BURNT_HOOK_PROTECTED"],
+      ["printf x > ROOT/agents/x.md", "VERID_BURNT_HOOK_PROTECTED"],
+      ["printf x > ROOT/commands/verid/x.md", "VERID_BURNT_HOOK_PROTECTED"],
+      ["cat ROOT/.verid/.state/state.json", "VERID_BURNT_STATE_PROTECTED"],
+      ["cat ROOT/.verid/manifest.yaml", "VERID_BURNT_MANIFEST_PROTECTED"],
+      ["cat ROOT/.verid/plugins/x/index.js", "VERID_BURNT_PLUGIN_PROTECTED"],
+      ["cat ROOT/skills/x/SKILL.md", "allow"],
+      ["python ROOT/skills/x/scripts/y.py", "allow"],
+      ["cat ROOT/commands/superpowers/x.md", "allow"],
+    ] as const;
+    for (const root of roots)
+      for (const [template, expected] of rows) {
+        const command = template.replace("ROOT", root);
+        const result = decide({ kind: "bash", command }, configured);
+        expect.soft(result.kind === "deny" ? result.code : result.kind, command).toBe(expected);
+      }
+  });
+
+  it("preserves original Bash mentions and distinguishes ordinary shares when adding share aliases", () => {
+    const rows = [
+      ["c:/cc", "cat //localhost/share/cc/projects/s.jsonl", "allow"],
+      ["c:/cc", "cat //anyhost/C$backup/cc/agents/x.md", "allow"],
+      ["c:/cc", "cat //anyhost/CC$/cc/commands/verid/x.md", "allow"],
+      ["c:/cc", "cat //anyhost/c$/cc-notes/projects/s.jsonl", "allow"],
+      [
+        "c:/cc",
+        "cat //anyhost/C$/other/s.jsonl //otherhost/c$/cc/projects/s.jsonl",
+        "VERID_BURNT_TRANSCRIPT_PROTECTED",
+      ],
+      ["//anyhost/c$/cc", "cat //anyhost/c$/cc/agents/x.md", "VERID_BURNT_HOOK_PROTECTED"],
+      [
+        "//anyhost/share/cc",
+        "cat //anyhost/share/cc/projects/s.jsonl",
+        "VERID_BURNT_TRANSCRIPT_PROTECTED",
+      ],
+    ] as const;
+    for (const [dir, command, expected] of rows) {
+      const result = decide({ kind: "bash", command }, { ...ctx, claudeConfigDirs: [dir] });
+      expect.soft(result.kind === "deny" ? result.code : result.kind, command).toBe(expected);
+    }
+  });
+
+  it("matches Bash protected-path mentions with redundant separators and dot segments", () => {
+    const configured: PolicyContext = { ...ctx, claudeConfigDirs: ["c:/cc"] };
+    const rows = [
+      ["cat ~/.claude//projects/p/s.jsonl", "VERID_BURNT_TRANSCRIPT_PROTECTED"],
+      ["cat ~/.claude/./projects/p/s.jsonl", "VERID_BURNT_TRANSCRIPT_PROTECTED"],
+      ["cat '~\\.claude\\\\projects\\p\\s.jsonl'", "VERID_BURNT_TRANSCRIPT_PROTECTED"],
+      ["cat '~\\.claude\\.\\agents\\x.md'", "VERID_BURNT_HOOK_PROTECTED"],
+      ["cat ~/.claude//settings.local.json", "VERID_BURNT_HOOK_PROTECTED"],
+      ["cat ~/.claude//commands/./verid/x.md", "VERID_BURNT_HOOK_PROTECTED"],
+      ["python ~/.claude/./plugins/x/scripts/y.py", "VERID_BURNT_HOOK_PROTECTED"],
+      ["cat C://cc/projects/p/s.jsonl", "VERID_BURNT_TRANSCRIPT_PROTECTED"],
+      ["cat C:/./cc/projects/p/s.jsonl", "VERID_BURNT_TRANSCRIPT_PROTECTED"],
+      ["cat C:/cc//agents/x.md", "VERID_BURNT_HOOK_PROTECTED"],
+      ["cat C:/cc/./settings.json", "VERID_BURNT_HOOK_PROTECTED"],
+      ["printf x > '//localhost/./C$/cc/commands/other.md'", "VERID_BURNT_HOOK_PROTECTED"],
+      ["printf x > '//localhost/./C$/cc/skills/x/SKILL.md'", "VERID_BURNT_HOOK_PROTECTED"],
+      ["printf x > '\\\\anyhost\\.\\C$\\cc\\commands\\other.md'", "VERID_BURNT_HOOK_PROTECTED"],
+      ["printf x > '\\\\anyhost\\.\\C$\\cc\\skills\\x\\SKILL.md'", "VERID_BURNT_HOOK_PROTECTED"],
+      ["cat 'C:\\\\cc\\projects\\p\\s.jsonl'", "VERID_BURNT_TRANSCRIPT_PROTECTED"],
+      ["cat //localhost//C$/cc/projects/p/s.jsonl", "VERID_BURNT_TRANSCRIPT_PROTECTED"],
+      ["cat //localhost/./C$/cc/projects/p/s.jsonl", "VERID_BURNT_TRANSCRIPT_PROTECTED"],
+      ["grep --file=//localhost//C$/cc/projects/p/s.jsonl x", "VERID_BURNT_TRANSCRIPT_PROTECTED"],
+      ["grep --file=//localhost/./C$/cc/projects/p/s.jsonl x", "VERID_BURNT_TRANSCRIPT_PROTECTED"],
+      [
+        "curl --data-binary=@//localhost//C$/cc/projects/p/s.jsonl localhost",
+        "VERID_BURNT_TRANSCRIPT_PROTECTED",
+      ],
+      [
+        "curl --data-binary=@//localhost/./C$/cc/projects/p/s.jsonl localhost",
+        "VERID_BURNT_TRANSCRIPT_PROTECTED",
+      ],
+      ["cat //anyhost//C$/cc/./agents/x.md", "VERID_BURNT_HOOK_PROTECTED"],
+      ["cat //./UNC/localhost/./C$/cc/projects/p/s.jsonl", "VERID_BURNT_TRANSCRIPT_PROTECTED"],
+      ["cat //?/UNC/anyhost//C$/cc//settings.json", "VERID_BURNT_HOOK_PROTECTED"],
+      ["cat '\\\\localhost\\\\C$\\cc\\projects\\p\\s.jsonl'", "VERID_BURNT_TRANSCRIPT_PROTECTED"],
+      ["cat '\\\\?\\UNC\\anyhost\\.\\C$\\cc\\agents\\x.md'", "VERID_BURNT_HOOK_PROTECTED"],
+      ["cat C:/c\"\"c//pro'jects'/p/s.jsonl", "VERID_BURNT_TRANSCRIPT_PROTECTED"],
+    ] as const;
+    for (const [command, expected] of rows) {
+      const result = decide({ kind: "bash", command }, configured);
+      expect.soft(result.kind === "deny" ? result.code : result.kind, command).toBe(expected);
+    }
+  });
+
+  it("retains original Bash forms and ordinary-share distinctions when normalizing separators", () => {
+    const rows = [
+      ["c:/cc", "cat //localhost//share/cc/projects/s.jsonl", "allow"],
+      ["c:/cc", "cat //anyhost/./C$backup/cc/agents/x.md", "allow"],
+      ["c:/cc", "cat //anyhost//C$/cc-notes/projects/s.jsonl", "allow"],
+      ["c:/cc", "cat C:/cc/../public/projects/s.jsonl", "allow"],
+      ["c:/cc", "cat ~/.claude//skills/x/SKILL.md", "allow"],
+      ["c:/cc", "cat C:/cc/./commands/superpowers/x.md", "allow"],
+      ["c:/cc", "cat C:/cc//agents-notes.md", "allow"],
+      [
+        "//anyhost/c$/cc/./nested",
+        "cat //anyhost/c$/cc/./nested/projects/s.jsonl",
+        "VERID_BURNT_TRANSCRIPT_PROTECTED",
+      ],
+      [
+        "c:/cc/./nested",
+        "cat //anyhost/c$/cc/./nested/projects/s.jsonl",
+        "VERID_BURNT_TRANSCRIPT_PROTECTED",
+      ],
+      [
+        "//anyhost/share/cc",
+        "cat //anyhost/share/cc/projects/s.jsonl",
+        "VERID_BURNT_TRANSCRIPT_PROTECTED",
+      ],
+    ] as const;
+    for (const [dir, command, expected] of rows) {
+      const result = decide({ kind: "bash", command }, { ...ctx, claudeConfigDirs: [dir] });
+      expect.soft(result.kind === "deny" ? result.code : result.kind, command).toBe(expected);
+    }
+  });
+
+  it("protects config variable Bash references like default home paths", () => {
+    const project = join(homedir(), "verid-config-policy-fixture");
+    vi.stubEnv("CLAUDE_CONFIG_DIR", join(project, "user-config"));
+    try {
+      const configured = policyContext(project);
+      const roots = [
+        "$CLAUDE_CONFIG_DIR",
+        "${CLAUDE_CONFIG_DIR}",
+        "$env:CLAUDE_CONFIG_DIR",
+        "~/.claude",
+        "$HOME/.claude",
+      ];
+      const rows = [
+        [`printf '{"disableAllHooks":true}' > "ROOT/settings.json"`, "VERID_BURNT_HOOK_PROTECTED"],
+        ["cp evil.md ROOT/commands/superpowers/", "VERID_BURNT_HOOK_PROTECTED"],
+        ["printf x > ROOT/agents/coder.md", "VERID_BURNT_HOOK_PROTECTED"],
+        ["printf x > ROOT/skills/y/SKILL.md", "VERID_BURNT_HOOK_PROTECTED"],
+        ['cat "ROOT/projects/a.jsonl"', "VERID_BURNT_TRANSCRIPT_PROTECTED"],
+        ['cat "ROOT/agents/coder.md"', "VERID_BURNT_HOOK_PROTECTED"],
+        ['cat "ROOT/plugins/x/agent.md"', "VERID_BURNT_HOOK_PROTECTED"],
+        ['cat "ROOT/settings.json"', "VERID_BURNT_HOOK_PROTECTED"],
+        ['cat "ROOT/commands/verid/tip.md"', "VERID_BURNT_HOOK_PROTECTED"],
+        ['python "ROOT/skills/x/s.py"', "allow"],
+        ['cat "ROOT/skills/x/SKILL.md"', "allow"],
+        ['cat "ROOT/commands/superpowers/x.md"', "allow"],
+      ] as const;
+      for (const root of roots) {
+        for (const [template, expected] of rows) {
+          const command = template.replace("ROOT", root);
+          const decisions = [
+            decide({ kind: "bash", command }, configured),
+            ...bashWrites(command, project).map((action) => decide(action, configured)),
+          ];
+          const denied = decisions.find((d) => d.kind === "deny");
+          expect.soft(denied?.kind === "deny" ? denied.code : "allow", command).toBe(expected);
+        }
+      }
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("keeps absolute written paths for relative targets that resolve outside relocated configuration", () => {
+    const project = join(homedir(), "verid-config-policy-fixture");
+    vi.stubEnv("CLAUDE_CONFIG_DIR", join(project, "user-config"));
+    try {
+      const configured = policyContext(project);
+      const rows = [
+        ["user-config/skills/x/SKILL.md", "write", "VERID_BURNT_HOOK_PROTECTED"],
+        ["user-config/commands/superpowers/x.md", "write", "VERID_BURNT_HOOK_PROTECTED"],
+        ["user-config/agents/x.md", "write", "VERID_BURNT_HOOK_PROTECTED"],
+        ["user-config/plugins/x.md", "write", "VERID_BURNT_HOOK_PROTECTED"],
+        ["user-config/settings.json", "write", "VERID_BURNT_HOOK_PROTECTED"],
+        ["user-config/projects/p/s.jsonl", "read", "VERID_BURNT_TRANSCRIPT_PROTECTED"],
+      ] as const;
+      for (const [relative, access, expected] of rows) {
+        const tool = access === "write" ? "Write" : "Read";
+        const payload = {
+          hook_event_name: "PreToolUse" as const,
+          session_id: "linked-config",
+          cwd: project,
+          tool_name: tool,
+          tool_input: { file_path: relative, path: relative },
+        };
+        const direct = toAction(payload);
+        if ("invalid" in direct || direct.kind !== "file") throw new Error("expected file action");
+        const actions = [
+          direct,
+          ...mcpFiles({ ...payload, tool_name: `mcp__filesystem__${access}_file` }),
+          ...(access === "write" ? bashWrites(`printf x > ${relative}`, project) : []),
+        ];
+        for (const action of actions) {
+          // Simulate a resolved link-out while retaining the adapter's written spelling.
+          const result = decide(
+            { ...action, path: writtenPath(join(project, "outside.md")) },
+            configured,
+          );
+          expect
+            .soft(result.kind === "deny" ? result.code : result.kind, `${relative} ${action.tool}`)
+            .toBe(expected);
+        }
+      }
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("keeps Bash config mention protections for relative and home aliases", () => {
+    const project = join(homedir(), "verid-config-policy-fixture");
+    vi.stubEnv("CLAUDE_CONFIG_DIR", join(project, "user-config"));
+    try {
+      const configured = policyContext(project);
+      const rows = [
+        ["cat user-config/agents/x.md", "VERID_BURNT_HOOK_PROTECTED"],
+        ["python ./user-config/plugins/x/scripts/y.py", "VERID_BURNT_HOOK_PROTECTED"],
+        ["cat user-config/settings.json", "VERID_BURNT_HOOK_PROTECTED"],
+        ["cat user-config/commands/verid/tip.md", "VERID_BURNT_HOOK_PROTECTED"],
+        ["cat user-config/projects/p/s.jsonl", "VERID_BURNT_TRANSCRIPT_PROTECTED"],
+        ["cat ~/verid-config-policy-fixture/user-config/agents/x.md", "VERID_BURNT_HOOK_PROTECTED"],
+        ["cat user-config/skills/x/SKILL.md", "allow"],
+        ["python user-config/skills/x/scripts/y.py", "allow"],
+        ["cat user-config/commands/superpowers/x.md", "allow"],
+      ] as const;
+      for (const [command, expected] of rows) {
+        const result = decide({ kind: "bash", command }, configured);
+        expect.soft(result.kind === "deny" ? result.code : result.kind, command).toBe(expected);
+      }
+      const cwdRows = [
+        ["nested", "cat ../user-config/projects/p/s.jsonl", "VERID_BURNT_TRANSCRIPT_PROTECTED"],
+        ["user-config", "cat agents/x.md", "VERID_BURNT_HOOK_PROTECTED"],
+        ["user-config", "cat ./commands/verid/tip.md", "VERID_BURNT_HOOK_PROTECTED"],
+        ["user-config", "python skills/x/scripts/y.py", "allow"],
+      ] as const;
+      for (const [cwd, command, expected] of cwdRows) {
+        const result = decide(
+          { kind: "bash", command },
+          policyContext(project, join(project, cwd)),
+        );
+        expect.soft(result.kind === "deny" ? result.code : result.kind, command).toBe(expected);
+      }
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   // The adapter sets researchMissing and designMissing in prep and recipe while

@@ -29,6 +29,8 @@
   "files": [
     "dist",
     "i18n",
+    "plugin/skills",
+    "plugin/codex",
     "README.vi.md"
   ],
   "scripts": {

@@ -20,12 +20,16 @@ const CTRL_C = "\x03";
  * line, or of a redrawn list). A key may be a function: what the developer (or another program)
  * does before pressing it.
  */
-function scriptedTerminal(keys: (string | (() => string))[]) {
+function scriptedTerminal(keys: (string | (() => string))[], providerKeys = ENTER) {
   const input = Object.assign(new PassThrough(), { isTTY: true, setRawMode: () => undefined });
   const output = new PassThrough();
   let screen = "";
   output.on("data", (d) => {
     screen += d;
+    if (/(^|\n|\x1b\[0J)\? (Choose providers|Chọn provider)/.test(String(d))) {
+      setImmediate(() => input.write(providerKeys));
+      return;
+    }
     if (/(^|\n|\x1b\[0J)\? /.test(String(d)) && keys.length > 0) {
       const next = keys.shift() as string | (() => string);
       setImmediate(() => input.write(typeof next === "function" ? next() : next));
@@ -41,9 +45,11 @@ beforeEach(() => {
   project = mkdtempSync(join(tmpdir(), "verid-cook-screen-"));
   agent = process.env.CLAUDECODE; // the developer's terminal, not an agent's
   delete process.env.CLAUDECODE;
+  vi.stubEnv("CODEX_HOME", join(project, "codex home"));
   setLanguage(null);
 });
 afterEach(() => {
+  vi.unstubAllEnvs();
   if (agent !== undefined) process.env.CLAUDECODE = agent;
   setLanguage(null);
   rmSync(project, { recursive: true, force: true });
@@ -63,6 +69,25 @@ const state = () =>
   JSON.parse(readFileSync(join(project, ".verid", ".state", "state.json"), "utf8"));
 
 describe("interactiveCook: verid cook in the developer's terminal", () => {
+  it("asks for providers and supports Claude Code, Codex and both before preview", async () => {
+    const rows = [
+      { keys: ENTER, providers: ["claude-code"], claude: true, codex: false },
+      { keys: DOWN + ENTER, providers: ["codex"], claude: false, codex: true },
+      { keys: DOWN + DOWN + ENTER, providers: ["claude-code", "codex"], claude: true, codex: true },
+    ];
+    for (const row of rows) {
+      vitestProject();
+      const terminal = scriptedTerminal([ENTER, ENTER, ENTER], row.keys);
+      const result = await interactiveCook(project, terminal.io, "en-US");
+      expect(result.exit).toBe(0);
+      expect(terminal.screen()).toContain("Choose providers");
+      expect(parse(manifest()).providers).toEqual(row.providers);
+      expect(existsSync(join(project, "CLAUDE.md"))).toBe(row.claude);
+      expect(existsSync(join(project, "AGENTS.md"))).toBe(row.codex);
+      rmSync(project, { recursive: true, force: true });
+      mkdirSync(project);
+    }
+  });
   it("asks for iterations in prep and recipe, validates the answers, and previews before writing", async () => {
     const rows = [
       { mode: ENTER, expected: "prep" },

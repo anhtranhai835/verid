@@ -101,6 +101,24 @@ export const DEFAULT_TIMEOUT_SEC = 100;
 
 export const MODES = ["prep", "recipe", "remix"] as const;
 export type Mode = (typeof MODES)[number];
+export const PROVIDERS = ["claude-code", "codex"] as const;
+export type Provider = (typeof PROVIDERS)[number];
+
+const allowedName = z.string().check(
+  z.minLength(1, nonEmpty),
+  z.refine((value) => !/[\s*\x00-\x1f]/.test(value), {
+    error: "must be an exact name without whitespace or wildcards",
+  }),
+);
+const allowedSkill = z.string().check(
+  z.minLength(1, nonEmpty),
+  z.refine(
+    (value) => !/[\s\x00-\x1f]/.test(value) && (!value.includes("*") || /^[^*]+:\*$/.test(value)),
+    {
+      error: "must be an exact skill name or prefix:* without whitespace",
+    },
+  ),
+);
 
 export const ROLE_NAMES = [
   "reviewer",
@@ -187,6 +205,17 @@ const manifestSchema = z
     schemaVersion: z.literal(1),
     // A manifest written before modes existed gets told what to add, not "Invalid input".
     mode: z.enum(MODES, { error: "must be prep, recipe or remix" }),
+    providers: z._default(
+      z.array(z.enum(PROVIDERS, { error: "must be claude-code or codex" })).check(
+        z.minLength(1, nonEmpty),
+        z.refine((values) => new Set(values).size === values.length, {
+          error: "must not repeat a provider",
+        }),
+      ),
+      ["claude-code"],
+    ),
+    allowed_skills: z._default(z.array(allowedSkill), []),
+    allowed_agents: z._default(z.array(allowedName), []),
     roles: z.optional(roles),
     drive: z._default(z.enum(DRIVES, { error: "must be human or auto" }), "human"),
     layout: z._default(z.enum(LAYOUTS, { error: "must be monorepo or workspace" }), "monorepo"),
@@ -232,7 +261,10 @@ const manifestSchema = z
           path: ["drive"],
           message: "auto needs mode prep or recipe",
         });
-      if (!m.roles?.reviewer || !m.roles.tester || !m.roles.coder)
+      if (
+        !m.roles?.reviewer ||
+        (m.providers.includes("claude-code") && (!m.roles.tester || !m.roles.coder))
+      )
         ctx.addIssue({
           code: "custom",
           path: ["drive"],
@@ -255,6 +287,15 @@ export const DEFAULT_ROLES: Roles = {
   planner: ["verid:planner"],
   qa: ["verid:qa"],
 };
+
+/** Keep Claude mappings while registering the user-layer Codex reviewer. */
+export function providerRoles(
+  roles: Roles | undefined,
+  providers: readonly Provider[],
+): Roles | undefined {
+  if (!providers.includes("codex")) return roles;
+  return { ...roles, reviewer: [...new Set([...(roles?.reviewer ?? []), "verid_reviewer"])] };
+}
 
 export type ParseManifestResult = { ok: true; manifest: Manifest } | { ok: false; detail: string };
 
@@ -298,6 +339,8 @@ export interface InitFlags {
   drive?: string | undefined;
   /** As typed; an existing manifest keeps its chosen layout. */
   layout?: string | undefined;
+  /** Repeatable --provider; an existing manifest keeps its developer's selection. */
+  providers?: readonly string[] | undefined;
   /** Optional calendar planning for prep and recipe; never changes module order or gates. */
   iterations?: boolean | undefined;
   duration?: string | undefined;
@@ -438,12 +481,16 @@ export function renderManifest(
   drive?: Drive,
   layout: Layout = "monorepo",
   iterations?: Iterations,
+  providers: readonly Provider[] = ["claude-code"],
 ): string {
   const repos: readonly Repo[] = Array.isArray(repo) ? repo : [repo as Repo];
   return [
     "# verid manifest: only the developer edits this file. Commit it with the project.",
     "schemaVersion: 1",
     `mode: ${JSON.stringify(mode)} # ${MODES.join(" | ")}`,
+    `providers: ${JSON.stringify(providers)} # claude-code | codex`,
+    "allowed_skills: [] # additional exact names or prefix:*; verid:*, superpowers:*, andrej-karpathy-skills:* are always allowed",
+    'allowed_agents: ["general-purpose"] # superpowers dispatches; roles are always allowed',
     ...(layout === "workspace" ? ['layout: "workspace" # monorepo | workspace'] : []),
     // human is the default, so only auto is written.
     ...(drive === "auto" ? [`drive: ${JSON.stringify(drive)} # ${DRIVES.join(" | ")}`] : []),

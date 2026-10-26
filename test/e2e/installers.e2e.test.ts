@@ -259,6 +259,18 @@ for (const shell of shells)
     });
 
     it(
+      "registers the machine reviewer when Codex is installed",
+      () => {
+        shell.stub("codex");
+        const result = run(shell);
+        expect(result.code, result.error ?? result.err + result.out).toBe(0);
+        expect(log()).toContain("verid|setup-codex");
+        expect(log()).not.toContain("verid|cook");
+      },
+      tableTimeout,
+    );
+
+    it(
       "installs latest or the pinned package and all three Claude plugins without prompting",
       () => {
         const rows = [

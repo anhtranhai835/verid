@@ -16,6 +16,11 @@
   Write-Host "Installing @anhtranhai835/verid@$version"
   & npm.cmd install -g "@anhtranhai835/verid@$version"
   if ($LASTEXITCODE -ne 0) { throw 'npm install failed. Resolve the npm error and run this installer again.' }
+  if ((Get-Command codex.cmd, codex -CommandType Application -ErrorAction SilentlyContinue) -and
+      (Get-Command verid.cmd -CommandType Application -ErrorAction SilentlyContinue)) {
+    & verid.cmd setup-codex
+    if ($LASTEXITCODE -ne 0) { throw 'Codex reviewer setup failed. Resolve its message and run verid setup-codex again.' }
+  }
 
   $pluginCommands = @(
     @('plugin', 'marketplace', 'add', 'obra/superpowers-marketplace'),

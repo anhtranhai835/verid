@@ -171,6 +171,11 @@ describe("1. the hook really blocks forbidden actions", () => {
 });
 
 describe("2. valid actions run normally", () => {
+  it("denies the recorded Agent payload when its general-purpose type is unmapped", () => {
+    const result = hook(fixture("pre-tool-use-agent"));
+    expect(result.code).toBe(2);
+    expect(result.stderr).toContain("VERID_BURNT_AGENT_NOT_ALLOWED");
+  });
   it("lets every recorded harmless payload through silently", () => {
     for (const name of [
       "pre-tool-use-write",
@@ -180,7 +185,6 @@ describe("2. valid actions run normally", () => {
       "pre-tool-use-read",
       "pre-tool-use-grep",
       "pre-tool-use-glob",
-      "pre-tool-use-agent",
       "pre-tool-use-read-from-subagent",
       "pre-tool-use-write-from-plugin-agent",
       "session-start",

@@ -11,8 +11,8 @@ export interface GitView {
   head: string | null;
 }
 
-// verid's own per-machine settings file changes on `verid cook`; it must not make the tree dirty.
-const MACHINE_SETTINGS = ":(exclude).claude/settings.local.json";
+// verid's own per-machine settings files change on `verid cook`; they must not make the tree dirty.
+const MACHINE_SETTINGS = [":(exclude).claude/settings.local.json", ":(exclude).codex/hooks.json"];
 const NOT_A_REPO = /not a git repository/i;
 
 /**
@@ -40,7 +40,7 @@ export function gitView(project: string): GitView | null {
     "--untracked-files=normal",
     "--",
     ".",
-    MACHINE_SETTINGS,
+    ...MACHINE_SETTINGS,
   ]);
   if (errno(status.error) === "ENOENT") return null;
   const ok = !status.error && status.status === 0;

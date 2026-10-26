@@ -138,6 +138,7 @@ export function peekLines(
   roles: Roles | undefined,
   drive?: Drive,
   manifest?: Manifest,
+  singleWriter = manifest?.providers?.length === 1 && manifest.providers[0] === "codex",
 ): string[] {
   if (mode === null)
     return ["verid: TDD off · no .verid/manifest.yaml", bilingual("status.off", {})];
@@ -150,12 +151,17 @@ export function peekLines(
   if (remix)
     return [head, hint, ...(baseline === null ? [bilingual("status.no_baseline", {})] : [])];
   if (drive === "auto") {
-    const { phase, step } = autoStanding(project, state, roles, manifest);
+    const { phase, step } = autoStanding(project, state, roles, manifest, singleWriter);
     return [head, ...(phase.kind === "module" ? [hint] : []), step, bilingual("status.menu", {})];
   }
   const plan = planStanding(project, state, manifest?.iterations !== undefined);
   const open = plan.ok && openModule(plan.views) !== undefined;
-  return [head, ...(open ? [hint] : []), stepLine(plan, roles), bilingual("status.menu", {})];
+  return [
+    head,
+    ...(open ? [hint] : []),
+    stepLine(plan, roles, singleWriter),
+    bilingual("status.menu", {}),
+  ];
 }
 
 /** The plan as `verid menu` reads it: the modules' phases, the open questions, the next step. */
@@ -179,10 +185,14 @@ function planStanding(project: string, state: State, iterations = false) {
 }
 
 // A step that hands work to an agent names the one mapped to the role, or — when none is.
-const stepLine = (plan: ReturnType<typeof planStanding>, roles: Roles | undefined): string =>
+const stepLine = (
+  plan: ReturnType<typeof planStanding>,
+  roles: Roles | undefined,
+  singleWriter = false,
+): string =>
   plan.ok
     ? bilingual(plan.step.key, {
-        ...mappedAgents(roles),
+        ...mappedAgents(roles, singleWriter),
         ...("module" in plan.step ? { module: plan.step.module } : {}),
       })
     : bilingual("menu.invalid", { detail: plan.detail });
@@ -196,6 +206,7 @@ function autoStanding(
   state: State,
   roles: Roles | undefined,
   manifest?: Manifest,
+  singleWriter = false,
 ) {
   const facts = autoFactsOf(project, state, manifest?.iterations !== undefined);
   const phase = autoPhase(facts);
@@ -208,7 +219,7 @@ function autoStanding(
     state.review,
     clean,
   );
-  const step = bilingual(next.key, { ...mappedAgents(roles), ...next.params });
+  const step = bilingual(next.key, { ...mappedAgents(roles, singleWriter), ...next.params });
   return { facts, phase, step };
 }
 
@@ -274,6 +285,7 @@ export function menuLines(
   drive?: Drive,
   manifest?: Manifest,
   today?: string,
+  singleWriter = manifest?.providers?.length === 1 && manifest.providers[0] === "codex",
 ): string[] {
   if (mode === "remix") {
     const baseline = state.baseline === null ? "none" : String(state.baseline.length);
@@ -283,14 +295,15 @@ export function menuLines(
       ...(state.baseline === null ? [bilingual("status.no_baseline", {})] : []),
     ];
   }
-  if (drive === "auto") return autoMenuLines(project, mode, state, roles, manifest, today);
+  if (drive === "auto")
+    return autoMenuLines(project, mode, state, roles, manifest, today, singleWriter);
   const plan = planStanding(project, state, manifest?.iterations !== undefined);
   if (!plan.ok)
     return [
       `verid: mode ${mode} · plan invalid`,
       ...iterationLines(manifest?.iterations, [], [], today),
       ...plan.questions,
-      stepLine(plan, roles),
+      stepLine(plan, roles, singleWriter),
     ];
   const { views } = plan;
   const research = ` · research ${plan.hasResearch ? "written" : "missing"}`;
@@ -300,7 +313,7 @@ export function menuLines(
     ...iterationLines(manifest?.iterations, plan.modules, views, today),
     ...views.map(moduleLine),
     ...plan.questions,
-    stepLine(plan, roles),
+    stepLine(plan, roles, singleWriter),
   ];
 }
 
@@ -311,8 +324,9 @@ function autoMenuLines(
   roles: Roles | undefined,
   manifest?: Manifest,
   today?: string,
+  singleWriter = false,
 ): string[] {
-  const { facts, phase, step } = autoStanding(project, state, roles, manifest);
+  const { facts, phase, step } = autoStanding(project, state, roles, manifest, singleWriter);
   const { auto, plan } = facts;
   // A plan that cannot be read lists no modules; the step says what to fix. A module is built only
   // while the drive is at it: unsigned, planning or stuck, the one next in line waits.

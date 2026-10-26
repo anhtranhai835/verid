@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import type { ErrorCode, MessageKey } from "../core/errors.js";
+import { inAgentShell } from "../adapters/agent-environment.js";
 import { existsSync, readFileSync, rmSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -20,6 +21,7 @@ import { FRESH_AUTO, type State } from "../core/state.js";
 import { usageLines, type UsageRow } from "../core/cook-ui.js";
 import { isCi } from "../core/setup-plan.js";
 import { guardsToolCalls } from "../adapters/claude-settings.js";
+import { hasCurrentCodexHooks } from "../adapters/codex-settings.js";
 import { bilingual, setLanguage, t, veridName, type Lang } from "../adapters/i18n.js";
 import { loadManifest, manifestFile } from "../adapters/manifest.js";
 import { appendAudit } from "../adapters/audit-log.js";
@@ -50,7 +52,7 @@ import { interactiveCook } from "./cook-screen.js";
 import { doctorCommand } from "./doctor.js";
 import { pluginCommand } from "./plugins.js";
 import { emitPluginEvent } from "../adapters/plugins.js";
-import { initCommand } from "./init.js";
+import { initCommand, setupCodexCommand } from "./init.js";
 import { baselineCommand, lastRefusal, testCommand, type CliResult } from "./test.js";
 
 /** verid CLI. Exit 2 means verid refused or failed, and nothing counted as evidence. */
@@ -73,6 +75,7 @@ async function main(): Promise<void> {
         hasTerminal() ? terminalIo() : undefined,
         cmd === "upgrade" ? "upgrade" : "cook",
       );
+    else if (cmd === "setup-codex" && rest.length === 0) r = setupCodexCommand();
     else if (cmd === "taste" && rest.length === 0) r = await testCommand(project);
     else if (cmd === "doctor" && rest.length === 0) r = await doctorCommand(project);
     else if (cmd === "plugin")
@@ -102,6 +105,7 @@ const COOK_OPTIONS = {
   mode: { type: "string" },
   drive: { type: "string" },
   layout: { type: "string" },
+  provider: { type: "string", multiple: true },
   iterations: { type: "boolean" },
   duration: { type: "string" },
   "start-date": { type: "string" },
@@ -124,6 +128,7 @@ function initFlags(args: string[], command: "cook" | "upgrade") {
       mode: values.mode,
       drive: values.drive,
       layout: values.layout,
+      providers: values.provider,
       iterations: values.iterations,
       duration: values.duration,
       startDate: values["start-date"],
@@ -154,14 +159,19 @@ function findProject(cwd: string): string {
 
 async function status(project: string): Promise<CliResult> {
   const state = readState(statePaths(project));
+  const manifest = await loadManifest(project);
   // A teammate who cloned the project but never ran cook has state and manifest, and no hooks.
   const hook = fileURLToPath(new URL("./hook.js", import.meta.url));
-  const guarded = ["settings.local.json", "settings.json"].some((f) =>
+  const claude = ["settings.local.json", "settings.json"].some((f) =>
     guardsToolCalls(readJson(join(project, ".claude", f)), hook),
+  );
+  const guarded = (manifest?.providers ?? ["claude-code"]).every((provider) =>
+    provider === "codex"
+      ? hasCurrentCodexHooks(readJson(join(project, ".codex", "hooks.json")), hook)
+      : claude,
   );
   const stderr = guarded ? "" : `${bilingual("status.no_hooks", {})}\n`;
   // The gate follows the manifest, not state: say so when it is off (an invalid one throws).
-  const manifest = await loadManifest(project);
   const lines = peekLines(
     project,
     manifest?.mode ?? null,
@@ -297,7 +307,7 @@ async function menu(project: string): Promise<CliResult> {
  * only the developer may open it, and only while every test passed in the last run.
  */
 function refactor(project: string): CliResult {
-  if (process.env.CLAUDECODE === "1") throw new VeridError("VERID_BURNT_REFACTOR_IN_AGENT");
+  if (inAgentShell()) throw new VeridError("VERID_BURNT_REFACTOR_IN_AGENT");
   const paths = statePaths(project);
   return withLock(paths, () => {
     const state = readState(paths);
@@ -326,7 +336,7 @@ function refactor(project: string): CliResult {
  * the AC list describe the same bytes.
  */
 async function approve(project: string, wanted: string | undefined): Promise<CliResult> {
-  if (process.env.CLAUDECODE === "1") throw new VeridError("VERID_BURNT_APPROVE_IN_AGENT");
+  if (inAgentShell()) throw new VeridError("VERID_BURNT_APPROVE_IN_AGENT");
   const manifest = await loadManifest(project);
   if (manifest?.drive === "auto") return signAuto(project, manifest, wanted);
   const { plan, name, module } = await planModule(project, "order", wanted);
@@ -473,7 +483,7 @@ function signAuto(project: string, manifest: Manifest, wanted: string | undefine
  * module passed in the last valid run, that run passed as a whole, and nothing changed since.
  */
 async function serve(project: string, wanted: string): Promise<CliResult> {
-  if (process.env.CLAUDECODE === "1") throw new VeridError("VERID_BURNT_SERVE_IN_AGENT");
+  if (inAgentShell()) throw new VeridError("VERID_BURNT_SERVE_IN_AGENT");
   // Before the plan is read: auto refuses even where there is no plan yet.
   if ((await loadManifest(project))?.drive === "auto")
     throw new VeridError("VERID_BURNT_AUTO_SERVE");

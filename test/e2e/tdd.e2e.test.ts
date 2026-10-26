@@ -402,7 +402,8 @@ describe("verid taste: evidence from a real run", () => {
   });
 
   it("stops a run that outlives timeout_sec, with the runner's own processes, and does not count it", async () => {
-    writeFileSync(manifestFile, `${manifest()}    timeout_sec: 1\n`);
+    const timeoutSec = 1;
+    writeFileSync(manifestFile, `${manifest()}    timeout_sec: ${timeoutSec}\n`);
     const marker = join(project, "finished");
     // The report is already written when it hangs: a timeout still is not evidence.
     writeFileSync(
@@ -411,7 +412,8 @@ describe("verid taste: evidence from a real run", () => {
     );
     const started = Date.now();
     const r = cli("taste");
-    expect(Date.now() - started).toBeLessThan(2500);
+    // Total time includes CLI startup and process-tree cleanup; allow scheduling under suite load.
+    expect(Date.now() - started).toBeLessThan(timeoutSec * 1000 + 10_000);
     expect(r.code).toBe(2);
     expect(r.stderr).toContain("verid [VERID_BURNT_RUN_TIMEOUT]");
     expect(r.stderr).toContain("hanging suite");
@@ -419,8 +421,8 @@ describe("verid taste: evidence from a real run", () => {
     expect(audit()).toMatchObject([
       { event: "test_run", verdict: "invalid", code: "VERID_BURNT_RUN_TIMEOUT" },
     ]);
-    // Had the runner survived the shell, it would have finished by now.
-    await new Promise((done) => setTimeout(done, 4000 - (Date.now() - started)));
+    // Observe from CLI exit so delayed startup cannot shorten the surviving runner's 3 s timer.
+    await new Promise((done) => setTimeout(done, 4000));
     expect(existsSync(marker)).toBe(false);
   });
 

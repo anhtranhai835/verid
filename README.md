@@ -5,10 +5,10 @@
  ╚██╗ ██╔╝ ██╔══╝   ██╔══██╗ ██║ ██║  ██║
   ╚████╔╝  ███████╗ ██║  ██║ ██║ ██████╔╝
    ╚═══╝   ╚══════╝ ╚═╝  ╚═╝ ╚═╝ ╚═════╝
-     hook-enforced TDD for Claude Code · RAW → COOKING → PLATED
+     hook-enforced TDD for Claude Code and Codex · RAW → COOKING → PLATED
 ```
 
-# verid
+# verid: TDD for Claude Code and Codex
 
 **English** · [Tiếng Việt](README.vi.md)
 
@@ -16,14 +16,14 @@
 
 ## Why
 
-Coding agents in a hurry skip the test: they write the code first, or weaken a test until it goes green. A prompt can ask for TDD; a hook can refuse the write. verid puts a fail-closed hook in front of every Claude Code tool call and holds the agent to the RED → GREEN → REFACTOR cycle of the [superpowers](https://github.com/obra/superpowers) `test-driven-development` skill, named RAW → COOKING → PLATED. Only the developer can open an exception, and a hash-chained audit log records it. In your project verid adds only `.verid/`, `.claude/commands/verid/` and the per-machine `.claude/settings.local.json`.
+Coding agents in a hurry skip the test: they write the code first, or weaken a test until it goes green. A prompt can ask for TDD; a hook can refuse the write. verid supports Claude Code and Codex, holding the agent to the RED → GREEN → REFACTOR cycle of the [superpowers](https://github.com/obra/superpowers) `test-driven-development` skill, named RAW → COOKING → PLATED. verid fails closed internally; Codex's host failure and trust limits are listed below. Only the developer can open an exception in Claude Code, and a hash-chained audit log records it. Your project gains `.verid/`, a short block in each selected provider's instruction file, Claude Code's `.claude/commands/verid/` and per-machine `.claude/settings.local.json`, or Codex's per-machine `.codex/hooks.json`.
 
 ## Requirements
 
-- Node.js 22 or later, and [Claude Code](https://claude.com/claude-code).
+- Node.js 22 or later, and [Claude Code](https://claude.com/claude-code) or Codex CLI (tested with 0.164.0).
 - The superpowers plugin, whose skills verid points the agent at.
 - The andrej-karpathy-skills plugin, whose `karpathy-guidelines` skill verid calls.
-- The verid plugin: researcher, architect, planner, tester, coder, qa and reviewer agents that `verid cook` maps to the roles, and a skill for each step. Any other agent can fill a role through `roles`; researcher, architect, planner and qa are optional, and auto still requires only reviewer, tester and coder.
+- The verid plugin: researcher, architect, planner, tester, coder, qa and reviewer agents that `verid cook` maps to the roles, and a skill for each step. Any other agent can fill a role through `roles`; researcher, architect, planner and qa are optional. Claude Code auto needs reviewer, tester and coder; Codex-only auto needs the reviewer.
 
 ```bash
 claude plugin marketplace add obra/superpowers-marketplace
@@ -65,13 +65,27 @@ From a clone: `npm ci`, `npm run build`, `npm link` (or the `bun install --froze
 In your own terminal, in the project to guard:
 
 ```bash
-verid cook     # pick the language, the mode and, in prep and recipe, the drive
+verid cook     # pick providers, language, mode and, in prep and recipe, drive
 verid stock    # remix only: record the tests that already fail
 ```
 
-Then open Claude Code and say what you want. Every verid message names the next command; `verid menu` says where the project stands.
+Then open your selected provider and say what you want. For Codex, complete the trust step below first. Every verid message names the next command; `verid menu` says where the project stands.
 
-Commit `.verid/manifest.yaml`, `.verid/.gitignore`, `.claude/commands/verid/` and, in prep and recipe, `.verid/research.md`, `.verid/design.md` and `.verid/plan.md`. Do not commit `.claude/settings.local.json`: it names this machine's verid. A teammate runs `verid cook` once after cloning.
+In a monorepo, commit `.verid/manifest.yaml`, `.verid/.gitignore`, the selected providers' instruction files (`CLAUDE.md` / `AGENTS.md`), `.claude/commands/verid/` when using Claude Code and, in prep and recipe, `.verid/research.md`, `.verid/design.md` and `.verid/plan.md`. Keep `.claude/settings.local.json` and `.codex/hooks.json` local: they name this machine's verid. A teammate runs `verid cook` once after cloning. Workspace files are described below.
+
+## Providers and Codex
+
+`providers` defaults to `[claude-code]`, including older manifests. Choose providers during `verid cook`, or repeat `--provider`: `verid cook --provider claude-code --provider codex --mode prep --yes`. For an existing project, edit `providers` in `.verid/manifest.yaml`, then run `verid upgrade --yes`.
+
+Cook and upgrade create or refresh only the block between `<!-- verid:begin -->` and `<!-- verid:end -->` in `CLAUDE.md` for Claude Code and `AGENTS.md` for Codex. They preserve all other content and never copy skills or agents into the project. The block points to the workflow, commands, state and allowlists; `verid doctor` reports missing or edited blocks. Agent writes may change the rest of the file while preserving the block.
+
+Selecting Codex writes `.codex/hooks.json` for PreToolUse, UserPromptSubmit, Stop, SubagentStop and SessionStart, with this install's hook path and explicit timeouts. It also merges a marked `[agents.verid_reviewer]` block into `~/.codex/config.toml` (or `$CODEX_HOME/config.toml`), pointing at the reviewer overlay shipped with verid. Other TOML stays unchanged; no agent or skill is copied into your project. The `AGENTS.md` block names this install's absolute skill paths for each step, such as `plugin/skills/review/SKILL.md`.
+
+In your own terminal, run `verid cook --provider codex --mode prep --yes`, then open Codex in the project, trust the project and use `/hooks` to review and trust every verid hook. Run `verid doctor` to check the wiring, project trust, hook trust entries, reviewer definition and Codex version. After upgrading or moving verid, run `verid upgrade --yes`, review the changed hooks again in `/hooks`, then run doctor. Setup never writes a trust bypass.
+
+On Codex the main agent writes both tests and code under the same TDD gate; tester/coder splitting is off regardless of Claude Code role mappings. Dispatch `verid_reviewer` with `fork_turns: "none"` and only the module's ACs, `.verid/design.md` path and diff. Its final SubagentStop message records the review; the reviewer is read-only and ends with `Verdict: pass` or `Verdict: fail`. Skill allowlists are advisory on Codex because skill activation has no hookable call. `/verid tip` and `/verid confirm` have no effect there: exceptions require Claude Code. Use `verid peek` and `verid menu` in the terminal.
+
+Codex PreToolUse denials use JSON with exit 0, and Stop holds use `decision: "block"`. PowerShell commands labeled `Bash` meet all existing Bash rules plus PowerShell write-target checks; every target of the `apply_patch` tool meets path, role and TDD rules. A patch handed to the shell (`apply_patch <<'EOF'`, the `.exe`/`.bat`/`.cmd` program, any `*** Begin Patch` text) is denied, because Codex applies it from a `workdir` or `cd` the hook never sees. The supported tools are `Bash`, `apply_patch`, `collaborationspawn_agent`, `collaborationwait_agent`, `update_plan`, `Read`, `Grep`, `Glob` and MCP tools (`mcp__*`); other tools, malformed patches and unsupported dynamic shell forms are denied. The Codex gaps are listed under Limitations.
 
 ## Layouts
 
@@ -86,6 +100,8 @@ project/ (.git)              workspace/ (no .git)
 ```
 
 Cook detects a workspace when the folder is outside a git work tree (or its ancestor repo is rooted at the user's home folder for dotfiles in `~`) and has at least one direct child repo. `--layout monorepo|workspace` chooses explicitly for a new manifest; an existing manifest keeps its layout. Workspace setup, whether explicit, detected or read from a manifest, is refused inside any other ancestor git repo. Home comes from Node's `os.homedir()` (`USERPROFILE` on Windows, not Git's `HOME`). The workspace must have no `.git` of its own; only child repos are discovered. The preview shows the layout, and cook initializes `.verid/` as a git repo without committing. Commit shared files inside `.verid/`; root `.claude/` files are generated on each machine. Open Claude Code at the workspace root.
+
+Workspace `CLAUDE.md` / `AGENTS.md` live at the workspace root, outside the shared `.verid` repo. They are per machine; `verid cook` regenerates their verid blocks while preserving user text.
 
 Cook records each child's origin after removing userinfo (including passwords and tokens); only the conventional passwordless SSH user `git@` is kept, in SSH URLs and scp-style remotes. `default_branch` comes only from local `origin/HEAD`; without it the field stays unset.
 
@@ -111,17 +127,17 @@ In prep and recipe, optional `iterations` in the manifest groups the plan by cal
 
 In prep and recipe, `drive` in the manifest says who moves the project from module to module; `verid cook` asks after the mode.
 
-| Drive             | Who moves the project                                                                                                                                |
-| :---------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `human` (default) | the developer: `verid order <module>` opens each module, `verid serve <module>` closes it                                                            |
-| `auto`            | the agent: it plans, builds and reviews every module, `product` last, and stops only when stuck. Needs the reviewer, tester and coder all in `roles` |
+| Drive             | Who moves the project                                                                                                                                                               |
+| :---------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `human` (default) | the developer: `verid order <module>` opens each module, `verid serve <module>` closes it                                                                                           |
+| `auto`            | the agent: it plans, builds and reviews every module, `product` last, and stops only when stuck. Claude Code needs reviewer, tester and coder in `roles`; Codex-only needs reviewer |
 
 The auto drive:
 
 1. **Ask.** The agent asks the research and design questions and writes `.verid/research.md` and `.verid/design.md`. Until they are signed, production code is locked and the drive does not hold the agent (the usual holds for a red test, a stub or an unrun change still apply).
 2. **Sign.** The developer reads both and runs `verid order` (no module) in their own terminal; verid records their sha256. Unless the drive gets stuck, this is the only command the developer types.
 3. **Plan.** The agent writes `.verid/plan.md`, ending with `product`, and the reviewer reviews it against the design. A review ends with `Verdict: pass` or `Verdict: fail`; no such line counts as fail. Production code stays locked until the plan passes.
-4. **Build.** verid opens the first module not yet served, in plan order. The tester (qa for `(e2e)` ACs when mapped) and coder build each AC test-first, the agent commits the module on `feat/<module>`, the reviewer reviews it. Branches are a skill instruction; the hook's clean-tree check is unchanged.
+4. **Build.** verid opens the first module not yet served, in plan order. On Claude Code, the tester (qa for `(e2e)` ACs when mapped) and coder build each AC test-first; on Codex, the main agent does both. The agent commits the module on `feat/<module>`, and the reviewer reviews it. Branches are a skill instruction; the hook's clean-tree check is unchanged.
 5. **Close.** verid closes the module once every AC has a passing test, the last run passed with no change since, the review after the last change says pass, and git is clean: the project subtree and listed repos in monorepo, every listed repo and `.verid` in workspace (untracked files count, `.claude/settings.local.json` does not). The next module opens; the drive is done when `product` closes last, and a module served after `product` reopens it.
 
 Stop holds the agent every time, saying what comes next, until the drive is done or stuck. `verid menu` and the session-start message show the drive (signed, plan reviewed, modules, counters n/3, next step or why it is stuck); `verid peek` shows the cycle and the next step.
@@ -138,29 +154,29 @@ Stop holds the agent every time, saying what comes next, until the drive is done
 
 ## Commands
 
-| Command                             | Who                       | What it does                                                                                                                                             |
-| :---------------------------------- | :------------------------ | :------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `verid cook [--dry-run] [--yes]`    | developer                 | previews setup for this project and machine; offers an older manifest its new defaults                                                                   |
-| `verid upgrade [--dry-run] [--yes]` | developer                 | adds missing manifest defaults, regenerates verid's commands and refreshes this machine's hook paths                                                     |
-| `verid doctor`                      | anyone                    | checks Node, repos, uncommitted changes, `default_branch` when set, runners, hooks and installed plugins; read-only, exits 1 on problems                 |
-| `verid taste`                       | agent                     | runs the tests; only these runs count as evidence                                                                                                        |
-| `verid peek`                        | anyone                    | the cycle, the next step, and why the last run did not count                                                                                             |
-| `verid menu`                        | anyone                    | research, modules with their AC coverage, open questions, the next step                                                                                  |
-| `verid stock`                       | developer                 | remix: records the failing tests as the baseline                                                                                                         |
-| `verid order [module]`              | developer                 | prep, recipe: approves a module of `.verid/plan.md`, signing `.verid/design.md` too; auto: signs research and design, and resumes after a stop           |
-| `verid serve <module>`              | developer                 | prep, recipe, human drive only: closes the open module once every AC passes and the reviewer reviewed it after the last change; prints the review's path |
-| `verid garnish`                     | developer                 | opens production code for a conversation that only refactors                                                                                             |
-| `/verid:tip <reason>`               | developer, in Claude Code | asks to let the action just blocked through, with a one-time code                                                                                        |
-| `/verid:confirm <code>`             | developer, in Claude Code | lets that exact action through once                                                                                                                      |
-| `/verid:peek`, `/verid:menu`        | developer, in Claude Code | what `verid peek` and `verid menu` show, to you only                                                                                                     |
+| Command                             | Who                       | What it does                                                                                                                                                          |
+| :---------------------------------- | :------------------------ | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `verid cook [--dry-run] [--yes]`    | developer                 | previews setup for this project and machine; offers an older manifest its new defaults                                                                                |
+| `verid upgrade [--dry-run] [--yes]` | developer                 | adds missing manifest defaults, regenerates verid's commands and refreshes this machine's hook paths                                                                  |
+| `verid doctor`                      | anyone                    | checks Node, repos, uncommitted changes, `default_branch` when set, runners, hooks, provider instruction blocks and installed plugins; read-only, exits 1 on problems |
+| `verid taste`                       | agent                     | runs the tests; only these runs count as evidence                                                                                                                     |
+| `verid peek`                        | anyone                    | the cycle, the next step, and why the last run did not count                                                                                                          |
+| `verid menu`                        | anyone                    | research, modules with their AC coverage, open questions, the next step                                                                                               |
+| `verid stock`                       | developer                 | remix: records the failing tests as the baseline                                                                                                                      |
+| `verid order [module]`              | developer                 | prep, recipe: approves a module of `.verid/plan.md`, signing `.verid/design.md` too; auto: signs research and design, and resumes after a stop                        |
+| `verid serve <module>`              | developer                 | prep, recipe, human drive only: closes the open module once every AC passes and the reviewer reviewed it after the last change; prints the review's path              |
+| `verid garnish`                     | developer                 | opens production code for a conversation that only refactors                                                                                                          |
+| `/verid:tip <reason>`               | developer, in Claude Code | asks to let the action just blocked through, with a one-time code                                                                                                     |
+| `/verid:confirm <code>`             | developer, in Claude Code | lets that exact action through once                                                                                                                                   |
+| `/verid:peek`, `/verid:menu`        | developer, in Claude Code | what `verid peek` and `verid menu` show, to you only                                                                                                                  |
 
-`verid cook` takes `--mode prep|recipe|remix`, `--drive human|auto`, `--layout monorepo|workspace`, `--lang vi|en`, `--test-cmd` (your own test command) and repeatable `--src`/`--tests` globs, and asks when given none in a terminal. In prep or recipe, add `--iterations --duration "2 weeks" --start-date 2026-10-12 --demo-day Friday`, supplying all three settings; the interactive flow asks after drive. Once a manifest exists, `--mode`, `--drive`, `--layout`, `--iterations`, `--duration`, `--start-date`, `--demo-day`, `--test-cmd`, `--src` and `--tests` are ignored with a note: edit `.verid/manifest.yaml` by hand. The developer's commands refuse to run inside Claude Code, and the hook keeps them out of the agent's Bash.
+`verid cook` takes repeatable `--provider claude-code|codex`, `--mode prep|recipe|remix`, `--drive human|auto`, `--layout monorepo|workspace`, `--lang vi|en`, `--test-cmd` (your own test command) and repeatable `--src`/`--tests` globs, and asks when given none in a terminal. In prep or recipe, add `--iterations --duration "2 weeks" --start-date 2026-10-12 --demo-day Friday`, supplying all three settings; the interactive flow asks after drive. Once a manifest exists, `--provider`, `--mode`, `--drive`, `--layout`, `--iterations`, `--duration`, `--start-date`, `--demo-day`, `--test-cmd`, `--src` and `--tests` are ignored with a note: edit `.verid/manifest.yaml` by hand. The developer's commands refuse inside Claude Code and recognized Codex tool shells; the hook also blocks recognizable developer calls.
 
 Cook and upgrade show a file tree before writing: `+` create, `~` modify, `=` keep, `!` advisory. In a terminal, confirm with `Apply? (Y/n)`; if files change while it waits, verid shows the new plan and asks again. `--dry-run` writes nothing; `--yes` skips prompts, applies the fresh plan and accepts defaults, including a suggested mode for a new project (prep, or remix when src/, lib/ or app/ exists). A new project's `--dry-run` also uses that suggestion unless `--mode` is set. Without a terminal, cook still works with an explicit mode or an existing manifest; upgrade requires `--yes` to write. Upgrade replaces local edits to the four generated verid commands; cook keeps them.
 
 ## Plugins
 
-Workflow plugins connect tools to verid through Node scripts. They are separate from the Claude Code plugins that supply skills and agents. Every source is unofficial and runs with your user permissions; review it before accepting. All `verid plugin` commands belong to the developer and refuse inside Claude Code.
+Workflow plugins connect tools to verid through Node scripts. They are separate from the Claude Code plugins that supply skills and agents. Every source is unofficial and runs with your user permissions; review it before accepting. All `verid plugin` commands belong to the developer and refuse inside Claude Code and recognized Codex tool shells.
 
 ```sh
 verid plugin add ./my-plugin --yes       # also file:../my-plugin
@@ -200,11 +216,11 @@ File tools and recognised MCP writers cannot change plugin sources, fetched code
 
 1. **No production code without a failing test first.** Production code is locked while the cycle is RAW, and in prep and recipe while no module is approved. While a test fails, the tests are frozen.
 2. **Evidence before claims.** Only a `verid taste` run whose exit code and JUnit report agree counts. In the human drive the agent cannot stop while the last run fails or after a change no run has seen; the auto drive holds every Stop itself.
-3. **Only the developer opens an exception.** `/verid tip` works only with a person at the keyboard, never from a subagent or `claude -p`. Each exception lets one action past one rule, once: a command two rules block needs two.
+3. **Only the developer opens an exception.** In Claude Code, `/verid tip` works only with a person at the keyboard, never from a subagent or `claude -p`. Each exception lets one action past one rule, once: a command two rules block needs two. Codex cannot create overrides.
 
 ### Roles
 
-Claude Code puts an `agent_type` in each subagent's tool calls; `roles` maps agent types to roles. With both a tester and a coder, the work is split:
+Claude Code puts an `agent_type` in each subagent's tool calls; `roles` maps agent types to roles. With both a tester and a coder, the work is split. Codex uses a main writer and a read-only reviewer, with no tester/coder split:
 
 | Who writes                                   | Production code    | Tests                                               | Other files (docs, config, `.verid/*.md`) |
 | :------------------------------------------- | :----------------- | :-------------------------------------------------- | :---------------------------------------- |
@@ -239,37 +255,47 @@ Claude Code puts an `agent_type` in each subagent's tool calls; `roles` maps age
 
 ## What the hook blocks
 
-| Rule                               | Overridable | Covers                                                                                                                                                          |
-| :--------------------------------- | :---------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `VERID_BURNT_STATE_PROTECTED`      | no          | reading or writing `.verid/.state/`                                                                                                                             |
-| `VERID_BURNT_SECRET_PROTECTED`     | no          | secret files: `.env*` (not templates), keys, certificates, `.ssh/`, `.npmrc`…                                                                                   |
-| `VERID_BURNT_TRANSCRIPT_PROTECTED` | no          | Claude Code transcripts in `~/.claude/projects/`                                                                                                                |
-| `VERID_BURNT_HOOK_PROTECTED`       | no          | writing `.claude/settings*.json`, `.claude/agents/`, `.claude/plugins/`, `.claude/commands/verid/`, verid's `dist/`                                             |
-| `VERID_BURNT_PLUGIN_PROTECTED`     | no          | file-tool/MCP writes to `.verid/plugins.json`, `.verid/plugins/`, `.verid/plugin-data/` or `.verid/` itself; Bash naming plugin paths or calling `verid plugin` |
-| `VERID_BURNT_MANIFEST_PROTECTED`   | yes         | writing `.verid/manifest.yaml`                                                                                                                                  |
-| `VERID_BURNT_BASH_NESTED_CLAUDE`   | yes         | Bash starting a nested `claude`                                                                                                                                 |
-| `VERID_BURNT_BASH_DEVELOPER_ONLY`  | yes         | Bash naming `CLAUDECODE` or verid's hook, or running a developer command                                                                                        |
-| `VERID_BURNT_SHELL_UNSUPPORTED`    | yes         | PowerShell, or any other tool whose input has a `command`                                                                                                       |
-| `VERID_BURNT_ROLE_READ_ONLY`       | yes         | any write by the mapped reviewer                                                                                                                                |
-| `VERID_BURNT_ROLE_TESTER_ONLY`     | yes         | split: a test written by anyone but the tester (or qa, for end-to-end tests)                                                                                    |
-| `VERID_BURNT_ROLE_CODER_ONLY`      | yes         | split: production code written by anyone but the coder                                                                                                          |
-| `VERID_BURNT_ROLE_DOC_ONLY`        | yes         | researcher, architect or planner writing outside its own document; the message names the allowed file                                                           |
-| `VERID_BURNT_ROLE_QA_E2E_ONLY`     | yes         | qa writing production code, unit tests or any file outside end-to-end tests                                                                                     |
-| `VERID_BURNT_PLAN_NO_RESEARCH`     | yes         | writing `.verid/plan.md` before `.verid/research.md` exists                                                                                                     |
-| `VERID_BURNT_PLAN_NO_DESIGN`       | yes         | writing `.verid/plan.md` before `.verid/design.md` exists                                                                                                       |
-| `VERID_BURNT_PLAN_NOT_APPROVED`    | yes         | production code while no module is open (prep, recipe)                                                                                                          |
-| `VERID_BURNT_AUTO_NO_MODULE`       | yes         | auto: production code while no module is open                                                                                                                   |
-| `VERID_BURNT_AUTO_STUCK`           | yes         | auto: production code and tests while the drive is stuck                                                                                                        |
-| `VERID_BURNT_TDD_NO_FAILING_TEST`  | yes         | production code while the cycle is RAW                                                                                                                          |
-| `VERID_BURNT_TDD_TEST_FROZEN`      | yes         | a test while the cycle is COOKING                                                                                                                               |
+| Rule                                 | Overridable        | Covers                                                                                                                                                                                                                                                         |
+| :----------------------------------- | :----------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `VERID_BURNT_STATE_PROTECTED`        | no                 | reading or writing `.verid/.state/`                                                                                                                                                                                                                            |
+| `VERID_BURNT_SECRET_PROTECTED`       | no                 | secret files: `.env*` (not templates), keys, certificates, `.ssh/`, `.npmrc`…                                                                                                                                                                                  |
+| `VERID_BURNT_TRANSCRIPT_PROTECTED`   | no                 | Claude Code transcripts in `~/.claude/projects/` or `CLAUDE_CONFIG_DIR/projects/`                                                                                                                                                                              |
+| `VERID_BURNT_HOOK_PROTECTED`         | no                 | writing project/home `.claude/settings*.json`, `.claude/agents/`, `.claude/plugins/`, project `.claude/skills/` / `~/.claude/skills/` and `.claude/commands/` / `~/.claude/commands/`, the same paths under `CLAUDE_CONFIG_DIR`, verid's `dist/` and `plugin/` |
+| `VERID_BURNT_PLUGIN_PROTECTED`       | no                 | file-tool/MCP writes to `.verid/plugins.json`, `.verid/plugins/`, `.verid/plugin-data/` or `.verid/` itself; Bash naming plugin paths or calling `verid plugin`                                                                                                |
+| `VERID_BURNT_MANIFEST_PROTECTED`     | yes                | writing `.verid/manifest.yaml`                                                                                                                                                                                                                                 |
+| `VERID_BURNT_INSTRUCTIONS_PROTECTED` | yes                | changing or removing the verid block in a provider's instruction file                                                                                                                                                                                          |
+| `VERID_BURNT_SKILL_NOT_ALLOWED`      | yes                | a `Skill` call outside `verid:*`, `superpowers:*`, `andrej-karpathy-skills:*` and `allowed_skills`                                                                                                                                                             |
+| `VERID_BURNT_AGENT_NOT_ALLOWED`      | yes in Claude Code | `Agent` / `Task` or Codex `collaborationspawn_agent` dispatch to a type absent from `roles` and `allowed_agents`                                                                                                                                               |
+| `VERID_BURNT_PATCH_UNSUPPORTED`      | no on Codex        | malformed or unknown `apply_patch` syntax, including environment routing, or a patch handed to the shell                                                                                                                                                       |
+| `VERID_BURNT_TOOL_UNSUPPORTED`       | no on Codex        | a non-MCP Codex tool outside the supported list; the message names it                                                                                                                                                                                          |
+| `VERID_BURNT_AGENT_CONTEXT`          | no on Codex        | reviewer dispatch with `fork_turns` other than `"none"`                                                                                                                                                                                                        |
+| `VERID_BURNT_BASH_NESTED_CODEX`      | yes in Claude Code | a shell starting a nested `codex`                                                                                                                                                                                                                              |
+| `VERID_BURNT_BASH_NESTED_CLAUDE`     | yes                | Bash starting a nested `claude`                                                                                                                                                                                                                                |
+| `VERID_BURNT_BASH_DEVELOPER_ONLY`    | yes                | Bash naming `CLAUDECODE` or verid's hook, or running a developer command                                                                                                                                                                                       |
+| `VERID_BURNT_SHELL_UNSUPPORTED`      | yes in Claude Code | Claude Code's unsupported shells, or Codex dynamic PowerShell forms whose command cannot be read                                                                                                                                                               |
+| `VERID_BURNT_ROLE_READ_ONLY`         | yes                | any write by the mapped reviewer                                                                                                                                                                                                                               |
+| `VERID_BURNT_ROLE_TESTER_ONLY`       | yes                | split: a test written by anyone but the tester (or qa, for end-to-end tests)                                                                                                                                                                                   |
+| `VERID_BURNT_ROLE_CODER_ONLY`        | yes                | split: production code written by anyone but the coder                                                                                                                                                                                                         |
+| `VERID_BURNT_ROLE_DOC_ONLY`          | yes                | researcher, architect or planner writing outside its own document; the message names the allowed file                                                                                                                                                          |
+| `VERID_BURNT_ROLE_QA_E2E_ONLY`       | yes                | qa writing production code, unit tests or any file outside end-to-end tests                                                                                                                                                                                    |
+| `VERID_BURNT_PLAN_NO_RESEARCH`       | yes                | writing `.verid/plan.md` before `.verid/research.md` exists                                                                                                                                                                                                    |
+| `VERID_BURNT_PLAN_NO_DESIGN`         | yes                | writing `.verid/plan.md` before `.verid/design.md` exists                                                                                                                                                                                                      |
+| `VERID_BURNT_PLAN_NOT_APPROVED`      | yes                | production code while no module is open (prep, recipe)                                                                                                                                                                                                         |
+| `VERID_BURNT_AUTO_NO_MODULE`         | yes                | auto: production code while no module is open                                                                                                                                                                                                                  |
+| `VERID_BURNT_AUTO_STUCK`             | yes                | auto: production code and tests while the drive is stuck                                                                                                                                                                                                       |
+| `VERID_BURNT_TDD_NO_FAILING_TEST`    | yes                | production code while the cycle is RAW                                                                                                                                                                                                                         |
+| `VERID_BURNT_TDD_TEST_FROZEN`        | yes                | a test while the cycle is COOKING                                                                                                                                                                                                                              |
 
-The rules cover file tools, Bash (its plain write targets are judged like a Write) and MCP tools. Any unexpected error blocks the call.
+The rules cover file tools, Bash (its plain write targets are judged like a Write), MCP tools, Claude Code's `Skill`, `Agent` and `Task`, and Codex's `apply_patch` and `collaborationspawn_agent`. Codex also protects project/home `.codex/`, project/home `.agents/skills/` and verid's `plugin/` folder (the skills the `AGENTS.md` block names, and the reviewer template), treats `~/.codex/sessions/`, `history.jsonl` and its state databases as transcripts and `~/.codex/auth.json` as a secret, including a relocated `CODEX_HOME`. Denial messages name the allowlist. In Claude Code, a developer's `/verid tip` override permits one exact call for one overridable rule; other rules still apply. Codex has no overrides. Unexpected errors inside verid block the call.
 
 ## manifest.yaml
 
 ```yaml
 schemaVersion: 1
 mode: remix # prep | recipe | remix
+providers: [claude-code] # optional: claude-code, codex; defaults to [claude-code]
+allowed_skills: [] # optional additions: exact names or prefix:*
+allowed_agents: ["general-purpose"] # cook default; exact agent types
 roles: # optional: agent types, as Claude Code reports them, for each role
   reviewer: ["verid:reviewer"]
   tester: ["verid:tester"] # with both a tester and a coder, the work is split
@@ -295,9 +321,11 @@ repos:
 ```
 
 - Only the developer edits the manifest; `verid cook` writes the defaults, where every file is code unless it is a test, a document, data, config, a build file or a tool's folder.
+- `providers` is a nonempty list of `claude-code` and/or `codex`; upgrade adds `[claude-code]` to older manifests. Missing `allowed_skills` and `allowed_agents` default to `[]`. Skills always allow `verid:*`, `superpowers:*` and `andrej-karpathy-skills:*`; `allowed_skills` adds exact names such as `team:lint` or namespace patterns such as `team:*`. Agent dispatch allows the exact types in `roles` plus `allowed_agents`, for every caller. Adding an agent does not give it a mapped role or bypass write rules.
+- Cook writes `allowed_agents: ["general-purpose"]` because the superpowers skills it calls dispatch that type; upgrade offers it when the field is missing and keeps existing values. Removing it denies those dispatches unless `general-purpose` is mapped in `roles`. Role rules and the TDD gate still apply to it.
 - `iterations` is optional in prep and recipe: `duration` is a positive integer followed by `day`, `days`, `week` or `weeks`, `start_date` is a real `YYYY-MM-DD` date, and `demo_day` is `Monday` through `Sunday` (case-sensitive).
 - Repo paths are relative to the project, distinct and non-overlapping; `./x`, `x/` and repeated separators are normalized. Workspace paths name child folders. Absolute paths, parent traversal, Windows aliases and linked workspace repo roots are refused; monorepo project and repo folders may be links. Each repo has its own globs, command and timeout; workspace test names and remembered runners include the repo path so names in different repos stay distinct. `remote`, `default_branch` and `role` are optional.
-- A name in `roles` has one role, and a tester needs a coder. Without `roles`, nobody is held to a role and `verid serve` refuses for want of a reviewer. `drive: auto` needs prep or recipe and reviewer, tester and coder; researcher, architect, planner and qa are optional. Cook offers missing optional defaults in older mappings and keeps existing names.
+- A name in `roles` has one role, and a tester needs a coder on Claude Code. Without `roles`, nobody is held to a role and `verid serve` refuses for want of a reviewer. `drive: auto` needs prep or recipe and reviewer, tester and coder for Claude Code, or only reviewer for Codex-only projects; researcher, architect, planner and qa are optional. Cook offers missing optional defaults in older mappings, adds `verid_reviewer` to `roles.reviewer` when Codex is selected, and keeps existing names.
 - A path matching `test_globs` or `e2e_globs` is a test; else one matching `ignore_globs` is free; else one matching `source_globs` is code. Globs support `**`, `*`, `?`; a folder is `src/**`.
 - An AC written `- AC-3 (e2e): …` needs a passing end-to-end test: any test Playwright reports, or another runner's test whose file matches `e2e_globs`.
 
@@ -321,6 +349,26 @@ Without `test_cmd`, verid finds the runners from the build files in the repo roo
 
 A hook is not an OS sandbox: verid closes the usual shortcuts, not every path a determined agent could take.
 
+**Codex**
+
+- Codex fails open when a hook crashes, times out or emits malformed output; verid's internal fail-closed handling cannot prevent those host decisions.
+- Codex skips untrusted hooks; project trust and each hook's trust must be reviewed, and doctor cannot force enforcement.
+- Codex skill activation has no universal hook event; `allowed_skills` is advisory there, including skills that fork.
+- Codex spawn messages are opaque in captured hooks, so verid cannot verify that a reviewer received only the ACs, design path and diff.
+- The reviewer's independent model/effort settings remain unproven on the host until the controller's live check confirms them.
+- Resolving `verid_reviewer` from user-layer config remains unproven on the host until the controller's live check confirms it.
+- Interactive shell continuation input can be unhooked; a permitted process may receive later input that verid never judges.
+- PowerShell write targets are parsed heuristically; scripts, computed paths and runtime writes can evade target detection.
+- Codex never sends a Bash call's `workdir` to hooks, so relative Bash and PowerShell targets are judged against the session folder; a call run in another `workdir`, or one that changes folder first (`cd`, `Set-Location`), can write a path other than the one verid judged.
+- The shell patch check matches the patch program's plain name; an escaped or computed name (``apply`_patch``, `& $program`) can still run the Codex patch shim.
+- SubagentStop uses the Stop hold JSON shape, but the host's response to a SubagentStop hold remains untested.
+- A Codex child call without identity is treated as the main agent; it can write tests and code under the TDD gate.
+- Codex has no authenticated attended-input exception transport here; `/verid tip` and `/verid confirm` cannot create overrides.
+- With a relocated `CODEX_HOME`, reads of its `sessions/`, `history.jsonl` and `sqlite/` are blocked, but not of other state databases at its root.
+- With no overrides on Codex, a Bash rule's false positive stays denied (such as `grep codex` matching the nested-Codex rule, or `grep apply_patch` the shell patch rule); run that command in your own terminal.
+- Codex has no direct Write/Edit tool and verid does not simulate patches, so while a verid block exists the agent cannot change `AGENTS.md` or `CLAUDE.md`; edit them yourself.
+- The best-effort Codex developer CLI guard uses internal environment markers whose coverage across installed hosts is unproven; without a recognized marker, recognizable developer calls rely on the hook rule.
+
 **Workflow plugins**
 
 - Plugin code has your full rights: it can change files, state or hooks directly, and can load project code or tools outside its protected folder. Review sources and dependencies; verid does not sandbox them.
@@ -333,11 +381,13 @@ A hook is not an OS sandbox: verid closes the usual shortcuts, not every path a 
 **Bash and other tools**
 
 - Bash is matched as text: variables, `$(...)`, `$'...'`, globs, scripts, `cd` then a relative write path, `git checkout`/`restore`/`apply`, `prettier --write` and run-time paths get through. There is no Bash allowlist, on purpose.
+- Bash separator normalization can miss doubled separators or `/./` after shell punctuation inside a quoted path component, such as `cc(parent)//projects` under a relocated config directory.
 - The same matching blocks some harmless commands (`jq '.key'`, a commit message containing `secret`, `other-verid upgrade`, `npx @vue/cli upgrade`, `npx expo-cli upgrade`); `/verid tip` passes overridable rules. Recognisable developer commands match at word boundaries, including `verid@<version>`, scoped npm names, Windows prefixes `@`, `,` and `=`, and bare `cli` / `cli.js` entry points after `cd` or clearing the environment. An optional `--` before the subcommand is matched too, including `npm exec verid -- plugin`, `npm x -y verid -- cook`, `npx verid -- plugin` and `pnpm exec verid -- plugin`. Computed command names and wrapper scripts still have the gap described below; plugin commands cannot be overridden.
-- Other shells are known only by the name `PowerShell` or a top-level `command` key: a command in an array, nested, or under `cmd`/`script` gets through; an unrelated `command` is blocked by mistake.
+- On Claude Code, other shells are known only by the name `PowerShell` or a top-level `command` key: a command in an array, nested, or under `cmd`/`script` gets through; an unrelated `command` is blocked by mistake. Codex denies unknown tools and unsupported dynamic shell forms.
 - MCP tools are judged by path-like keys and a name that says they write: other keys and silent writers get through; a remote path may be blocked by mistake.
 - Grep and Glob over a folder can read the secrets in it; only the secret file itself is blocked.
 - Windows NTFS stream suffixes are stripped from every path component before policy checks, including new targets. Symlinks and junctions resolve only for the parts of a path that exist, so a Windows 8.3 short name of a new file can still slip past.
+- Windows UNC administrative drive shares on any host are judged as the local drive, including mapped-drive paths whose realpath returns such a share. Other shares, mapped network drives to other shares and `subst` aliases are not mapped; equivalent paths can bypass protections that compare local path prefixes. Bash mentions do not resolve mapped drive letters.
 
 **Evidence and the cycle**
 
@@ -380,13 +430,13 @@ A hook is not an OS sandbox: verid closes the usual shortcuts, not every path a 
 - The main conversation and other agents can still write research, design and plan documents: dispatching the mapped drafting role is a skill instruction.
 - A path in `e2e_globs` cannot prove a test drives the product end to end or that qa took its selectors from real UI source.
 - Roles go by the payload's `agent_type`: if Claude Code renames or drops it, subagents look like the main conversation, so split code and test writes are blocked, `verid serve` refuses without a reviewer, and auto fails closed.
-- A skill with `context: fork` started by an agent runs as another agent type, which verid judges as `other`: in split mode it still cannot write code or tests, but it can write free files and run Bash.
+- On Claude Code, the skill allowlist closes the `context: fork` route for skills outside the list. An allowed skill can still fork into another agent type, judged as `other`: in split mode it cannot write code or tests, but it can write free files and run Bash.
 - Names in `roles` match exactly: an agent its plugin renames loses its role, failing closed (writes blocked, `verid serve` refuses).
-- The verid plugin installs apart from the npm package: until it is installed, `roles` names missing agents (writes blocked, `verid serve` refuses), and updating only one lets them drift apart.
+- The Claude Code verid plugin installs apart from the npm package: until it is installed, `roles` names missing agents (writes blocked, `verid serve` refuses), and updating only one lets them drift apart.
 - Split, the tester can still weaken a test in RAW or PLATED: the split only stops the coder.
-- The tester and coder have Bash, and only the hook keeps each to its part. The split is on by default, so the main conversation no longer writes code or tests.
+- On Claude Code, the tester and coder have Bash, and only the hook keeps each to its part. The split is on by default, so the main conversation no longer writes code or tests.
 - Agents from other plugins, or ClaudeKit's, mapped in `roles` do not know verid: only the hook's refusals guide them. verid's own agents do know it.
-- An agent name with no namespace (`general-purpose`, or one in `~/.claude/agents/` such as ClaudeKit's) is replaced by a `.claude/agents/<name>.md` in a freshly cloned repo; `verid:*` names are not. The hook stops the agent creating that file, not one already there.
+- An agent name with no namespace (`general-purpose`, or one in `~/.claude/agents/` such as ClaudeKit's) is replaced by a `.claude/agents/<name>.md` in a freshly cloned repo; `verid:*` names are not. The hook stops the agent creating that file, not one already there. A `.claude/skills/` skill already on disk (from a cloned repo or another kit) whose `name` uses an allowed namespace also passes the allowlist, including nested folders.
 - Skills from verid, superpowers and andrej-karpathy-skills are prompts: the hook cannot tell whether the agent uses or follows them.
 
 **Auto drive**
@@ -400,7 +450,7 @@ A hook is not an OS sandbox: verid closes the usual shortcuts, not every path a 
 - Git checks tree cleanliness in the layout's checked folders, not commit contents, module ownership or coordinated commits across repos.
 - A git error in a repo (dubious ownership, a corrupt index or config), or a repo losing git after it was signed with git present, counts as uncommitted. Option C applies per repo: a folder signed without git skips that check until git appears; dropping git takes a new `verid order`.
 - Files git itself hides are not uncommitted: `.gitignore`, `.git/info/exclude` and global ignore (`core.excludesFile`) entries, `assume-unchanged` or `skip-worktree` files, submodules with `ignore` set.
-- The agent cannot name `.claude/settings.local.json` in Bash, so it usually commits with `git add -A`; Claude Code usually lists that file in the global gitignore, and without that line it can be committed.
+- The agent cannot name `.claude/settings.local.json` or `.codex/hooks.json` in Bash, so it usually commits with `git add -A`; the git checks ignore both, Claude Code usually lists the first in the global gitignore, and without a gitignore line either can be committed.
 - Claude Code does not run Stop on Esc: an interrupt is not counted as no progress, but the agent is not held either.
 - `.verid/blocked.md` is the agent's own word: it can report a block that is not there (but then stops for good).
 - A block latches only when a hook sees `.verid/blocked.md` (a Stop, or a tool call that writes): a script that deletes it first and does not look like a write, such as `node cleanup.js`, leaves no block.
@@ -430,10 +480,14 @@ A hook is not an OS sandbox: verid closes the usual shortcuts, not every path a 
 
 **Self-protection and overrides**
 
+- Direct Write/Edit/MultiEdit calls may edit user content around an unchanged verid block. Recognized Bash, MCP and Codex `apply_patch` writes to instruction files are denied because their resulting content cannot be verified; read them with Read. Scripts, computed paths, unrecognized writers and filesystem races retain the gaps described here. `verid upgrade` restores a missing or edited block while keeping user content.
+
+- The agent can still add instructions outside the block or in `CLAUDE.local.md`, `.claude/CLAUDE.md` or `.claude/rules/`; the block is guidance, and only the hooks enforce the rules.
 - Doctor checks version-2 plugin install records and directories under `CLAUDE_CONFIG_DIR` (default `~/.claude`); it cannot prove the plugins are enabled or their skills load.
-- Only verid's `dist/` is protected: editing `i18n/*.json` changes messages, not decisions.
-- The agent cannot write agents or plugins but can write skills (`.claude/skills/`); hooks in skill or subagent frontmatter and in plugins run unchecked and can rewrite tool input after verid judged it.
-- Bash mentioning `.claude/agents` or `.claude/plugins` is blocked even to read (use Read or Glob); the developer, not the agent, edits the project's subagents.
+- verid's `dist/` and `plugin/` folder (skills and the Codex reviewer template) are protected; editing `i18n/*.json` changes messages, not decisions.
+- Recognized writes to agent, plugin, skill and command definitions in project or home `.claude/` directories and `CLAUDE_CONFIG_DIR` are blocked; deleting a parent folder without naming those children, scripts, computed paths, unrecognized writers, existing hard links and filesystem races retain gaps. Hooks in already installed skill, command or subagent frontmatter and plugins run unchecked and can rewrite tool input after verid judged it.
+- Bash checks `.claude/skills/` and `.claude/commands/` only as parsed write targets, so it can read or run skill scripts; unparsed writes such as `cd <skill-or-command-dir>; printf x > file`, scripts and computed paths remain open. The existing `.claude/commands/verid/` mention rule still applies.
+- Bash mentioning `.claude/agents`, `.claude/plugins` or `.claude/commands/verid` is blocked even to read (use Read or Glob); the developer edits those definitions.
 - Bash mentioning any file named `manifest.yaml` is blocked even to read, such as `cat .verid/manifest.yaml`: use Read, or `/verid tip`.
 - Deleting `.verid` blocks every tool call.
 - Developer commands and `CLAUDECODE` are kept out of the agent's Bash by name only: through a script, a variable or a run-time string the agent could refresh setup with upgrade, record its own baseline, approve or close its own module, or in auto sign the design or resume a stuck drive.
@@ -442,7 +496,7 @@ A hook is not an OS sandbox: verid closes the usual shortcuts, not every path a 
 - The confirmation code stays in the transcript on disk, which the agent is blocked from reading.
 - Overrides rely on Claude Code's internal `CLAUDE_CODE_SESSION_ATTENDED`: if it is renamed, overrides stop and everything stays blocked.
 - An override lifts only the rule it names; the other rules, the role rules and the TDD gate still judge the call, and each that denies needs its own `/verid tip`.
-- What verid cannot read gets through once its shell is allowed: an allowed PowerShell call is judged on nothing else, and an MCP tool with a `command` only on the paths its input names.
+- On Claude Code, an overridden unsupported PowerShell call has no target analysis; an MCP tool with a `command` is judged only on the paths its input names. Codex adds heuristic PowerShell target parsing, with the gaps above.
 - The interactive setup needs a real terminal and is tested with a simulated one.
 - Status lines, file paths and parser details stay in English; a hook payload that is not JSON gets both languages.
 - Under heavy load a blocked call may get `VERID_BURNT_LOCK_TIMEOUT`: still blocked, but not counted.

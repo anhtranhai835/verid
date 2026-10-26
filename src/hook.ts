@@ -27,10 +27,20 @@ import type { Manifest, Roles } from "./core/manifest.js";
 import { consumeOverride, handlePrompt, parseVeridPrompt, recordDenial } from "./core/override.js";
 import { modulePhases, openModule } from "./core/plan.js";
 import { decide } from "./core/policy.js";
+import { decideAgentContext, decideDispatch, decideKnownTool } from "./core/dispatch.js";
+import {
+  CODEX_TOOLS,
+  codexAction,
+  codexOutput,
+  codexPayload,
+  codexProject,
+} from "./adapters/codex.js";
+import { decideInstructions } from "./adapters/instruction-protection.js";
 import {
   mappedAgents,
   ROLE_DOCUMENTS,
   splitOn,
+  singleWriterOf,
   subagentHold,
   writerOf,
   type Writer,
@@ -53,7 +63,7 @@ import {
   lifecycleSchema,
   policyContext,
   preToolUseSchema,
-  projectDir,
+  projectDir as claudeProjectDir,
   toAction,
   userPromptSchema,
   writtenPath,
@@ -95,6 +105,12 @@ interface Result {
 }
 
 const LENIENT = new Set(["Stop", "SubagentStop", "SessionStart"]);
+// Provider selection is an explicit invocation contract, never inferred from stdin.
+const CODEX = process.argv[2] === "--provider" && process.argv[3] === "codex";
+const projectDir = CODEX ? codexProject : claudeProjectDir;
+const writerFor = CODEX ? singleWriterOf : writerOf;
+const splitFor = CODEX ? () => false : splitOn;
+const mappedNames = (roles: Roles | undefined) => mappedAgents(roles, CODEX);
 
 async function main(): Promise<void> {
   let raw = "";
@@ -104,18 +120,38 @@ async function main(): Promise<void> {
   let event = /"hook_event_name"\s*:\s*"(\w+)"/.exec(raw)?.[1];
   let result: Result;
   try {
-    const payload = parseJson(raw);
+    const args = process.argv.slice(2);
+    if (
+      args.length !== 0 &&
+      !(
+        args.length === 2 &&
+        args[0] === "--provider" &&
+        ["codex", "claude-code"].includes(args[1]!)
+      )
+    )
+      throw new VeridError("VERID_BURNT_PAYLOAD", {
+        detail: "expected --provider claude-code|codex",
+      });
+    const payload = CODEX ? codexPayload(parseJson(raw)) : parseJson(raw);
     event = (payload as { hook_event_name?: string } | null)?.hook_event_name ?? event;
     result = await handle(payload);
   } catch (err) {
     result = onError(event, err);
   }
+  if (CODEX) result = codexOutput(event, result);
   if (result.stdout) process.stdout.write(result.stdout);
   if (result.stderr) process.stderr.write(result.stderr);
   process.exitCode = result.exit;
 }
 
 async function handle(payload: unknown): Promise<Result> {
+  if (
+    CODEX &&
+    ["PostToolUse", "SubagentStart", "SessionEnd"].includes(
+      String((payload as { hook_event_name?: unknown })?.hook_event_name),
+    )
+  )
+    return { exit: 0 };
   switch ((payload as { hook_event_name?: unknown } | null)?.hook_event_name) {
     case "PreToolUse":
       return preToolUse(inProject(parse(preToolUseSchema, payload)));
@@ -150,16 +186,17 @@ function inProject<P extends { cwd: string }>(payload: P): P {
 async function preToolUse(p: z.infer<typeof preToolUseSchema>): Promise<Result> {
   const project = projectDir(p.cwd);
   const paths = statePaths(project);
-  const action = toAction(p);
+  const adapted = CODEX ? codexAction(p) : null;
+  const action = adapted?.action ?? toAction(p);
   if ("invalid" in action) throw new VeridError("VERID_BURNT_PAYLOAD", { detail: action.invalid });
   // The files this call touches beyond the action itself: what a Bash command plainly writes,
   // or the paths an MCP tool names.
   const files: FileAction[] =
-    action.kind === "bash" ? bashWrites(action.command, p.cwd) : mcpFiles(p);
+    adapted?.files ?? (action.kind === "bash" ? bashWrites(action.command, p.cwd) : mcpFiles(p));
   const writes = [...(action.kind === "file" ? [action] : []), ...files].filter(
     (f) => f.access === "write",
   );
-  const base = policyContext(project);
+  const base = policyContext(project, p.cwd);
   // The manifest is read for a write to the plan only, so a broken one never blocks reads.
   const planManifest = writes.some((w) => w.path === base.planPath)
     ? await loadManifest(project)
@@ -179,12 +216,67 @@ async function preToolUse(p: z.infer<typeof preToolUseSchema>): Promise<Result> 
     },
     names: {},
   }));
+  // Dispatch now needs the manifest even without file writes. Defer errors until the
+  // existing policy has judged the call, preserving its denial priority.
+  const dispatch = await (async () => {
+    const manifest = [
+      "Skill",
+      "Agent",
+      "Task",
+      ...(CODEX ? ["collaborationspawn_agent"] : []),
+    ].includes(p.tool_name)
+      ? await loadManifest(project)
+      : null;
+    return (lifted: ReadonlySet<RuleCode>) => {
+      const dispatched =
+        CODEX && p.tool_name === "collaborationspawn_agent"
+          ? decideDispatch(
+              "Agent",
+              { ...p.tool_input, subagent_type: p.tool_input.agent_type },
+              manifest,
+              lifted,
+            )
+          : decideDispatch(p.tool_name, p.tool_input, manifest, lifted);
+      if (dispatched.kind === "deny") return dispatched;
+      return CODEX && p.tool_name === "collaborationspawn_agent"
+        ? decideAgentContext(
+            p.tool_input.agent_type,
+            p.tool_input.fork_turns,
+            manifest?.roles?.reviewer ?? [],
+          )
+        : dispatched;
+    };
+  })().catch((err: unknown) => (): never => {
+    throw err;
+  });
   // The policy rules on every action, then the role rules and the TDD gate on the writes, once
   // the rules the developer has allowed are lifted. An override covers one rule, so a rule still
   // denying needs its own. Undefined: nothing denies and no code or test is written.
   const judge = (lifted: ReadonlySet<RuleCode>): Deny | Judged | undefined => {
     const policy = strictest([action, ...files].map((a) => decide(a, ctx, lifted)));
     if (policy.kind === "deny") return policy;
+    if (CODEX) {
+      const known = decideKnownTool(p.tool_name, CODEX_TOOLS);
+      if (known.kind === "deny") return known;
+      if (adapted?.invalidPatch)
+        return {
+          kind: "deny",
+          code: "VERID_BURNT_PATCH_UNSUPPORTED",
+          target: adapted.invalidPatch,
+          reason: "unreadable patch",
+        };
+      if (adapted?.unsupported)
+        return {
+          kind: "deny",
+          code: "VERID_BURNT_SHELL_UNSUPPORTED",
+          target: adapted.unsupported,
+          reason: "unreadable shell",
+        };
+    }
+    const instructions = decideInstructions(p, writes, project, lifted);
+    if (instructions.kind === "deny") return instructions;
+    const dispatched = dispatch(lifted);
+    if (dispatched.kind === "deny") return dispatched;
     const gated = gate.judge(lifted);
     return gated?.tdd.kind === "deny" ? gated.tdd : gated;
   };
@@ -213,7 +305,7 @@ async function preToolUse(p: z.infer<typeof preToolUseSchema>): Promise<Result> 
     const lifted = new Set<RuleCode>();
     for (;;) {
       const key = { ...call, rule: denied.code };
-      const used = consumeOverride(state, key, now);
+      const used = CODEX ? null : consumeOverride(state, key, now);
       if (!used) {
         appendAudit(paths.audit, { event: "denied", ...key, target: denied.target });
         writeState(paths, recordDenial(state, { ...key, target: denied.target, at: now }));
@@ -281,8 +373,8 @@ async function tddGate(
     manifest.mode === "remix" || (auto ? auto.kind === "module" : hasOpenModule(project, state));
   const stuck = auto?.kind === "stuck";
   const who = {
-    writer: writerOf(p.agent_id, p.agent_type, manifest.roles),
-    split: splitOn(manifest.roles),
+    writer: writerFor(p.agent_id, p.agent_type, manifest.roles),
+    split: splitFor(manifest.roles),
   };
   const judge = (
     approved: boolean,
@@ -337,8 +429,8 @@ function roleNames(
 ): Record<string, string> {
   return {
     writer: agentId === undefined ? "main" : (agentType ?? "?"),
-    ...mappedAgents(roles),
-    document: ROLE_DOCUMENTS[writerOf(agentId, agentType, roles)] ?? "—",
+    ...mappedNames(roles),
+    document: ROLE_DOCUMENTS[writerFor(agentId, agentType, roles)] ?? "—",
   };
 }
 
@@ -407,7 +499,9 @@ function moved(paths: StatePaths, state: State, event: CycleEvent, change: Move)
 }
 
 async function userPrompt(p: z.infer<typeof userPromptSchema>): Promise<Result> {
-  const cmd = parseVeridPrompt(p.prompt);
+  // Codex has no attended-input signal: a prompt never opens an exception there, and peek and
+  // menu stay in the terminal. Every prompt still gets the research reminder.
+  const cmd = CODEX ? { kind: "none" as const } : parseVeridPrompt(p.prompt);
   const project = projectDir(p.cwd);
   const paths = statePaths(project);
   if (cmd.kind === "none") {
@@ -510,7 +604,7 @@ async function lifecycle(p: z.infer<typeof lifecycleSchema>): Promise<Result> {
       writeState(paths, { ...state, ac_stop_session: p.session_id });
       const why = cooking
         ? bilingual("stop.uncovered", { acs: open.uncovered.join(", ") })
-        : bilingual("stop.evaluate", { module: open.name, ...mappedAgents(manifest.roles) });
+        : bilingual("stop.evaluate", { module: open.name, ...mappedNames(manifest.roles) });
       return { exit: 2, stderr: `${line(tdd)}\n${why}\n` };
     });
   }
@@ -525,14 +619,14 @@ async function lifecycle(p: z.infer<typeof lifecycleSchema>): Promise<Result> {
   // SessionStart stdout goes into the agent's context: with the gate on, the agent learns the
   // cycle before its first write rather than from its first denial.
   const { roles } = manifest;
-  const agents = mappedAgents(roles);
+  const agents = mappedNames(roles);
   return {
     exit: 0,
     stdout: [
       line(cycle),
       bilingual("session.intro", {}),
       // Which agent to dispatch for each role: the hook holds each to its own files.
-      ...(roles
+      ...(roles && !CODEX
         ? [
             `verid: roles ${Object.entries(agents)
               .filter(
@@ -549,10 +643,20 @@ async function lifecycle(p: z.infer<typeof lifecycleSchema>): Promise<Result> {
           ]
         : []),
       bilingual(`mode.${mode}`, {}),
+      ...(CODEX ? [bilingual("session.single_writer", { reviewer: agents.reviewer })] : []),
       ...(manifest.drive === "auto" ? [bilingual("drive.auto", {})] : []),
       bilingual(cycleHint(cycle), {}),
       // Where the project stands and the next step, as `verid menu` shows them.
-      ...menuLines(project, mode, readState(paths), roles, manifest.drive, manifest),
+      ...menuLines(
+        project,
+        mode,
+        readState(paths),
+        roles,
+        manifest.drive,
+        manifest,
+        undefined,
+        CODEX,
+      ),
       "",
     ].join("\n"),
   };
@@ -616,7 +720,7 @@ function autoStop(
     const lines = [
       statusLine(manifest.mode, state.tdd, state.tdd.last_run),
       ...(closed === null ? [] : [bilingual("auto.closed", { module: closed })]),
-      bilingual(step.key, { ...mappedAgents(manifest.roles), ...step.params }),
+      bilingual(step.key, { ...mappedNames(manifest.roles), ...step.params }),
     ].join("\n");
     // The agent may stop, and the developer sees why.
     if (over(phase)) {
@@ -696,7 +800,7 @@ async function subagentStop(p: z.infer<typeof lifecycleSchema>): Promise<Result>
   const manifest = await loadManifest(project);
   if (!manifest) return { exit: 0 };
   const paths = statePaths(project);
-  const writer = writerOf(p.agent_id, p.agent_type, manifest.roles);
+  const writer = writerFor(p.agent_id, p.agent_type, manifest.roles);
   const auto = manifest.drive === "auto";
   if (writer === "reviewer") {
     if (manifest.mode !== "remix") recordReview(p, project, paths, auto, manifest);
@@ -710,7 +814,7 @@ async function subagentStop(p: z.infer<typeof lifecycleSchema>): Promise<Result>
     const wrote = state.writers.includes(agentId);
     const why =
       wrote && !p.stop_hook_active
-        ? subagentHold(writer, splitOn(manifest.roles), state.tdd)
+        ? subagentHold(writer, splitFor(manifest.roles), state.tdd)
         : null;
     if (why) {
       appendAudit(paths.audit, {
@@ -848,22 +952,28 @@ function onError(event: string | undefined, err: unknown): Result {
     err instanceof VeridError
       ? err.params
       : { detail: err instanceof Error ? err.message : String(err) };
+  // Codex continues every held Stop, so a hold on error would never end there either.
   if (event && LENIENT.has(event)) return { exit: 0, stderr: `verid [${code}]\n` };
   if (event === "UserPromptSubmit")
-    return {
-      exit: 0,
-      stdout: JSON.stringify({ systemMessage: bilingual("prompt.hook_failed", { detail: code }) }),
-    };
+    return CODEX
+      ? { exit: 0, stderr: `verid [${code}]\n` }
+      : {
+          exit: 0,
+          stdout: JSON.stringify({
+            systemMessage: bilingual("prompt.hook_failed", { detail: code }),
+          }),
+        };
   return deny(code, params);
 }
 
 function deny(code: ErrorCode, params: Record<string, string>): Result {
   const rule = (RULE_CODES as readonly string[]).includes(code) ? (code as RuleCode) : undefined;
-  const hint: MessageKey | undefined = rule
-    ? isOverridable(rule)
-      ? "hint.overridable"
-      : "hint.not_overridable"
-    : undefined;
+  const hint: MessageKey | undefined =
+    rule && !CODEX
+      ? isOverridable(rule)
+        ? "hint.overridable"
+        : "hint.not_overridable"
+      : undefined;
   const line = (lang: Lang) => `${t(lang, code, params)}${hint ? ` ${t(lang, hint, params)}` : ""}`;
   return { exit: 2, stderr: `verid [${code}]\n${inLanguage(line)}\n` };
 }

@@ -8,7 +8,15 @@ export type Access = "read" | "write";
  * agent wrote it, for messages.
  */
 export type Action =
-  | { kind: "file"; tool: string; access: Access; path: string; display: string }
+  | {
+      kind: "file";
+      tool: string;
+      access: Access;
+      path: string;
+      display: string;
+      /** Absolute spelling before resolving filesystem links. */
+      written?: string;
+    }
   | { kind: "bash"; command: string }
   /** A shell other than Bash, whose commands verid cannot read. */
   | { kind: "shell"; tool: string }
@@ -19,6 +27,13 @@ export interface PolicyContext {
   stateDir: string;
   manifestPath: string;
   transcriptsDir: string;
+  /** Optional relocated user config, both resolved and written spellings. */
+  claudeConfigDirs?: readonly string[];
+  /** Additional shell spellings relative to the tool cwd or the user's home. */
+  claudeConfigBashDirs?: readonly string[];
+  protectedWriteDirs?: readonly string[];
+  protectedTranscriptDirs?: readonly string[];
+  secretPaths?: readonly string[];
   /** verid's own bundle, which the registered hooks run. */
   distDir: string;
   planPath: string;
@@ -46,7 +61,7 @@ export function decide(
   lifted: ReadonlySet<RuleCode> = new Set(),
 ): PolicyDecision {
   if (action.kind === "file") return decideFile(action, ctx, lifted);
-  if (action.kind === "bash") return decideBash(action.command, lifted);
+  if (action.kind === "bash") return decideBash(action.command, ctx, lifted);
   if (action.kind === "shell" && !lifted.has("VERID_BURNT_SHELL_UNSUPPORTED"))
     return deny("VERID_BURNT_SHELL_UNSUPPORTED", action.tool, "shell verid cannot read");
   return allow("no rule for this tool");
@@ -58,6 +73,9 @@ function decideFile(
   lifted: ReadonlySet<RuleCode>,
 ): PolicyDecision {
   const write = a.access === "write";
+  const config = [a.path, a.display, ...(a.written ? [a.written] : [])].flatMap((path) =>
+    configPaths(path, ctx),
+  );
   // Both spellings: a link out of the protected folder is still a protected write.
   if (write && (isPluginPath(a.path) || isPluginPath(a.display)))
     return deny("VERID_BURNT_PLUGIN_PROTECTED", a.display, "plugin code, sources or data");
@@ -69,26 +87,47 @@ function decideFile(
     [
       "VERID_BURNT_SECRET_PROTECTED",
       "secret file",
-      isSecretPath(a.path) || isSecretPath(a.display),
+      isSecretPath(a.path) || isSecretPath(a.display) || (ctx.secretPaths ?? []).includes(a.path),
     ],
     [
       "VERID_BURNT_TRANSCRIPT_PROTECTED",
       "Claude Code transcript",
-      isUnder(a.path, ctx.transcriptsDir),
+      isUnder(a.path, ctx.transcriptsDir) ||
+        config.some((p) => /^projects(?:\/|$)/.test(p)) ||
+        [a.path, a.written ?? a.path].some((p) =>
+          (ctx.protectedTranscriptDirs ?? []).some((dir) => isUnder(p, dir)),
+        ) ||
+        [a.path, a.written ?? a.path].some((p) =>
+          /(?:^|\/)\.codex\/(?:sessions(?:\/|$)|history\.jsonl$|sqlite(?:\/|$)|[^/]*\.(?:sqlite|db)(?:-(?:wal|shm))?$)/.test(
+            slashPath(p),
+          ),
+        ),
     ],
     // Rewriting either one switches verid off: settings register its hooks (or set
     // disableAllHooks), and the bundle is the code those hooks run. verid's commands in Claude
     // Code's menu could grant tools or run shell lines when the developer picks one. An agent
     // definition names the agent_type its subagent gets, so writing one would claim a role.
+    // Skill and command definitions could likewise claim a name in an allowed namespace.
     [
       "VERID_BURNT_HOOK_PROTECTED",
-      "Claude Code settings, agents or plugins, or verid's bundle",
+      "Claude Code settings, agents, skills, commands or plugins, or verid's bundle",
       write &&
         (isClaudeSettings(a.path) ||
           isClaudeSettings(a.display) ||
           isUnder(a.path, ctx.distDir) ||
           isVeridCommand(a.path) ||
-          isAgentOrPlugin(a.path)),
+          isClaudeDefinition(a.path) ||
+          isClaudeDefinition(a.display) ||
+          [a.path, a.written ?? a.path, a.display].some(
+            (p) =>
+              /(?:^|\/)\.codex(?:\/|$)|(?:^|\/)\.agents\/skills(?:\/|$)/.test(slashPath(p)) ||
+              (ctx.protectedWriteDirs ?? []).some((dir) => isUnder(p, dir)),
+          ) ||
+          config.some(
+            (p) =>
+              /^(?:agents|skills|commands|plugins)(?:\/|$)/.test(p) ||
+              /^settings[^/]*\.json$/.test(p),
+          )),
     ],
     ["VERID_BURNT_MANIFEST_PROTECTED", "verid manifest", write && a.path === ctx.manifestPath],
     ["VERID_BURNT_PLAN_NO_RESEARCH", "plan before research", plan && ctx.researchMissing],
@@ -101,6 +140,7 @@ function decideFile(
 // Matches `claude` as a program name: start of command or after a separator/path,
 // optionally with a Windows extension, followed by an argument boundary.
 const NESTED_CLAUDE = /(^|[\s;&|(`'"\\/])claude(\.exe|\.cmd|\.ps1)?(?=$|[\s;&|)`'"])/i;
+const NESTED_CODEX = /(^|[\s;&|(`'"\\/])codex(\.exe|\.cmd|\.ps1)?(?=$|[\s;&|)`'"])/i;
 
 // verid's developer commands refuse only while CLAUDECODE=1, so an agent could clear that variable.
 // Block the variable's name and a direct call to those commands: `verid` (or its Windows shim
@@ -109,7 +149,7 @@ const NESTED_CLAUDE = /(^|[\s;&|(`'"\\/])claude(\.exe|\.cmd|\.ps1)?(?=$|[\s;&|)`
 // `/verid tip` can allow those commands.
 const CLAUDECODE_VAR = /\bclaudecode\b/;
 const DEVELOPER_COMMAND =
-  /(?:\bverid(?:@[^\s"'\\/]*)?(?:\.(?:cmd|ps1|exe))?|\bcli(?:\.js)?)["']?\s+(?:--\s+)?(?:cook|upgrade|garnish|stock|order|serve|plugin)\b/;
+  /(?:\bverid(?:@[^\s"'\\/]*)?(?:\.(?:cmd|ps1|exe))?|\bcli(?:\.js)?)["']?\s+(?:--\s+)?(?:cook|upgrade|setup-codex|garnish|stock|order|serve|plugin)\b/;
 const PLUGIN_COMMAND =
   /(?:\bverid(?:@[^\s"'\\/]*)?(?:\.(?:cmd|ps1|exe))?|\bcli(?:\.js)?)["']?\s+(?:--\s+)?plugin\b/;
 // The agent's Bash inherits CLAUDE_CODE_SESSION_ATTENDED, so a `/verid tip` piped into the hook
@@ -117,24 +157,45 @@ const PLUGIN_COMMAND =
 const VERID_HOOK = /\bdist[\\/]+hook\b|\bhook\.js\b/;
 
 // In priority order, invariants first. Each rule gets the command lowercased.
-const BASH_RULES: [RuleCode, string, (command: string) => boolean][] = [
+const BASH_RULES: [RuleCode, string, (command: string, ctx: PolicyContext) => boolean][] = [
   ["VERID_BURNT_STATE_PROTECTED", "mentions .state", (c) => c.includes(".state")],
   [
     "VERID_BURNT_SECRET_PROTECTED",
     "mentions a secret file",
-    (c) => c.split(/[\s'"`;|&<>()=,]+/).some((t) => t !== "" && isSecretPath(t)),
+    (c, ctx) =>
+      c.split(/[\s'"`;|&<>()=,]+/).some((t) => t !== "" && isSecretPath(t)) ||
+      (ctx.secretPaths ?? []).some((p) => c.includes(slashPath(p))),
   ],
   [
     "VERID_BURNT_TRANSCRIPT_PROTECTED",
     "mentions the transcripts dir",
-    (c) => c.includes(".claude/projects") || c.includes(".claude\\projects"),
+    (c, ctx) =>
+      c.includes(".claude/projects") ||
+      c.includes(".claude\\projects") ||
+      /\.codex[\\/](?:sessions(?:[\\/]|$)|history\.jsonl|sqlite(?:[\\/]|$)|[^\s'"/\\]*\.(?:sqlite|db)\b)/.test(
+        c,
+      ) ||
+      (ctx.protectedTranscriptDirs ?? []).some((p) => c.includes(slashPath(p))) ||
+      configMentions(c, ctx, /^projects/),
   ],
   [
     "VERID_BURNT_HOOK_PROTECTED",
-    "mentions Claude Code settings, agents, plugins or verid's commands",
-    (c) =>
+    "mentions Claude Code settings, agents, plugins or verid's commands, or writes skills or commands",
+    (c, ctx) =>
       /\.claude[\\/](settings|agents(?![\w.-])|plugins(?![\w.-])|commands[\\/]verid(?![\w.-]))/.test(
         c,
+      ) ||
+      /\.codex(?:[\\/]|$)/.test(c) ||
+      (ctx.protectedWriteDirs ?? []).some((p) => c.includes(slashPath(p))) ||
+      configMentions(
+        c,
+        ctx,
+        /^(?:settings|agents(?![\w.-])|plugins(?![\w.-])|commands\/verid(?![\w.-]))/,
+      ) ||
+      bashWriteTargets(c).some(
+        (path) =>
+          isClaudeDefinition(path) ||
+          configPaths(path, ctx).some((p) => /^(?:skills|commands)(?:\/|$)/.test(p)),
       ),
   ],
   [
@@ -142,6 +203,7 @@ const BASH_RULES: [RuleCode, string, (command: string) => boolean][] = [
     "mentions the verid manifest",
     (c) => c.includes("manifest.yaml"),
   ],
+  ["VERID_BURNT_BASH_NESTED_CODEX", "starts a nested Codex session", (c) => NESTED_CODEX.test(c)],
   [
     "VERID_BURNT_BASH_NESTED_CLAUDE",
     "starts a nested Claude Code session",
@@ -150,17 +212,45 @@ const BASH_RULES: [RuleCode, string, (command: string) => boolean][] = [
   [
     "VERID_BURNT_BASH_DEVELOPER_ONLY",
     "changes CLAUDECODE, or runs a developer-only verid command or verid's hook",
-    (c) => CLAUDECODE_VAR.test(c) || DEVELOPER_COMMAND.test(c) || VERID_HOOK.test(c),
+    (c) =>
+      CLAUDECODE_VAR.test(c) ||
+      /\bcodex_(?:thread_id|session_id|tool_call_id|home|ci)\b/.test(c) ||
+      DEVELOPER_COMMAND.test(c) ||
+      VERID_HOOK.test(c),
   ],
 ];
 
 // Substring matching, with no Bash allowlist on purpose (see the known limits): variables, globs,
 // `$(...)`, `node -e` and scripts get through. The command is also read with quotes and backslash
 // escapes removed, the way sh joins words, so `.e""nv` is `.env`. The raw form stays, because
-// there a backslash may be a Windows path separator.
-function decideBash(command: string, lifted: ReadonlySet<RuleCode>): PolicyDecision {
+// there a backslash may be a Windows path separator. Administrative drive shares also
+// get a drive-form copy for every mention rule. An extra copy collapses repeated separators
+// and dot segments before the share rewrite; keep the originals to retain their matches.
+function decideBash(
+  command: string,
+  ctx: PolicyContext,
+  lifted: ReadonlySet<RuleCode>,
+): PolicyDecision {
   const target = command.length > 200 ? `${command.slice(0, 200)}…` : command;
-  const forms = [command, unquote(command)].map((c) => c.toLowerCase());
+  const forms = [command, unquote(command)].flatMap((c) => {
+    const raw = c.toLowerCase();
+    const slashed = raw.replace(/\\/g, "/");
+    const normalized = slashed.replace(/(?<=[^/\s'"`;|&<>()])\/(?:\.?\/)+/g, "/");
+    const shared = [slashed, normalized].map((text) =>
+      text.replace(
+        /\/\/(?:[?.]\/unc\/)?[^/\s'"`;|&<>()]+\/([a-z])\$(?=\/|$|[\s'"`;|&<>()])/g,
+        "$1:",
+      ),
+    );
+    // Rewrite first too: an option's `=` or `@` can otherwise consume the UNC prefix.
+    const normalizedShare = slashed
+      .replace(
+        /\/\/(?:[?.]\/unc\/)?[^/\s'"`;|&<>()]+\/(?:\.?\/)*([a-z])\$(?=\/|$|[\s'"`;|&<>()])/g,
+        "$1:",
+      )
+      .replace(/(?<=[^/\s'"`;|&<>()])\/(?:\.?\/)+/g, "/");
+    return [raw, ...shared, normalizedShare];
+  });
   if (
     forms.some(
       (c) =>
@@ -172,7 +262,7 @@ function decideBash(command: string, lifted: ReadonlySet<RuleCode>): PolicyDecis
   )
     return deny("VERID_BURNT_PLUGIN_PROTECTED", target, "mentions plugin code, sources or data");
   for (const [code, reason, matches] of BASH_RULES)
-    if (!lifted.has(code) && forms.some((c) => matches(c))) return deny(code, target, reason);
+    if (!lifted.has(code) && forms.some((c) => matches(c, ctx))) return deny(code, target, reason);
   return allow("no rule matched");
 }
 
@@ -314,12 +404,41 @@ function isVeridCommand(path: string): boolean {
   );
 }
 
-/** `.claude/agents` or `.claude/plugins` and what is in them, anywhere. */
-function isAgentOrPlugin(path: string): boolean {
+/** Claude Code's agent, skill, command and plugin definitions, anywhere. */
+function isClaudeDefinition(path: string): boolean {
   const segments = path.toLowerCase().split(/[\\/]+/);
   return segments.some(
-    (s, i) => s === ".claude" && (segments[i + 1] === "agents" || segments[i + 1] === "plugins"),
+    (s, i) =>
+      s === ".claude" &&
+      ["agents", "skills", "commands", "plugins"].includes(segments[i + 1] ?? ""),
   );
+}
+
+const slashPath = (path: string) => path.toLowerCase().replace(/\\/g, "/").replace(/\/+$/, "");
+
+/** Relative paths inside a relocated config; defaults remain protected independently. */
+function configPaths(path: string, ctx: PolicyContext): string[] {
+  const target = slashPath(path);
+  return (ctx.claudeConfigDirs ?? []).flatMap((dir) => {
+    const root = slashPath(dir);
+    return isUnder(target, root) ? [target.slice(root.length + 1)] : [];
+  });
+}
+
+/** Keep the existing mention-based Bash rules at relocated config paths too. */
+function configMentions(command: string, ctx: PolicyContext, pattern: RegExp): boolean {
+  const text = command.toLowerCase().replace(/\\/g, "/");
+  return [...(ctx.claudeConfigDirs ?? []), ...(ctx.claudeConfigBashDirs ?? [])].some((dir) => {
+    if (dir === "")
+      return text.split(/[\s'";|&()=<>]+/).some((word) => pattern.test(word.replace(/^\.\//, "")));
+    const prefix = `${slashPath(dir)}/`;
+    let index = text.indexOf(prefix);
+    while (index !== -1) {
+      if (pattern.test(text.slice(index + prefix.length))) return true;
+      index = text.indexOf(prefix, index + prefix.length);
+    }
+    return false;
+  });
 }
 
 /** `.claude/settings*.json` anywhere: the project's, the user's, or a subfolder's. */
@@ -352,6 +471,7 @@ export function isSecretPath(path: string): boolean {
     SECRET_EXTENSIONS.some((e) => base.endsWith(e)) ||
     SECRET_PREFIXES.some((p) => base.startsWith(p)) ||
     SECRET_SUBSTRINGS.some((s) => base.includes(s)) ||
-    segments.includes(".ssh")
+    segments.includes(".ssh") ||
+    (base === "auth.json" && segments.at(-2) === ".codex")
   );
 }

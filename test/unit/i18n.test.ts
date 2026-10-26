@@ -1,6 +1,37 @@
 import { describe, expect, it } from "vitest";
 import { t, veridCommand } from "../../src/adapters/i18n.js";
 
+describe("provider status messages", () => {
+  it("describes current Codex enforcement without development plan labels", () => {
+    const rows = [
+      ["en", "/hooks"],
+      ["vi", "/hooks"],
+    ] as const;
+    for (const [lang, notice] of rows) {
+      for (const key of [
+        "cook.codex_trust",
+        "cook.codex_served",
+        "doctor.codex.retrust",
+      ] as const) {
+        const message = t(lang, key, {});
+        expect(message).toContain(notice);
+        expect(message).not.toMatch(/(?:part|phase|phần)\s+\d+[a-z]?\b/i);
+      }
+    }
+  });
+});
+
+describe("hook protection messages", () => {
+  it("names all command definitions rather than only verid commands in both languages", () => {
+    const rows = [
+      ["en", "command definitions"],
+      ["vi", "định nghĩa lệnh"],
+    ] as const;
+    for (const [lang, notice] of rows)
+      expect(t(lang, "VERID_BURNT_HOOK_PROTECTED", { target: "x" })).toContain(notice);
+  });
+});
+
 describe("legacy role messages", () => {
   it("keeps tester-only messages unchanged without mentioning qa", () => {
     const rows = [

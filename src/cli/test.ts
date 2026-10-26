@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
+import { inAgentShell } from "../adapters/agent-environment.js";
 import {
   appendFileSync,
   mkdirSync,
@@ -214,7 +215,7 @@ const firstLine = (c: TestCase): string => (c.message.split("\n")[0] ?? "").trim
  * cycle itself is not touched, and a run that is not evidence records nothing.
  */
 export async function baselineCommand(project: string): Promise<CliResult> {
-  if (process.env.CLAUDECODE === "1") throw new VeridError("VERID_BURNT_BASELINE_IN_AGENT");
+  if (inAgentShell()) throw new VeridError("VERID_BURNT_BASELINE_IN_AGENT");
   const manifest = await loadManifest(project);
   // No manifest: runOnce says so.
   if (manifest && manifest.mode !== "remix")

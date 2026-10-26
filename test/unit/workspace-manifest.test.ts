@@ -158,6 +158,9 @@ describe("workspace manifest", () => {
     expect(parse(text)).toEqual({
       schemaVersion: 1,
       mode: "prep",
+      providers: ["claude-code"],
+      allowed_skills: [],
+      allowed_agents: ["general-purpose"],
       layout: "workspace",
       repos: [
         {

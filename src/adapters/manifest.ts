@@ -135,6 +135,10 @@ export async function upgradeManifestText(
   const yaml = await import("yaml");
   const { parseDocument } = (yaml as unknown as { default?: typeof yaml }).default ?? yaml;
   const doc = parseDocument(raw);
+  if (!doc.has("providers")) doc.set("providers", doc.createNode(["claude-code"], { flow: true }));
+  if (!doc.has("allowed_skills")) doc.set("allowed_skills", doc.createNode([], { flow: true }));
+  if (!doc.has("allowed_agents"))
+    doc.set("allowed_agents", doc.createNode(["general-purpose"], { flow: true }));
   // Quoted like the globs verid cook writes.
   const quoted = (glob: string) => Object.assign(doc.createNode(glob), { type: "QUOTE_DOUBLE" });
   const add = (key: string, globs: string[]) => {
@@ -162,8 +166,24 @@ export async function upgradeManifestText(
     }
   }
   if (up.dropTestCmd) doc.deleteIn(["repos", repoIndex, "test_cmd"]);
+  if ((doc.toJS() as { providers?: unknown[] }).providers?.includes("codex")) {
+    if (!doc.has("roles")) doc.set("roles", doc.createNode({}));
+    if (!doc.hasIn(["roles", "reviewer"]))
+      doc.setIn(["roles", "reviewer"], doc.createNode([], { flow: true }));
+    const reviewer = doc.getIn(["roles", "reviewer"]) as YAMLSeq<Scalar>;
+    if (!reviewer.items.some((item) => item.value === "verid_reviewer"))
+      reviewer.add(quoted("verid_reviewer"));
+  }
   const r = parseManifest(doc.toJS());
   if (!r.ok)
     throw new VeridError("VERID_BURNT_MANIFEST_INVALID", { path: "manifest", detail: r.detail });
   return doc.toString({ lineWidth: 0 });
+}
+
+/** Defaults absent from the written document, even though parsing supplies their values. */
+export async function missingManifestDefaults(raw: string): Promise<string[]> {
+  const yaml = await import("yaml");
+  const { parseDocument } = (yaml as unknown as { default?: typeof yaml }).default ?? yaml;
+  const doc = parseDocument(raw);
+  return ["providers", "allowed_skills", "allowed_agents"].filter((key) => !doc.has(key));
 }

@@ -57,6 +57,9 @@ describe("parseManifest", () => {
         mode: "remix",
         drive: "human",
         layout: "monorepo",
+        providers: ["claude-code"],
+        allowed_skills: [],
+        allowed_agents: [],
         repos: [{ path: ".", ...repo, timeout_sec: 300 }],
       },
     });
@@ -71,6 +74,9 @@ describe("parseManifest", () => {
         mode: "prep",
         drive: "human",
         layout: "monorepo",
+        providers: ["claude-code"],
+        allowed_skills: [],
+        allowed_agents: [],
         repos: [{ path: ".", ...auto }],
       },
     });
@@ -443,7 +449,7 @@ describe("renderManifest", () => {
   it("says in a comment that verid finds the runner when there is no test_cmd", () => {
     const repo = { path: ".", source_globs: ["**"], test_globs: ["test/**"] };
     const text = renderManifest("prep", repo);
-    expect(text.split("\n").slice(4, 7)).toEqual([
+    expect(text.split("\n").slice(7, 10)).toEqual([
       '  - path: "."',
       "    # test_cmd: verid finds the test runner from the build files; set one to choose it",
       '    source_globs: ["**"]',
@@ -455,6 +461,9 @@ describe("renderManifest", () => {
         mode: "prep",
         drive: "human",
         layout: "monorepo",
+        providers: ["claude-code"],
+        allowed_skills: [],
+        allowed_agents: ["general-purpose"],
         repos: [repo],
       },
     });
@@ -475,6 +484,9 @@ describe("renderManifest", () => {
         "# verid manifest: only the developer edits this file. Commit it with the project.",
         "schemaVersion: 1",
         'mode: "prep" # prep | recipe | remix',
+        'providers: ["claude-code"] # claude-code | codex',
+        "allowed_skills: [] # additional exact names or prefix:*; verid:*, superpowers:*, andrej-karpathy-skills:* are always allowed",
+        'allowed_agents: ["general-purpose"] # superpowers dispatches; roles are always allowed',
         "repos:",
         '  - path: "."',
         '    test_cmd: "npx vitest run --reporter=junit --outputFile={junit} # \\"quoted\\""',
@@ -492,6 +504,9 @@ describe("renderManifest", () => {
         mode: "prep",
         drive: "human",
         layout: "monorepo",
+        providers: ["claude-code"],
+        allowed_skills: [],
+        allowed_agents: ["general-purpose"],
         repos: [repo],
       },
     });
@@ -517,6 +532,9 @@ describe("renderManifest", () => {
         mode: "prep",
         drive: "human",
         layout: "monorepo",
+        providers: ["claude-code"],
+        allowed_skills: [],
+        allowed_agents: ["general-purpose"],
         roles: {
           reviewer: ["verid:reviewer"],
           tester: ["verid:tester"],
@@ -680,6 +698,9 @@ describe("upgradeManifestText", () => {
         mode: "remix",
         drive: "human",
         layout: "monorepo",
+        providers: ["claude-code"],
+        allowed_skills: [],
+        allowed_agents: ["general-purpose"],
         roles: { reviewer: ["verid:reviewer"], tester: ["verid:tester"], coder: ["verid:coder"] },
         repos: [
           {

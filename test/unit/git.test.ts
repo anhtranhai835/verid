@@ -66,6 +66,10 @@ describe("gitView", () => {
     write(withUntrackedSrc, "src/a.ts");
     const settingsOnly = committed();
     write(settingsOnly, ".claude/settings.local.json", "{}");
+    const codexHooksOnly = committed();
+    write(codexHooksOnly, ".codex/hooks.json", "{}");
+    const otherCodexFile = committed();
+    write(otherCodexFile, ".codex/config.toml", "");
     const parent = repo();
     write(parent, "app/src/a.ts");
     git(parent, "add", "-A");
@@ -83,6 +87,8 @@ describe("gitView", () => {
       committed: gitView(cleanCommitted)?.clean,
       head: /^[0-9a-f]{40}$/.test(gitView(cleanCommitted)?.head ?? ""),
       "machine settings": gitView(settingsOnly)?.clean,
+      "Codex machine hooks": gitView(codexHooksOnly)?.clean,
+      "other Codex file": gitView(otherCodexFile)?.clean,
       "sibling folder dirty": gitView(join(parent, "app"))?.clean,
       "config hides untracked": gitView(hidingUntracked)?.clean,
     }).toEqual({
@@ -92,6 +98,8 @@ describe("gitView", () => {
       committed: true,
       head: true,
       "machine settings": true,
+      "Codex machine hooks": true,
+      "other Codex file": false,
       "sibling folder dirty": true,
       "config hides untracked": false,
     });

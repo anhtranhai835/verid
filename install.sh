@@ -23,6 +23,9 @@ main() {
   fi
   printf 'Installing @anhtranhai835/verid@%s\n' "$version"
   npm install -g "@anhtranhai835/verid@$version" || fail 'npm install failed. Resolve the npm error and run this installer again.'
+  if command -v codex >/dev/null 2>&1 && command -v verid >/dev/null 2>&1; then
+    verid setup-codex || fail 'Codex reviewer setup failed. Resolve its message and run verid setup-codex again.'
+  fi
   if command -v claude >/dev/null 2>&1; then
     plugin_command plugin marketplace add obra/superpowers-marketplace
     plugin_command plugin install superpowers@superpowers-marketplace

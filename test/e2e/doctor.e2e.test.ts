@@ -12,6 +12,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { parse, stringify } from "yaml";
+import { codexHookKeys } from "../../src/adapters/codex-settings.js";
 
 const root = join(import.meta.dirname, "../..");
 const CLI = join(root, "dist/cli.js");
@@ -41,6 +42,7 @@ const put = (path: string, text: string) => {
 const env = () => ({
   ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("CLAUDE"))),
   CLAUDE_CONFIG_DIR: config,
+  CODEX_HOME: join(dir, "codex"),
 });
 const cli = (args: string[], extra = {}) => {
   const r = spawnSync(process.execPath, [CLI, ...args], {
@@ -112,8 +114,126 @@ const snapshot = () =>
   readdirSync(dir, { recursive: true, withFileTypes: true })
     .filter((e) => e.isFile())
     .map((e) => [join(e.parentPath, e.name), readFileSync(join(e.parentPath, e.name), "hex")]);
+const trustCodex = () => {
+  const file = join(project, ".codex", "hooks.json");
+  const configFile = join(dir, "codex", "config.toml");
+  const keys = codexHookKeys(
+    JSON.parse(readFileSync(file, "utf8")),
+    file,
+    join(root, "dist", "hook.js"),
+  );
+  put(
+    configFile,
+    readFileSync(configFile, "utf8") +
+      `\n[projects.${JSON.stringify(project)}]\ntrust_level = "trusted"\n` +
+      keys
+        .map((key) => `[hooks.state.${JSON.stringify(key)}]\ntrusted_hash = "sha256:abc"\n`)
+        .join(""),
+  );
+};
 
 describe("verid doctor", () => {
+  it("reports intact LF and CRLF instruction blocks as current for both providers", () => {
+    const rows = [{ ending: "\n" }, { ending: "\r\n" }];
+    for (const { ending } of rows) {
+      healthy();
+      manifest((m) => {
+        m.providers = ["claude-code", "codex"];
+      });
+      expect(cli(["upgrade", "--yes"]).code).toBe(0);
+      trustCodex();
+      for (const file of ["CLAUDE.md", "AGENTS.md"]) {
+        const path = join(project, file);
+        put(path, readFileSync(path, "utf8").replaceAll("\r\n", "\n").replaceAll("\n", ending));
+      }
+      commit();
+      const before = snapshot();
+      const result = cli(["doctor"]);
+      expect(result.code, result.err + result.out).toBe(0);
+      expect(result.out).toContain("CLAUDE.md: verid instruction block is current");
+      expect(result.out).toContain("AGENTS.md: verid instruction block is current");
+      expect(snapshot()).toEqual(before);
+    }
+  });
+  it("reports missing and edited managed instructions without changing the file", () => {
+    const rows = [
+      { content: null },
+      { content: "developer text\n<!-- verid:begin -->\nedited\n<!-- verid:end -->\n" },
+    ];
+    for (const row of rows) {
+      healthy();
+      const file = join(project, "CLAUDE.md");
+      if (row.content === null) rmSync(file, { force: true });
+      else put(file, row.content);
+      const before = snapshot();
+      const r = cli(["doctor"]);
+      expect(r.code, r.err + r.out).toBe(1);
+      expect(r.out).toContain("! instructions.claude-code:");
+      expect(r.out).toContain("CLAUDE.md");
+      expect(r.out).toContain("upgrade");
+      expect(snapshot()).toEqual(before);
+    }
+  });
+
+  it("checks each selected provider and accepts user edits outside the block", () => {
+    healthy();
+    manifest((m) => {
+      m.providers = ["claude-code", "codex"];
+    });
+    expect(cli(["upgrade", "--yes"]).code).toBe(0);
+    trustCodex();
+    const rows = [
+      { file: "CLAUDE.md", finding: "! instructions.claude-code:" },
+      { file: "AGENTS.md", finding: "! instructions.codex:" },
+    ];
+    for (const { file } of rows) {
+      const path = join(project, file);
+      put(path, `user prefix\r\n${readFileSync(path, "utf8")}user suffix\r\n`);
+    }
+    commit();
+    expect(cli(["doctor"]).code).toBe(0);
+    for (const { file, finding } of rows) {
+      const path = join(project, file);
+      const text = readFileSync(path, "utf8");
+      const cases = [
+        { content: null },
+        { content: text.replace("## verid", "## changed") },
+        { content: "<!-- verid:begin -->\nbroken" },
+      ];
+      for (const { content } of cases) {
+        if (content === null) rmSync(path);
+        else put(path, content);
+        const before = snapshot();
+        const result = cli(["doctor"]);
+        expect(result.code, result.err + result.out).toBe(1);
+        expect(result.out).toContain(finding);
+        expect(result.out).toContain(file);
+        expect(snapshot()).toEqual(before);
+        put(path, text);
+      }
+    }
+  }, 60_000); // eight doctor runs, each asking Codex for its version: slow on a busy machine
+
+  it("does not require Claude wiring for a Codex-only project's instruction check", () => {
+    healthy();
+    manifest((m) => {
+      m.providers = ["codex"];
+    });
+    expect(cli(["upgrade", "--yes"]).code).toBe(0);
+    trustCodex();
+    rmSync(join(project, ".claude"), { recursive: true, force: true });
+    rmSync(join(config, "plugins/installed_plugins.json"));
+    commit();
+    const before = snapshot();
+    const result = cli(["doctor"]);
+    expect(result.code, result.err + result.out).toBe(0);
+    expect(result.out).toContain("AGENTS.md: verid instruction block is current");
+    expect(result.out).toContain("Codex hooks point at this install");
+    expect(result.out).not.toContain("! hooks:");
+    expect(result.out).not.toContain("! plugin.");
+    expect(snapshot()).toEqual(before);
+  });
+
   it("reports a healthy project with exit zero, also inside Claude Code, without writes", () => {
     healthy();
     const before = snapshot();

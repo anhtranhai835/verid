@@ -4,7 +4,18 @@ import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { node22OrLater } from "../core/doctor.js";
+import { instructionBlock, instructionFile, renderInstructions } from "../core/instructions.js";
 import { hasCurrentVeridHooks } from "../adapters/claude-settings.js";
+import {
+  codexHome,
+  codexHookKeys,
+  codexTrust,
+  hasCodexReviewer,
+  hasCurrentCodexHooks,
+  installedSkills,
+  reviewerOverlay,
+  reviewerContent,
+} from "../adapters/codex-settings.js";
 import { bilingual, inLanguage, t } from "../adapters/i18n.js";
 import { gitView } from "../adapters/git.js";
 import { isDirectory, loadManifest } from "../adapters/manifest.js";
@@ -41,66 +52,6 @@ export async function doctorCommand(project: string): Promise<CliResult> {
     problem("node", "doctor.node.old", "doctor.node.fix", { version: process.version });
   else lines.push(say("doctor.node.ok", { version: process.version }));
 
-  const settingsFile = join(project, ".claude/settings.local.json");
-  const hook = fileURLToPath(new URL("./hook.js", import.meta.url));
-  let currentHooks = false;
-  try {
-    currentHooks = hasCurrentVeridHooks(JSON.parse(readFileSync(settingsFile, "utf8")), hook);
-  } catch {
-    // Missing, unreadable or malformed settings need the developer's attention.
-  }
-  if (!currentHooks) problem("hooks", "doctor.hooks.missing", "doctor.hooks.fix");
-  else lines.push(say("doctor.hooks.ok"));
-
-  const config = process.env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude");
-  const recordFile = join(config, "plugins/installed_plugins.json");
-  let installed: Record<string, unknown> = {};
-  try {
-    const record: unknown = JSON.parse(readFileSync(recordFile, "utf8"));
-    if (!isObject(record) || record.version !== 2 || !isObject(record.plugins))
-      problem("plugins.record", "doctor.plugins.unsupported", "doctor.plugins.repair", {
-        file: recordFile,
-      });
-    else installed = record.plugins;
-  } catch (e) {
-    if (errno(e) !== "ENOENT" && !(e instanceof SyntaxError))
-      problem("plugins.record", "doctor.plugins.unreadable", "doctor.plugins.permissions", {
-        file: recordFile,
-      });
-    else if (e instanceof SyntaxError)
-      problem("plugins.record", "doctor.plugins.invalid", "doctor.plugins.reinstall", {
-        file: recordFile,
-      });
-  }
-  for (const [name, marketplace, source] of [
-    ["superpowers", "superpowers-marketplace", "obra/superpowers-marketplace"],
-    ["andrej-karpathy-skills", "karpathy-skills", "forrestchang/andrej-karpathy-skills"],
-    ["verid", "verid", "anhtranhai835/verid"],
-  ] as const) {
-    const found = Object.entries(installed).some(
-      ([key, entries]) =>
-        key.startsWith(`${name}@`) &&
-        Array.isArray(entries) &&
-        entries.some(
-          (entry: unknown) =>
-            isObject(entry) &&
-            typeof entry.installPath === "string" &&
-            isDirectory(entry.installPath) &&
-            (entry.scope === "user" ||
-              (["project", "local"].includes(String(entry.scope)) &&
-                typeof entry.projectPath === "string" &&
-                resolve(entry.projectPath) === resolve(project))),
-        ),
-    );
-    if (!found)
-      problem(`plugin.${name}`, "doctor.plugin.missing", "doctor.plugin.fix", {
-        name,
-        source,
-        marketplace,
-      });
-    else lines.push(say("doctor.plugin.ok", { name }));
-  }
-
   let manifest: Manifest | null = null;
   try {
     manifest = await loadManifest(project, { readOnly: true, checkPaths: false });
@@ -113,6 +64,154 @@ export async function doctorCommand(project: string): Promise<CliResult> {
       "doctor.manifest.fix",
       { detail: e instanceof VeridError ? (e.params.detail ?? e.code) : "" },
     );
+  }
+
+  if (!manifest || manifest.providers.includes("claude-code")) {
+    const settingsFile = join(project, ".claude/settings.local.json");
+    const hook = fileURLToPath(new URL("./hook.js", import.meta.url));
+    let currentHooks = false;
+    try {
+      currentHooks = hasCurrentVeridHooks(JSON.parse(readFileSync(settingsFile, "utf8")), hook);
+    } catch {
+      // Missing, unreadable or malformed settings need the developer's attention.
+    }
+    if (!currentHooks) problem("hooks", "doctor.hooks.missing", "doctor.hooks.fix");
+    else lines.push(say("doctor.hooks.ok"));
+
+    const config = process.env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude");
+    const recordFile = join(config, "plugins/installed_plugins.json");
+    let installed: Record<string, unknown> = {};
+    try {
+      const record: unknown = JSON.parse(readFileSync(recordFile, "utf8"));
+      if (!isObject(record) || record.version !== 2 || !isObject(record.plugins))
+        problem("plugins.record", "doctor.plugins.unsupported", "doctor.plugins.repair", {
+          file: recordFile,
+        });
+      else installed = record.plugins;
+    } catch (e) {
+      if (errno(e) !== "ENOENT" && !(e instanceof SyntaxError))
+        problem("plugins.record", "doctor.plugins.unreadable", "doctor.plugins.permissions", {
+          file: recordFile,
+        });
+      else if (e instanceof SyntaxError)
+        problem("plugins.record", "doctor.plugins.invalid", "doctor.plugins.reinstall", {
+          file: recordFile,
+        });
+    }
+    for (const [name, marketplace, source] of [
+      ["superpowers", "superpowers-marketplace", "obra/superpowers-marketplace"],
+      ["andrej-karpathy-skills", "karpathy-skills", "forrestchang/andrej-karpathy-skills"],
+      ["verid", "verid", "anhtranhai835/verid"],
+    ] as const) {
+      const found = Object.entries(installed).some(
+        ([key, entries]) =>
+          key.startsWith(`${name}@`) &&
+          Array.isArray(entries) &&
+          entries.some(
+            (entry: unknown) =>
+              isObject(entry) &&
+              typeof entry.installPath === "string" &&
+              isDirectory(entry.installPath) &&
+              (entry.scope === "user" ||
+                (["project", "local"].includes(String(entry.scope)) &&
+                  typeof entry.projectPath === "string" &&
+                  resolve(entry.projectPath) === resolve(project))),
+          ),
+      );
+      if (!found)
+        problem(`plugin.${name}`, "doctor.plugin.missing", "doctor.plugin.fix", {
+          name,
+          source,
+          marketplace,
+        });
+      else lines.push(say("doctor.plugin.ok", { name }));
+    }
+  }
+  for (const provider of manifest?.providers ?? []) {
+    const file = instructionFile(provider);
+    let text: string | undefined;
+    try {
+      text = readFileSync(join(project, file), "utf8").replaceAll("\r\n", "\n");
+    } catch {
+      // Missing and unreadable instruction files both require a developer repair.
+    }
+    const block = text === undefined ? { ok: true as const, block: null } : instructionBlock(text);
+    if (block.ok && block.block === null)
+      problem(
+        `instructions.${provider}`,
+        "doctor.instructions.missing",
+        "doctor.instructions.fix",
+        { file },
+      );
+    else if (
+      !block.ok ||
+      block.block !== renderInstructions(manifest!, provider, installedSkills())
+    )
+      problem(`instructions.${provider}`, "doctor.instructions.edited", "doctor.instructions.fix", {
+        file,
+      });
+    else lines.push(say("doctor.instructions.ok", { file }));
+    if (provider === "codex") {
+      const hook = fileURLToPath(new URL("./hook.js", import.meta.url));
+      const hookFile = join(project, ".codex", "hooks.json");
+      let settings: unknown;
+      try {
+        settings = JSON.parse(readFileSync(hookFile, "utf8"));
+      } catch {
+        /* Report below. */
+      }
+      if (!hasCurrentCodexHooks(settings, hook))
+        problem("codex.hooks", "doctor.codex.hooks_missing", "doctor.hooks.fix");
+      else lines.push(say("doctor.codex.hooks_ok"));
+      let config = "";
+      try {
+        config = readFileSync(join(codexHome(), "config.toml"), "utf8");
+      } catch {
+        /* Missing configuration is untrusted. */
+      }
+      const trust = codexTrust(config, project, codexHookKeys(settings, hookFile, hook));
+      if (!trust.project)
+        problem(
+          "codex.project_trust",
+          "doctor.codex.project_untrusted",
+          "doctor.codex.project_fix",
+        );
+      else lines.push(say("doctor.codex.project_ok"));
+      if (!trust.hooks)
+        problem("codex.hook_trust", "doctor.codex.hooks_untrusted", "doctor.codex.hooks_fix");
+      else lines.push(say("doctor.codex.trust_ok"));
+      // Codex's internal definition hash serialization is not part of the captured contract.
+      lines.push(say("doctor.codex.retrust"));
+      let overlayCurrent = false;
+      try {
+        overlayCurrent =
+          readFileSync(reviewerOverlay(), "utf8").replaceAll("\r\n", "\n") ===
+          reviewerContent().replaceAll("\r\n", "\n");
+      } catch {
+        /* Missing or unreadable installation needs upgrade. */
+      }
+      if (
+        !overlayCurrent ||
+        !hasCodexReviewer(config, reviewerOverlay()) ||
+        !manifest!.roles?.reviewer?.includes("verid_reviewer")
+      )
+        problem("codex.reviewer", "doctor.codex.reviewer_missing", "doctor.hooks.fix");
+      else lines.push(say("doctor.codex.reviewer_ok"));
+      const version = spawnSync(
+        process.platform === "win32" ? "codex.cmd" : "codex",
+        ["--version"],
+        {
+          encoding: "utf8",
+          windowsHide: true,
+          timeout: 5000,
+          shell: process.platform === "win32",
+        },
+      );
+      const actual = version.status === 0 ? version.stdout.trim() : "unavailable";
+      if (!/^codex-cli 0\.164\.0$/.test(actual))
+        lines.push(say("doctor.codex.version_warning", { version: actual }));
+      else lines.push(say("doctor.codex.version_ok"));
+    }
   }
   for (const repo of [
     ...(manifest?.repos ?? []),

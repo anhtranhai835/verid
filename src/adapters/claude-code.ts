@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { realpathSync } from "node:fs";
 import { homedir } from "node:os";
-import { basename, dirname, join, resolve } from "node:path";
+import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import * as z from "zod/mini";
 import { canonicalJson } from "../core/canonical-json.js";
@@ -77,6 +77,7 @@ export function toAction(p: PreToolUse): Action | { invalid: string } {
     tool: p.tool_name,
     access: p.tool_name in WRITE_TOOLS ? "write" : "read",
     path: normalizePath(resolve(p.cwd, raw)),
+    written: writtenPath(resolve(p.cwd, raw)),
     display: raw,
   };
 }
@@ -95,26 +96,77 @@ export function mcpFiles(p: PreToolUse): FileAction[] {
   return [...new Set(mcpPaths(p.tool_input))].map((t) => fileAction(p.tool_name, access, t, p.cwd));
 }
 
-function fileAction(tool: string, access: Access, raw: string, cwd: string): FileAction {
+export function fileAction(tool: string, access: Access, raw: string, cwd: string): FileAction {
   let display = raw.replace(/^~(?=$|[\\/])/, homedir());
+  const config = process.env.CLAUDE_CONFIG_DIR;
+  if (config)
+    display = display.replace(
+      /^\$(?:\{CLAUDE_CONFIG_DIR\}|(?:env:)?CLAUDE_CONFIG_DIR)(?=$|[\\/])/,
+      () => config,
+    );
+  display = display.replace(/^\$(?:\{HOME\}|(?:env:)?(?:HOME|USERPROFILE))(?=$|[\\/])/i, () =>
+    homedir(),
+  );
+  if (process.env.CODEX_HOME)
+    display = display.replace(
+      /^\$(?:\{CODEX_HOME\}|(?:env:)?CODEX_HOME)(?=$|[\\/])/i,
+      () => process.env.CODEX_HOME!,
+    );
   if (display.startsWith("file:"))
     try {
       display = fileURLToPath(display);
     } catch {
       // Not a local file URL: judged as written.
     }
-  return { kind: "file", tool, access, path: normalizePath(resolve(cwd, display)), display };
+  return {
+    kind: "file",
+    tool,
+    access,
+    path: normalizePath(resolve(cwd, display)),
+    written: writtenPath(resolve(cwd, display)),
+    display,
+  };
 }
 
 export function projectDir(cwd: string): string {
   return process.env.CLAUDE_PROJECT_DIR || cwd;
 }
 
-export function policyContext(project: string): PolicyContext {
+export function policyContext(project: string, cwd = project): PolicyContext {
+  const config = process.env.CLAUDE_CONFIG_DIR;
+  const configDirs = config ? [...new Set([normalizePath(config), writtenPath(config)])] : [];
+  // Codex's home holds its config, hook trust, sessions and credentials.
+  const codexHomes = [
+    join(homedir(), ".codex"),
+    ...(process.env.CODEX_HOME ? [process.env.CODEX_HOME] : []),
+  ];
+  const spellings = (dirs: string[]) => dirs.flatMap((p) => [normalizePath(p), writtenPath(p)]);
   return {
     stateDir: normalizePath(join(project, ".verid", ".state")),
     manifestPath: normalizePath(join(project, ".verid", "manifest.yaml")),
     transcriptsDir: normalizePath(join(homedir(), ".claude", "projects")),
+    claudeConfigDirs: configDirs,
+    protectedWriteDirs: spellings([
+      ...codexHomes,
+      join(homedir(), ".agents", "skills"),
+      // verid's plugin folder: the skills AGENTS.md sends Codex to, and the reviewer template.
+      join(dirname(fileURLToPath(import.meta.url)), "..", "plugin"),
+    ]),
+    protectedTranscriptDirs: spellings(
+      codexHomes.flatMap((home) => [
+        join(home, "sessions"),
+        join(home, "history.jsonl"),
+        join(home, "sqlite"),
+      ]),
+    ),
+    secretPaths: spellings(codexHomes.map((home) => join(home, "auth.json"))),
+    claudeConfigBashDirs: configDirs.flatMap((dir) => [
+      relative(cwd, dir),
+      `~/${relative(homedir(), dir)}`,
+      "$claude_config_dir",
+      "${claude_config_dir}",
+      "$env:claude_config_dir",
+    ]),
     // This code runs bundled in dist/, next to hook.js and its chunks.
     distDir: normalizePath(dirname(fileURLToPath(import.meta.url))),
     planPath: normalizePath(join(project, ".verid", "plan.md")),
@@ -130,7 +182,7 @@ export function inputHash(toolInput: unknown): string {
 
 /** Absolute and `..` resolved but links kept, lowercase on win32: the path as the agent wrote it. */
 export function writtenPath(path: string): string {
-  const abs = stripStreams(resolve(path));
+  const abs = stripStreams(localAdminPath(resolve(localAdminPath(path))));
   return process.platform === "win32" ? abs.toLowerCase() : abs;
 }
 
@@ -141,8 +193,18 @@ export function writtenPath(path: string): string {
 export function normalizePath(path: string): string {
   // NTFS accepts streams on files and directory components, including new targets.
   // Strip before realpath so its missing-parent fallback cannot retain an alias.
-  const real = stripStreams(realpathLoose(stripStreams(resolve(path))));
+  const real = stripStreams(
+    localAdminPath(realpathLoose(stripStreams(resolve(localAdminPath(path))))),
+  );
   return process.platform === "win32" ? real.toLowerCase() : real;
+}
+
+/** Judge administrative drive shares on any host as their local drive paths. */
+function localAdminPath(path: string): string {
+  if (process.platform !== "win32") return path;
+  const share = /^[/\\]{2}(?:[?.][/\\]UNC[/\\])?([^/\\]+)[/\\]([a-z])\$(?=[/\\]|$)/i.exec(path);
+  if (!share) return path;
+  return `${share[2]}:${path.slice(share[0].length) || "\\"}`;
 }
 
 function stripStreams(path: string): string {
@@ -155,7 +217,9 @@ function stripStreams(path: string): string {
       .slice(prefix.length)
       .split(/([\\/])/)
       .map((part, index) =>
-        index === 0 && /^[A-Za-z]:$/.test(part) ? part : part.replace(/:.*$/, ""),
+        index === 0 && /^[A-Za-z]:$/.test(part)
+          ? part
+          : part.replace(/:.*$/, "").replace(/[. ]+$/, ""),
       )
       .join("")
   );

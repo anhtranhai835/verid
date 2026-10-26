@@ -1,8 +1,9 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { setupPreview, type Action, type PlannedFile } from "../core/setup-plan.js";
 import { ask, type Io } from "../adapters/terminal.js";
+import { inAgentShell } from "../adapters/agent-environment.js";
 import {
   pluginIgnore,
   pluginPath,
@@ -16,8 +17,10 @@ import {
   LAYOUTS,
   manifestUpgrade,
   MODES,
+  PROVIDERS,
   ROLE_NAMES,
   parseManifest,
+  providerRoles,
   renderManifest,
   suggestManifest,
   suggestMode,
@@ -27,14 +30,25 @@ import {
   type Roles,
   type Layout,
   type Manifest,
+  type Provider,
 } from "../core/manifest.js";
+import { instructionFile, mergeInstructions, renderInstructions } from "../core/instructions.js";
 import { goneRunners, runnerKey, runnerLabel, type Runner } from "../core/runners.js";
 import { hasVeridHooks, withVeridHooks } from "../adapters/claude-settings.js";
+import {
+  codexHome,
+  installedSkills,
+  mergeCodexReviewer,
+  reviewerOverlay,
+  reviewerContent,
+  withCodexHooks,
+} from "../adapters/codex-settings.js";
 import { bilingual, t, type Lang } from "../adapters/i18n.js";
 import {
   isDirectory,
   loadManifest,
   manifestFile,
+  missingManifestDefaults,
   upgradeManifestText,
 } from "../adapters/manifest.js";
 import { findRunners } from "../adapters/test-runner.js";
@@ -66,6 +80,7 @@ export type { Action } from "../core/setup-plan.js";
 /** What `verid cook` will do, checked and not yet written: `apply` writes it. */
 export interface CookPlan {
   layout: Layout;
+  providers: readonly Provider[];
   steps: PlannedFile[];
   notes: string[];
   files: PlannedFile[];
@@ -91,7 +106,7 @@ export async function initCommand(
   io?: Io,
   command: "cook" | "upgrade" = "cook",
 ): Promise<CliResult> {
-  if (process.env.CLAUDECODE === "1") throw new VeridError("VERID_BURNT_INIT_IN_AGENT");
+  if (inAgentShell()) throw new VeridError("VERID_BURNT_INIT_IN_AGENT");
   if (command === "upgrade" && !existsSync(manifestFile(project)))
     throw new VeridError("VERID_BURNT_MANIFEST_MISSING", { path: manifestFile(project) });
   if (command === "upgrade" && !io && !flags.yes && !flags.dryRun)
@@ -126,7 +141,7 @@ export async function initCommand(
   // The same ending as the screen in a terminal: what to commit, then what to do next.
   const out = [
     result.stdout,
-    bilingual(plan.layout === "workspace" ? "workspace.done" : "init.done", {}),
+    setupDoneLine(plan.layout, plan.providers),
     await servedLine(project),
   ].filter(Boolean);
   return {
@@ -138,9 +153,26 @@ export async function initCommand(
 
 /** cook's last line: the next step, which in remix is the baseline, until there is one. */
 export async function servedLine(project: string): Promise<string> {
-  const remix = (await loadManifest(project, { readOnly: true }))?.mode === "remix";
+  const manifest = await loadManifest(project, { readOnly: true });
+  if (manifest && !manifest.providers.includes("claude-code"))
+    return `🍽️  ${bilingual("cook.codex_served", {})}`;
+  const remix = manifest?.mode === "remix";
   const first = remix && readState(statePaths(project)).baseline === null;
   return `🍽️  ${bilingual(first ? "cook.served_remix" : "cook.served", {})}`;
+}
+
+/** Completion follows the provider files that were actually generated. */
+export function setupDoneLine(layout: Layout, providers: readonly Provider[]): string {
+  return bilingual(
+    providers.includes("claude-code")
+      ? layout === "workspace"
+        ? "workspace.done"
+        : "init.done"
+      : layout === "workspace"
+        ? "workspace.codex_done"
+        : "init.codex_done",
+    { instructions: providers.map(instructionFile).join("  ") },
+  );
 }
 
 /** Checks everything `verid cook` needs and returns what it would write, writing nothing. */
@@ -151,32 +183,54 @@ export async function planCook(
 ): Promise<CookPlan> {
   // Claude Code sets CLAUDECODE in every session: an agent that deleted .verid must
   // not be able to rebuild it with fresh counters, no audit trail and maybe no manifest.
-  if (process.env.CLAUDECODE === "1") throw new VeridError("VERID_BURNT_INIT_IN_AGENT");
+  if (inAgentShell()) throw new VeridError("VERID_BURNT_INIT_IN_AGENT");
 
   const paths = statePaths(project);
   const steps: CookPlan["steps"] = [];
   const writes: Array<{ rel: string; content: unknown; apply: () => void }> = [];
+  const machineWrites: Array<{ path: string; content: string; apply: () => void }> = [];
   const notes: string[] = [];
+  const checkWritePath = (rel: string) => {
+    try {
+      checkSetupPath(project, rel);
+    } catch (error) {
+      if (
+        providers.some((provider) => instructionFile(provider) === rel) &&
+        error instanceof VeridError &&
+        error.code === "VERID_BURNT_MANIFEST_INVALID"
+      )
+        throw new VeridError("VERID_BURNT_INSTRUCTIONS_LINKED", { path: rel });
+      throw error;
+    }
+  };
   const step = (action: Action, rel: string, write?: { content: unknown; apply: () => void }) => {
     steps.push({ action, rel });
     if (write) writes.push({ rel, ...write });
   };
 
-  // Settings first: if they cannot be used, nothing else has been touched.
   const settingsFile = join(project, ".claude", "settings.local.json");
-  const settingsText = readText(settingsFile);
   const hook = fileURLToPath(new URL("./hook.js", import.meta.url));
-  let merged: ReturnType<typeof withVeridHooks>;
-  try {
-    merged = withVeridHooks(settingsText === null ? {} : JSON.parse(settingsText), hook);
-  } catch (e) {
-    throw invalid(settingsFile, e instanceof Error ? e.message : String(e));
-  }
 
   // The language for this machine's messages, kept in its state.
   const language = flags.lang === undefined ? undefined : LANGS.find((l) => l === flags.lang);
   if (flags.lang !== undefined && !language) throw invalid("--lang", "must be vi or en");
   const existing = await loadManifest(project, { readOnly: true, checkPaths: false });
+  if (flags.providers?.some((provider) => !PROVIDERS.some((known) => known === provider)))
+    throw invalid("--provider", "must be claude-code or codex");
+  const providers: Provider[] =
+    existing?.providers ??
+    (flags.providers?.length ? ([...new Set(flags.providers)] as Provider[]) : ["claude-code"]);
+  const claude = providers.includes("claude-code");
+  const settingsText = claude ? readText(settingsFile) : null;
+  let merged: ReturnType<typeof withVeridHooks> | undefined;
+  if (claude) {
+    try {
+      merged = withVeridHooks(settingsText === null ? {} : JSON.parse(settingsText), hook);
+    } catch (e) {
+      throw invalid(settingsFile, e instanceof Error ? e.message : String(e));
+    }
+  }
+  let effective: Manifest | undefined = existing ?? undefined;
   if (flags.layout !== undefined && !LAYOUTS.some((layout) => layout === flags.layout))
     throw invalid("--layout", "must be monorepo or workspace");
   const requested = LAYOUTS.find((layout) => layout === flags.layout);
@@ -266,6 +320,7 @@ export async function planCook(
     flags.mode !== undefined ||
     flags.drive !== undefined ||
     flags.layout !== undefined ||
+    flags.providers !== undefined ||
     flags.iterations !== undefined ||
     flags.duration !== undefined ||
     flags.startDate !== undefined ||
@@ -278,7 +333,9 @@ export async function planCook(
     const upgrade = upgrades[0];
     roles =
       flags.upgrade && upgrade?.roles ? { ...existing.roles, ...upgrade.roles } : existing.roles;
-    const items = manifestUpgradeLines(existing);
+    if (flags.upgrade) roles = providerRoles(roles ?? undefined, providers);
+    const missingDefaults = await missingManifestDefaults(readText(manifestFile(project)) ?? "");
+    const items = manifestUpgradeLines(existing, missingDefaults);
     if (upgrade && items.length > 0 && flags.upgrade) {
       // Edited on what is there now, checked before anything is written.
       let text = readText(manifestFile(project)) ?? "";
@@ -292,6 +349,12 @@ export async function planCook(
     if (items.length > 0 && flags.upgrade === undefined)
       notes.push(bilingual("init.upgrade", {}), ...items);
     if (flagsGiven) notes.push(bilingual("init.flags_ignored", {}));
+    effective = {
+      ...existing,
+      ...(flags.upgrade &&
+        missingDefaults.includes("allowed_agents") && { allowed_agents: ["general-purpose"] }),
+      ...(roles && { roles }),
+    };
   } else {
     // A new manifest needs the developer's choice of mode: the folder only suggests one.
     const facts = projectFacts(
@@ -318,9 +381,11 @@ export async function planCook(
     const checked = parseManifest({
       schemaVersion: 1,
       mode,
-      roles: DEFAULT_ROLES,
+      roles: providerRoles(DEFAULT_ROLES, providers),
       drive,
       layout,
+      providers,
+      allowed_agents: ["general-purpose"],
       ...(flags.iterations && {
         iterations: {
           duration: flags.duration,
@@ -352,18 +417,20 @@ export async function planCook(
     const text = renderManifest(
       mode,
       repos,
-      DEFAULT_ROLES,
+      providerRoles(DEFAULT_ROLES, providers),
       drive,
       layout,
       checked.manifest.iterations,
+      providers,
     );
+    effective = checked.manifest;
     if (checked.manifest.iterations) {
       const { duration, start_date, demo_day } = checked.manifest.iterations;
       notes.push(
         `iterations:\n  duration: ${JSON.stringify(duration)}\n  start_date: ${JSON.stringify(start_date)}\n  demo_day: ${JSON.stringify(demo_day)}`,
       );
     }
-    roles = DEFAULT_ROLES;
+    roles = providerRoles(DEFAULT_ROLES, providers);
     if (layout === "monorepo") repo = suggested;
     step("created", ".verid/manifest.yaml", {
       content: text,
@@ -402,7 +469,10 @@ export async function planCook(
       notes.push(bilingual("cook.e2e_split", {}));
   }
   // verid's agents come from its plugin, installed on each machine apart from the npm package.
-  if (Object.values(roles ?? {}).some((agents) => agents?.some((a) => a.startsWith("verid:")))) {
+  if (
+    claude &&
+    Object.values(roles ?? {}).some((agents) => agents?.some((a) => a.startsWith("verid:")))
+  ) {
     const optional = (["researcher", "architect", "planner", "qa"] as const).some(
       (role) => roles?.[role],
     );
@@ -413,24 +483,72 @@ export async function planCook(
     );
   }
 
-  const rel = ".claude/settings.local.json";
-  const settingsContent = `${JSON.stringify(merged.settings, null, 2)}\n`;
-  const write = {
-    content: settingsContent,
-    apply: () => {
-      mkdirSync(join(project, ".claude"), { recursive: true });
-      writeFileSync(settingsFile, settingsContent);
-    },
-  };
-  if (settingsText === null) step("created", rel, write);
-  else if (merged.changed) step("updated", rel, write);
-  else step("kept", rel);
+  for (const provider of providers) {
+    const rel = instructionFile(provider);
+    checkWritePath(rel);
+    const file = join(project, rel);
+    const before = readText(file);
+    const result = mergeInstructions(
+      before ?? undefined,
+      renderInstructions(effective!, provider, installedSkills()),
+    );
+    if (!result.ok) throw invalid(file, result.detail);
+    if (before === result.content) step("kept", rel);
+    else
+      step(before === null ? "created" : "updated", rel, {
+        content: result.content,
+        apply: () => writeFileSync(file, result.content, before === null ? { flag: "wx" } : {}),
+      });
+  }
+
+  if (merged) {
+    const rel = ".claude/settings.local.json";
+    const settingsContent = `${JSON.stringify(merged.settings, null, 2)}\n`;
+    const write = {
+      content: settingsContent,
+      apply: () => {
+        mkdirSync(join(project, ".claude"), { recursive: true });
+        writeFileSync(settingsFile, settingsContent);
+      },
+    };
+    if (settingsText === null) step("created", rel, write);
+    else if (merged.changed) step("updated", rel, write);
+    else step("kept", rel);
+  }
+
+  if (providers.includes("codex")) {
+    const rel = ".codex/hooks.json";
+    checkWritePath(rel);
+    const file = join(project, rel);
+    const before = readText(file);
+    let next: ReturnType<typeof withCodexHooks>;
+    try {
+      next = withCodexHooks(before === null ? {} : JSON.parse(before), hook);
+    } catch (error) {
+      throw invalid(file, error instanceof Error ? error.message : String(error));
+    }
+    const content = `${JSON.stringify(next.settings, null, 2)}\n`;
+    if (before === null || next.changed)
+      step(before === null ? "created" : "updated", rel, {
+        content,
+        apply: () => {
+          mkdirSync(dirname(file), { recursive: true });
+          writeFileSync(file, content);
+        },
+      });
+    else step("kept", rel);
+
+    const machine = planCodexMachine();
+    steps.push(...machine.files);
+    machineWrites.push(...machine.writes);
+    notes.push(bilingual("cook.codex_trust", {}));
+  }
 
   // verid's commands in Claude Code's menu, in this machine's language. One that is there is
   // kept: it may be the developer's own edit, or a teammate's in another language.
   const commands = join(project, ".claude", "commands", "verid");
   const lang = language ?? languageOf(project) ?? "en";
-  const commandFiles: PlannedFile[] = COMMANDS.map((c) => {
+  const commandFiles: PlannedFile[] = (claude ? COMMANDS : []).map((c) => {
     const file = join(commands, `${c}.md`);
     const before = readText(file);
     const text = commandFile(lang, c);
@@ -447,27 +565,30 @@ export async function planCook(
       });
     return { action, rel: `.claude/commands/verid/${c}.md` };
   });
-  step(
-    commandFiles.some((c) => c.action === "updated")
-      ? "updated"
-      : commandFiles.some((c) => c.action === "created")
-        ? "created"
-        : "kept",
-    ".claude/commands/verid/",
-  );
+  if (claude)
+    step(
+      commandFiles.some((c) => c.action === "updated")
+        ? "updated"
+        : commandFiles.some((c) => c.action === "created")
+          ? "created"
+          : "kept",
+      ".claude/commands/verid/",
+    );
   // Set up by hand from the Phase 0 checklist: the hook would run twice. Only a warning, so a
   // shared settings.json that does not parse is Claude Code's to report, not a reason to stop.
   const shared = parseJson(readText(join(project, ".claude", "settings.json")));
-  if (hasVeridHooks(shared)) notes.push(bilingual("init.shared_hooks", {}));
+  if (claude && hasVeridHooks(shared)) notes.push(bilingual("init.shared_hooks", {}));
 
   const apply = () => {
-    for (const write of writes) checkSetupPath(project, write.rel);
+    for (const write of writes) checkWritePath(write.rel);
+    for (const write of machineWrites) checkSetupPath(dirname(write.path), basename(write.path));
     if (layout === "workspace") {
       checkWorkspaceRoot(project);
       validateRepoPaths(project, { layout, repos: configured }, true);
     }
     mkdirSync(paths.dir, { recursive: true });
     for (const w of writes) w.apply();
+    for (const w of machineWrites) w.apply();
     const lines: string[] = [];
     const errors: string[] = [];
     if (layout === "workspace") initWorkspaceGit(project);
@@ -500,19 +621,75 @@ export async function planCook(
     };
   };
   const files = [...steps.filter((s) => s.rel !== ".claude/commands/verid/"), ...commandFiles];
-  for (const write of writes) checkSetupPath(project, write.rel);
+  for (const write of writes) checkWritePath(write.rel);
   const revision = JSON.stringify({
     files,
     writes: writes.map(({ rel, content }) => ({ rel, content })),
+    machineWrites: machineWrites.map(({ path, content }) => ({ path, content })),
     notes,
     repo,
     layout,
     repos: configured,
   });
-  return { layout, steps, files, notes, revision, ...(repo !== undefined && { repo }), apply };
+  return {
+    layout,
+    providers,
+    steps,
+    files,
+    notes,
+    revision,
+    ...(repo !== undefined && { repo }),
+    apply,
+  };
 }
 
 const COMMANDS = ["tip", "confirm", "peek", "menu"] as const;
+
+/** Installer entry point: register the user-layer role without creating any project files. */
+export function setupCodexCommand(): CliResult {
+  if (inAgentShell()) throw new VeridError("VERID_BURNT_INIT_IN_AGENT");
+  const plan = planCodexMachine();
+  for (const write of plan.writes) checkSetupPath(dirname(write.path), basename(write.path));
+  for (const write of plan.writes) write.apply();
+  return {
+    exit: 0,
+    stdout: `${setupPreview(plan.files, [bilingual("cook.codex_trust", {})]).join("\n")}\n`,
+    stderr: "",
+  };
+}
+
+function planCodexMachine(): {
+  files: PlannedFile[];
+  writes: { path: string; content: string; apply: () => void }[];
+} {
+  const overlay = reviewerOverlay();
+  const content = reviewerContent();
+  const config = join(codexHome(), "config.toml");
+  const reviewer = mergeCodexReviewer(readText(config) ?? undefined, overlay);
+  if (!reviewer.ok) throw invalid(config, reviewer.detail);
+  const files: PlannedFile[] = [];
+  const writes: { path: string; content: string; apply: () => void }[] = [];
+  for (const file of [
+    { path: overlay, content },
+    { path: config, content: reviewer.content },
+  ]) {
+    checkSetupPath(dirname(file.path), basename(file.path));
+    const before = readText(file.path);
+    files.push({
+      rel: file.path.replaceAll("\\", "/"),
+      action: before === null ? "created" : before === file.content ? "kept" : "updated",
+    });
+    if (before !== file.content)
+      writes.push({
+        ...file,
+        apply: () => {
+          mkdirSync(dirname(file.path), { recursive: true });
+          writeFileSync(file.path, file.content);
+        },
+      });
+  }
+  return { files, writes };
+}
 
 /**
  * `/verid:<name>` for Claude Code's menu. The hook reads the line as the developer typed it, so
@@ -541,15 +718,28 @@ export function projectFacts(project: string, repos: readonly string[] = ["."]):
 }
 
 /** What manifestUpgrade() would change, a line per key: `+` adds globs, `−` drops the key. */
-export function manifestUpgradeLines(manifest: Pick<Manifest, "repos" | "roles">): string[] {
-  return manifest.repos.flatMap((repo, i) =>
-    upgradeLines({ ...manifestUpgrade(repo, manifest.roles), ...(i > 0 && { roles: null }) }).map(
-      (line) =>
-        manifest.repos.length > 1 && !line.trimStart().startsWith("+ roles.")
-          ? `${repo.path}: ${line}`
-          : line,
+export function manifestUpgradeLines(
+  manifest: Pick<Manifest, "repos" | "roles"> & Partial<Pick<Manifest, "providers">>,
+  missing: readonly string[] = [],
+): string[] {
+  return [
+    ...(manifest.providers?.includes("codex") &&
+    !manifest.roles?.reviewer?.includes("verid_reviewer")
+      ? ['  + roles.reviewer: "verid_reviewer"']
+      : []),
+    ...missing.map(
+      (key) =>
+        `  + ${key}: ${key === "providers" ? '["claude-code"]' : key === "allowed_agents" ? '["general-purpose"]' : "[]"}`,
     ),
-  );
+    ...manifest.repos.flatMap((repo, i) =>
+      upgradeLines({ ...manifestUpgrade(repo, manifest.roles), ...(i > 0 && { roles: null }) }).map(
+        (line) =>
+          manifest.repos.length > 1 && !line.trimStart().startsWith("+ roles.")
+            ? `${repo.path}: ${line}`
+            : line,
+      ),
+    ),
+  ];
 }
 
 function upgradeLines(up: ReturnType<typeof manifestUpgrade>): string[] {

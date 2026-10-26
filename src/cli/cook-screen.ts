@@ -1,5 +1,6 @@
-import { readdirSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { inAgentShell } from "../adapters/agent-environment.js";
 import {
   bannerLines,
   paint,
@@ -23,13 +24,13 @@ import {
 import { fileRole } from "../core/tdd.js";
 import { setupPreview } from "../core/setup-plan.js";
 import { bilingual, setLanguage } from "../adapters/i18n.js";
-import { loadManifest } from "../adapters/manifest.js";
+import { loadManifest, manifestFile, missingManifestDefaults } from "../adapters/manifest.js";
 import { findRunners } from "../adapters/test-runner.js";
 import { languageOf, VeridError } from "../adapters/state-store.js";
 import { restorePlugins } from "../adapters/plugins.js";
 import { detectLayout } from "../adapters/workspace.js";
 import { ask, select, type Io } from "../adapters/terminal.js";
-import { planCook, projectFacts, servedLine, manifestUpgradeLines } from "./init.js";
+import { planCook, projectFacts, servedLine, setupDoneLine, manifestUpgradeLines } from "./init.js";
 import type { CliResult } from "./test.js";
 
 const MODE_EMOJI: Record<Mode, string> = { prep: "🥕", recipe: "📖", remix: "🍲" };
@@ -58,7 +59,7 @@ function problemWith(repo: Partial<Repo>): string | null {
  * written until the developer starts cooking; they can unlock folders first, and Ctrl+C cancels.
  */
 export async function interactiveCook(project: string, io: Io, locale: string): Promise<CliResult> {
-  if (process.env.CLAUDECODE === "1") throw new VeridError("VERID_BURNT_INIT_IN_AGENT");
+  if (inAgentShell()) throw new VeridError("VERID_BURNT_INIT_IN_AGENT");
   const line = (text = "") => io.output.write(`${text}\n`);
   const finish = (text: string): CliResult => {
     line(text);
@@ -149,12 +150,18 @@ export async function interactiveCook(project: string, io: Io, locale: string): 
   const manifest = await loadManifest(project, { readOnly: true, checkPaths: false });
   const detected = manifest ? null : detectLayout(project);
   let layout = manifest?.layout ?? detected?.layout ?? "monorepo";
+  let providers = manifest?.providers ?? ["claude-code"];
   const repoPaths =
     layout === "workspace" ? (detected?.repos.map((repo) => repo.path) ?? []) : ["."];
   const existing = manifest?.repos[0];
   if (existing) {
     // A manifest from an older verid: the defaults it lacks, added only if the developer says so.
-    const items = manifest ? manifestUpgradeLines(manifest) : [];
+    const items = manifest
+      ? manifestUpgradeLines(
+          manifest,
+          await missingManifestDefaults(readFileSync(manifestFile(project), "utf8")),
+        )
+      : [];
     if (items.length > 0) {
       for (const item of items) line(item);
       const add = await select(
@@ -167,6 +174,15 @@ export async function interactiveCook(project: string, io: Io, locale: string): 
       flags.upgrade = add === 0;
     }
   } else {
+    const provider = await select(
+      io,
+      say("cook.providers"),
+      [{ label: "Claude Code" }, { label: "Codex" }, { label: "Claude Code + Codex" }],
+      0,
+    );
+    if (provider === null) return cancelled();
+    flags.providers =
+      provider === 0 ? ["claude-code"] : provider === 1 ? ["codex"] : ["claude-code", "codex"];
     const facts = projectFacts(project, repoPaths);
     const mode = await select(
       io,
@@ -272,6 +288,7 @@ export async function interactiveCook(project: string, io: Io, locale: string): 
       const warnings = await restorePlugins(project, { io });
       if (warnings.length) return { exit: 1, stdout: "", stderr: `${warnings.join("\n")}\n` };
       layout = fresh.layout;
+      providers = [...fresh.providers];
       break;
     }
     if (!(repo && go === 1)) return cancelled();
@@ -281,7 +298,7 @@ export async function interactiveCook(project: string, io: Io, locale: string): 
     flags.ignore = unlocked;
   }
   line();
-  line(say(layout === "workspace" ? "workspace.done" : "init.done"));
+  line(setupDoneLine(layout, providers));
   line();
   return finish(await servedLine(project));
 }
