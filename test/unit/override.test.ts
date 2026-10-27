@@ -88,6 +88,7 @@ const base: State = {
   language: null,
   runners: [],
   review: null,
+  security: null,
   writers: [],
   auto: FRESH_AUTO,
 };

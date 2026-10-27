@@ -289,6 +289,15 @@ describe("Codex hook transport and policy", () => {
     }
   });
   it("keeps the main writer unsplit while applying TDD and reviewer read-only", () => {
+    // A dual-provider project may map a Codex security agent: it reads only, from a fresh context.
+    manifest({
+      roles: {
+        reviewer: ["reviewer", "verid_reviewer"],
+        tester: ["verid:tester"],
+        coder: ["verid:coder"],
+        security: ["codex_security"],
+      },
+    });
     const rows = [
       ["test/example.test.ts", {}, "allow"],
       ["src/example.ts", {}, "VERID_BURNT_TDD_NO_FAILING_TEST"],
@@ -298,6 +307,11 @@ describe("Codex hook transport and policy", () => {
         "VERID_BURNT_ROLE_READ_ONLY",
       ],
       ["test/example.test.ts", { agent_type: "verid_reviewer" }, "allow"],
+      [
+        "notes.txt",
+        { agent_id: "security-1", agent_type: "codex_security" },
+        "VERID_BURNT_ROLE_READ_ONLY",
+      ],
     ] as const;
     for (const [path, identity, expected] of rows) {
       const r = hook(call("apply_patch", { command: patch(path) }, identity));
@@ -381,6 +395,15 @@ describe("Codex hook transport and policy", () => {
       expect(reason(hook(call("Bash", input)))).toContain("VERID_BURNT_SHELL_UNSUPPORTED");
   });
   it("requires allowlisted agent_type and a fresh reviewer context", () => {
+    // A dual-provider project may map a Codex security agent: it reads only, from a fresh context.
+    manifest({
+      roles: {
+        reviewer: ["reviewer", "verid_reviewer"],
+        tester: ["verid:tester"],
+        coder: ["verid:coder"],
+        security: ["codex_security"],
+      },
+    });
     const rows = [
       [{ agent_type: "verid_reviewer", fork_turns: "none" }, "allow"],
       [{ agent_type: "reviewer", fork_turns: "none" }, "allow"],
@@ -388,6 +411,8 @@ describe("Codex hook transport and policy", () => {
       [{ fork_turns: "none" }, "VERID_BURNT_AGENT_NOT_ALLOWED"],
       [{ agent_type: "verid_reviewer" }, "VERID_BURNT_AGENT_CONTEXT"],
       [{ agent_type: "verid_reviewer", fork_turns: "all" }, "VERID_BURNT_AGENT_CONTEXT"],
+      [{ agent_type: "codex_security", fork_turns: "none" }, "allow"],
+      [{ agent_type: "codex_security", fork_turns: "all" }, "VERID_BURNT_AGENT_CONTEXT"],
     ] as const;
     for (const [input, expected] of rows) {
       const r = hook(call("collaborationspawn_agent", input));

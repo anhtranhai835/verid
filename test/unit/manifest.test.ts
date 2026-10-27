@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import {
   DEFAULT_ROLES,
+  defaultRoles,
   E2E_GLOBS,
   IGNORE_GLOBS,
   manifestUpgrade,
@@ -524,6 +525,7 @@ describe("renderManifest", () => {
       '  architect: ["verid:architect"]',
       '  planner: ["verid:planner"]',
       '  qa: ["verid:qa"]',
+      '  security: ["verid:security"]',
     ]);
     expect(parseManifest(parse(text))).toEqual({
       ok: true,
@@ -543,6 +545,7 @@ describe("renderManifest", () => {
           architect: ["verid:architect"],
           planner: ["verid:planner"],
           qa: ["verid:qa"],
+          security: ["verid:security"],
         },
         repos: [repo],
       },
@@ -597,6 +600,7 @@ describe("manifestUpgrade", () => {
           architect: ["verid:architect"],
           planner: ["verid:planner"],
           qa: ["verid:qa"],
+          security: ["verid:security"],
         },
         dropTestCmd: true,
       },
@@ -610,6 +614,7 @@ describe("manifestUpgrade", () => {
         architect: ["verid:architect"],
         planner: ["verid:planner"],
         qa: ["verid:qa"],
+        security: ["verid:security"],
       },
     });
   });
@@ -618,7 +623,12 @@ describe("manifestUpgrade", () => {
     const rows = [
       {
         roles: { reviewer: ["custom:r"], researcher: ["custom:research"] },
-        want: { architect: ["verid:architect"], planner: ["verid:planner"], qa: ["verid:qa"] },
+        want: {
+          architect: ["verid:architect"],
+          planner: ["verid:planner"],
+          qa: ["verid:qa"],
+          security: ["verid:security"],
+        },
       },
       {
         roles: { reviewer: ["verid:qa"] },
@@ -626,10 +636,43 @@ describe("manifestUpgrade", () => {
           researcher: ["verid:researcher"],
           architect: ["verid:architect"],
           planner: ["verid:planner"],
+          security: ["verid:security"],
         },
       },
     ];
     for (const { roles, want } of rows) expect(manifestUpgrade(old, roles).roles).toEqual(want);
+  });
+
+  it("maps the security reviewer only where Claude Code runs; Codex's reviewer covers security there", () => {
+    const optional = {
+      researcher: ["verid:researcher"],
+      architect: ["verid:architect"],
+      planner: ["verid:planner"],
+      qa: ["verid:qa"],
+    };
+    const own = { reviewer: ["custom:r"] };
+    const kept = { reviewer: ["custom:r"], security: ["custom:security"] };
+    const rows = [
+      ["upgrade, Codex only", manifestUpgrade(old, own, ["codex"]).roles, optional],
+      [
+        "upgrade, both providers",
+        manifestUpgrade(old, own, ["claude-code", "codex"]).roles,
+        { ...optional, security: ["verid:security"] },
+      ],
+      [
+        "upgrade keeps a mapped security reviewer",
+        manifestUpgrade(old, kept, ["codex"]).roles,
+        optional,
+      ],
+      ["cook, Codex only", defaultRoles(["codex"]).security, undefined],
+      ["cook, Claude Code", defaultRoles(["claude-code"]).security, ["verid:security"]],
+      [
+        "cook, Codex reviewer",
+        defaultRoles(["codex"]).reviewer,
+        ["verid:reviewer", "verid_reviewer"],
+      ],
+    ] as const;
+    for (const [name, got, want] of rows) expect(got, name).toEqual(want);
   });
 });
 

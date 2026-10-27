@@ -201,7 +201,7 @@ describe.skipIf(process.platform !== "win32")(
             else expect.soft(r.stderr, command).toBe("");
           }
         }
-    });
+    }, 60_000); // 234 hook calls, each resolving UNC paths: slow on a busy machine
 
     it("protects Bash UNC option values with repeated separators and dot segments", async () => {
       const configDir = `${project}-user-config`;

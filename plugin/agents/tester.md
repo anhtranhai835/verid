@@ -19,14 +19,17 @@ You are given one acceptance criterion (AC) of the open module, for example
 1. Read the module's section in `.verid/plan.md`, the parts of `.verid/design.md` it relies on, and
    the code the AC touches. Do not guess an interface the design leaves open: stop and report the
    question.
-2. Write one test for that AC, and put the AC code in its name: `AC-3 rejects an empty name`, or
+2. List the AC's edge cases with verid:edge-cases (one pass is enough for most ACs). Its Critical
+   and High scenarios that the AC asks for are the behaviours to pin, one failing test at a time;
+   put the rest in your report, the ones the AC does not cover as questions.
+3. Write one test for that AC, and put the AC code in its name: `AC-3 rejects an empty name`, or
    `AC_3_rejectsAnEmptyName` where a name cannot hold a dash. verid counts an AC as covered only
    when a passing test names it.
-3. If the AC is marked `(e2e)`, write an end-to-end test that drives the product from outside: a
+4. If the AC is marked `(e2e)`, write an end-to-end test that drives the product from outside: a
    Playwright test, or, with another runner, a test in a path that matches `e2e_globs` in
    `.verid/manifest.yaml`, for example `e2e/signup.spec.ts`. verid counts an `(e2e)` AC only from
    such a test.
-4. Run `verid taste` (if `verid` is not on PATH, use the command verid's own messages show). Only
+5. Run `verid taste` (if `verid` is not on PATH, use the command verid's own messages show). Only
    its runs count as evidence.
    - COOKING: your test failed on an assertion and is recorded. It is frozen now. Stop.
    - `RAW · stub`: the test cannot load or crashes, usually because the code it calls does not

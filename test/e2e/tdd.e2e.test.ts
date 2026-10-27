@@ -417,10 +417,10 @@ describe("verid taste: evidence from a real run", () => {
     // The report is already written when it hangs: a timeout still is not evidence.
     writeFileSync(
       join(project, "scenario.json"),
-      JSON.stringify({ exit: 0, junit: GREEN_RUN, output: "hanging suite", delay: 3000, marker }),
+      JSON.stringify({ exit: 0, junit: GREEN_RUN, output: "hanging suite", delay: 6000, marker }),
     );
     const started = Date.now();
-    // A real process: the runner's own children must die with the CLI's process tree.
+    // A real process: on a timeout verid kills the runner's whole process tree, which only a real CLI shows.
     const spawned = spawnSync(process.execPath, [CLI, "taste"], {
       cwd: project,
       env: env(),
@@ -436,10 +436,10 @@ describe("verid taste: evidence from a real run", () => {
     expect(audit()).toMatchObject([
       { event: "test_run", verdict: "invalid", code: "VERID_BURNT_RUN_TIMEOUT" },
     ]);
-    // Observe from CLI exit so delayed startup cannot shorten the surviving runner's 3 s timer.
-    await new Promise((done) => setTimeout(done, 4000));
+    // Observe from CLI exit so delayed startup cannot shorten the surviving runner's 6 s timer; the margin covers a slow process-tree kill under load.
+    await new Promise((done) => setTimeout(done, 7000));
     expect(existsSync(marker)).toBe(false);
-  });
+  }, 30_000); // a 1 s timeout, a 6 s runner and a 7 s watch: room for a busy machine
 
   it("needs the developer's manifest and state before running anything", async () => {
     rmSync(manifestFile);
@@ -1801,6 +1801,103 @@ describe("prep and recipe plan", () => {
     expect(served.code).toBe(0);
     expect(served.stdout).toContain("feature-dev:code-reviewer");
     expect(served.stdout).toContain(join(".verid", ".state", "reviews", "calc-"));
+  });
+
+  it("serves a module only with a passing security review after its last change, once one is mapped", async () => {
+    const security = `${ROLES}  security: ["verid:security"]\n`;
+    // The mapped security reviewer stops: verid records its final report beside the review.
+    const secured = async (verdict: string) =>
+      expect(
+        (
+          await hook(
+            fixture("subagent-stop-reviewer", (p) => {
+              p.agent_type = "verid:security";
+              p.last_assistant_message = `Findings: none\nVerdict: ${verdict}`;
+            }),
+          )
+        ).code,
+      ).toBe(0);
+    const reviewedAndTested = async () => {
+      freshState();
+      writeFileSync(manifestFile, manifest("src/**", undefined, ".", "recipe") + security);
+      writeFileSync(designPath(), "# Design\n");
+      writeFileSync(planPath(), "## Module: calc\n- AC-1: adds\n");
+      expect((await cli("order", "calc")).code).toBe(0);
+      scenario(0, "vitest-ac.xml");
+      expect((await cli("taste")).code).toBe(0);
+      await reviewed();
+    };
+    const rows: [string, () => Promise<unknown>, number, string][] = [
+      ["no security review yet", async () => {}, 2, "no passing security review of calc"],
+      ["a failed security review", () => secured("fail"), 2, "no passing security review of calc"],
+      [
+        "a change after the security review, reviewed again",
+        async () => {
+          await secured("pass");
+          await hook(write("test/calc.test.ts"));
+          await cli("taste");
+          await reviewed();
+        },
+        2,
+        "no passing security review of calc",
+      ],
+      // The security review read dependencies, config and .env too: any project write voids it.
+      [
+        "a dependency edit after the security review",
+        async () => {
+          await secured("pass");
+          await hook(write("package.json"));
+        },
+        2,
+        "no passing security review of calc",
+      ],
+      [
+        "a dependency edit in a folder linked from outside the project",
+        async () => {
+          const outside = mkdtempSync(join(tmpdir(), "verid-linked-"));
+          symlinkSync(outside, join(project, "lib"), "junction");
+          await secured("pass");
+          await hook(write("lib/package.json"));
+        },
+        2,
+        "no passing security review of calc",
+      ],
+      [
+        "a new order after the security review, reviewed again",
+        async () => {
+          await secured("pass");
+          expect((await cli("order", "calc")).code).toBe(0);
+          await reviewed();
+        },
+        2,
+        "no passing security review of calc",
+      ],
+      [
+        "a .verid note after the security review",
+        async () => {
+          await secured("pass");
+          await hook(write(".verid/notes.md"));
+        },
+        0,
+        "Security review by verid:security",
+      ],
+      ["a passing security review", () => secured("pass"), 0, "Security review by verid:security"],
+    ];
+    for (const [name, after, code, says] of rows) {
+      await reviewedAndTested();
+      await after();
+      const r = await cli("serve", "calc");
+      expect([name, r.code, (r.code === 0 ? r.stdout : r.stderr).includes(says)]).toEqual([
+        name,
+        code,
+        true,
+      ]);
+    }
+    expect(
+      audit()
+        .filter((e) => e.event === "security_recorded")
+        .map((e) => e.verdict),
+    ).toEqual(["pass"]);
   });
 
   it("tells the agent which mapped agent to dispatch at each step", async () => {

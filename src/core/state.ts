@@ -120,11 +120,24 @@ const autoState = z.strictObject({
   /** Rounds the coder has had on each AC, by AC code. */
   coder_rounds: z._default(z.record(z.string(), z.int().check(z.nonnegative())), {}),
   module_reviews: count,
+  /** Security reviews the open module has failed; its own limit, apart from module_reviews. */
+  security_reviews: count,
   stop_holds: count,
   /** What had progressed when Stop last held the conversation; the same key again means none. */
   progress: z._default(z.nullable(z.string()), null),
   /** Why the run is stuck, copied from `.verid/blocked.md`; null while it is not. */
   blocked: z._default(z.nullable(z.string()), null),
+});
+
+/** A read-only reviewer's recorded report on the open module. */
+const report = z.strictObject({
+  module: z.string(),
+  agent_type: z.string(),
+  file: z.string(),
+  sha256: z.string(),
+  at: z.string(),
+  /** Whether the report passed the module; a report written before verdicts counts as fail. */
+  verdict: z._default(z.enum(["pass", "fail"]), "fail"),
 });
 
 /** Every field has a default, so this is what a project that never ran auto holds. */
@@ -169,20 +182,12 @@ const stateSchema = z.strictObject({
    * The mapped reviewer's final report for the open module, written by the hook when it stopped;
    * `file` is relative to the project. Any later code or test write, and `verid order`, clear it.
    */
-  review: z._default(
-    z.nullable(
-      z.strictObject({
-        module: z.string(),
-        agent_type: z.string(),
-        file: z.string(),
-        sha256: z.string(),
-        at: z.string(),
-        /** Whether the report passed the module; a report written before verdicts counts as fail. */
-        verdict: z._default(z.enum(["pass", "fail"]), "fail"),
-      }),
-    ),
-    null,
-  ),
+  review: z._default(z.nullable(report), null),
+  /**
+   * The mapped security reviewer's final report for the open module, recorded and voided as the
+   * review is. A module closes only on its pass when `roles.security` is mapped.
+   */
+  security: z._default(z.nullable(report), null),
   /** agent_id of each subagent let write code or a test that has not stopped since. */
   writers: z._default(z.array(z.string()), []),
   auto: z._default(autoState, FRESH_AUTO),

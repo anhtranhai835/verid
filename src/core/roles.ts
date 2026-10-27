@@ -40,24 +40,27 @@ export function mappedAgents(
     architect: list(roles?.architect),
     planner: list(roles?.planner),
     qa: list(roles?.qa),
+    security: roles?.security?.join(", ") ?? "—",
   };
 }
 
 /** Tests and production code have different writers once a tester and a coder are mapped. */
 export const splitOn = (roles: Roles | undefined): boolean => !!roles?.tester && !!roles.coder;
 
-/** A host with one writer keeps only reviewer identity, regardless of other role mappings. */
+/** A host with one writer keeps only the read-only roles, whatever else is mapped. */
 export function singleWriterOf(
   agentId: string | undefined,
   agentType: string | undefined,
   roles: Roles | undefined,
 ): Writer {
   if (agentId === undefined) return "main";
-  return agentType !== undefined && roles?.reviewer?.includes(agentType) ? "reviewer" : "other";
+  if (agentType === undefined) return "other";
+  if (roles?.reviewer?.includes(agentType)) return "reviewer";
+  return roles?.security?.includes(agentType) ? "security" : "other";
 }
 
 /**
- * What a writer may write, before the TDD gate says when: a reviewer writes nothing, and once
+ * What a writer may write, before the TDD gate says when: a reviewer or the security reviewer writes nothing, and once
  * split only the tester writes tests and only the coder writes production code. Drafting roles
  * own one project document; qa owns end-to-end tests, including when the work is split.
  */
@@ -68,12 +71,12 @@ export function decideRole(
   target: string,
   documentPath: string | null = null,
 ): PolicyDecision {
-  if (writer === "reviewer")
+  if (writer === "reviewer" || writer === "security")
     return {
       kind: "deny",
       code: "VERID_BURNT_ROLE_READ_ONLY",
       target,
-      reason: "a reviewer writes nothing",
+      reason: `a ${writer} writes nothing`,
     };
   const document = ROLE_DOCUMENTS[writer];
   if (document && documentPath !== document)
@@ -119,7 +122,7 @@ export function subagentHold(
   split: boolean,
   cycle: { state: TddState; stub: boolean; dirty: boolean },
 ): MessageKey | null {
-  if (writer === "reviewer") return null;
+  if (writer === "reviewer" || writer === "security") return null;
   const tester = (split && writer === "tester") || writer === "qa";
   if (cycle.state === "COOKING" && !tester) return "stop.green";
   if (cycle.stub && !tester) return "stop.stub";

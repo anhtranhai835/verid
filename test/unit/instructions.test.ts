@@ -82,6 +82,7 @@ describe("provider instruction blocks", () => {
         coder: ["custom:coder"],
         reviewer: ["custom:reviewer"],
         researcher: ["custom:researcher"],
+        security: ["custom:security"],
       },
       repos: [{ path: ".", source_globs: ["**"], test_globs: ["**/*.test.ts"] }],
     });
@@ -105,6 +106,7 @@ describe("provider instruction blocks", () => {
       if (provider === "claude-code") {
         expect(text).toContain("custom:tester");
         expect(text).toContain("custom:coder");
+        expect(text).toContain("security reviewer custom:security");
       }
       expect(text).toContain("verid:review");
       expect(text).toContain("custom:reviewer");

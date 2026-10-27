@@ -1,7 +1,14 @@
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";
-import { autoModules, autoNextStep, autoPhase, LIMIT, type AutoFacts } from "../core/auto.js";
+import {
+  autoModules,
+  autoNextStep,
+  autoPhase,
+  LIMIT,
+  securityOf,
+  type AutoFacts,
+} from "../core/auto.js";
 import type { Drive, Iterations, Manifest, Mode, Roles } from "../core/manifest.js";
 import { iterationDates } from "../core/iterations.js";
 import {
@@ -218,6 +225,7 @@ function autoStanding(
     facts.designHash !== null,
     state.review,
     clean,
+    securityOf(state, roles),
   );
   const step = bilingual(next.key, { ...mappedAgents(roles, singleWriter), ...next.params });
   return { facts, phase, step };
@@ -342,6 +350,7 @@ function autoMenuLines(
   const counters = [
     ...(rounds.length > 0 ? [`rounds ${rounds.join(", ")}`] : []),
     `module reviews ${auto.module_reviews}/${LIMIT}`,
+    ...(roles?.security ? [`security reviews ${auto.security_reviews}/${LIMIT}`] : []),
     `plan reviews ${auto.plan_reviews}/${LIMIT}`,
     `stops ${auto.stop_holds}/${LIMIT}`,
   ];

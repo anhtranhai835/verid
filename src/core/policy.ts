@@ -378,7 +378,7 @@ function writeTargets(command: string): string[] {
   );
 }
 
-function isUnder(path: string, dir: string): boolean {
+export function isUnder(path: string, dir: string): boolean {
   return path === dir || path.startsWith(`${dir}\\`) || path.startsWith(`${dir}/`);
 }
 

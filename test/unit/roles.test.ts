@@ -36,12 +36,14 @@ describe("roles", () => {
       architect: ["custom:architecture"],
       planner: ["custom:plan"],
       qa: ["custom:qa"],
+      security: ["custom:security"],
     };
     const rows = [
       ["a", "custom:research", "researcher"],
       ["a", "custom:architecture", "architect"],
       ["a", "custom:plan", "planner"],
       ["a", "custom:qa", "qa"],
+      ["a", "custom:security", "security"],
       [undefined, "custom:research", "main"],
       ["a", "verid:qa", "other"],
     ] as const;
@@ -93,6 +95,9 @@ describe("roles", () => {
     const rows: [Writer, boolean, "test" | "code" | "free" | "outside", string][] = [
       ["reviewer", false, "free", "VERID_BURNT_ROLE_READ_ONLY"],
       ["reviewer", false, "outside", "VERID_BURNT_ROLE_READ_ONLY"],
+      ["security", false, "free", "VERID_BURNT_ROLE_READ_ONLY"],
+      ["security", true, "code", "VERID_BURNT_ROLE_READ_ONLY"],
+      ["security", true, "test", "VERID_BURNT_ROLE_READ_ONLY"],
       ["coder", true, "test", "VERID_BURNT_ROLE_TESTER_ONLY"],
       ["coder", true, "code", "allow"],
       ["tester", true, "code", "VERID_BURNT_ROLE_CODER_ONLY"],
@@ -126,6 +131,7 @@ describe("roles", () => {
         ["coder", true, "RAW", true, false, "stop.stub"],
         ["tester", true, "RAW", true, false, null],
         ["reviewer", false, "COOKING", false, true, null],
+        ["security", false, "COOKING", false, true, null],
         ["qa", true, "COOKING", false, true, "stop.unverified"],
         ["qa", false, "RAW", true, false, null],
         ["qa", true, "COOKING", false, false, null],

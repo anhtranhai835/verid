@@ -81,8 +81,7 @@ describe("verid plugin", () => {
     expect(invalid).toEqual([]);
   });
 
-  it("keeps the reviewer read-only", () => {
-    const tools = (frontmatter("plugin/agents/reviewer.md").tools ?? "").split(/,\s*/);
+  it("keeps the reviewer and the security reviewer read-only", () => {
     const cases: [string, boolean][] = [
       ["Read", true],
       ["Skill", false],
@@ -91,7 +90,31 @@ describe("verid plugin", () => {
       ["NotebookEdit", false],
       ["Bash", false],
     ];
-    expect(cases.filter(([tool, has]) => tools.includes(tool) !== has)).toEqual([]);
+    const wrong = ["reviewer", "security"].flatMap((agent) => {
+      const tools = (frontmatter(`plugin/agents/${agent}.md`).tools ?? "").split(/,\s*/);
+      return cases
+        .filter(([tool, has]) => tools.includes(tool) !== has)
+        .map(([tool]) => `${agent} ${tool}`);
+    });
+    expect(wrong).toEqual([]);
+  });
+
+  it("ships the security and edge-case skills whole, naming no ClaudeKit skill or path", () => {
+    const files = readdirSync(join(root, "plugin"), { recursive: true, withFileTypes: true })
+      .filter((e) => e.isFile())
+      .map((e) => join(e.parentPath, e.name));
+    const named = files.filter((file) =>
+      /(?<![a-z])\/?ck:|\.claude[\\/]skills|claudekit/i.test(readFileSync(file, "utf8")),
+    );
+    expect(named).toEqual([]);
+    const references = [
+      "plugin/skills/security/references/stride-owasp-checklist.md",
+      "plugin/skills/security/references/red-team-personas.md",
+      "plugin/skills/security/references/secret-patterns.md",
+      "plugin/skills/security/references/vulnerability-patterns.md",
+      "plugin/skills/edge-cases/references/saturation-loop.md",
+    ];
+    expect(references.filter((file) => !existsSync(join(root, file)))).toEqual([]);
   });
 
   it("tells each agent verid's rules", () => {
@@ -114,6 +137,15 @@ describe("verid plugin", () => {
       ["plugin/skills/build/SKILL.md", "verid menu"],
       ["plugin/skills/review/SKILL.md", "verid:reviewer"],
       ["plugin/skills/review/SKILL.md", "verid serve"],
+      ["plugin/skills/review/SKILL.md", "verid:security"],
+      ["plugin/agents/security.md", "verid:security"],
+      ["plugin/agents/security.md", "Verdict: pass"],
+      ["plugin/agents/security.md", "Verdict: fail"],
+      ["plugin/skills/security/SKILL.md", "STRIDE"],
+      ["plugin/skills/security/SKILL.md", "OWASP"],
+      ["plugin/agents/tester.md", "verid:edge-cases"],
+      ["plugin/agents/qa.md", "verid:edge-cases"],
+      ["plugin/skills/edge-cases/SKILL.md", "AC-"],
     ];
     const text = (file: string) => (existsSync(join(root, file)) ? read(file) : "");
     expect(cases.filter(([file, says]) => !text(file).includes(says))).toEqual([]);
@@ -128,6 +160,7 @@ describe("verid plugin", () => {
       "plugin/agents/researcher.md",
       "plugin/agents/architect.md",
       "plugin/agents/planner.md",
+      "plugin/agents/security.md",
       "plugin/skills/design/SKILL.md",
       "plugin/skills/plan/SKILL.md",
       "plugin/skills/build/SKILL.md",
@@ -141,6 +174,7 @@ describe("verid plugin", () => {
       ["researcher", false],
       ["architect", false],
       ["planner", true],
+      ["security", false],
     ];
     expect(
       agentCases.filter(

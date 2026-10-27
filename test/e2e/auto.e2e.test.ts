@@ -161,6 +161,22 @@ const reviewerStop = async (report: string): Promise<Run> =>
       p.last_assistant_message = report;
     }),
   );
+const securityStop = async (report: string): Promise<Run> =>
+  await hook(
+    fixture("subagent-stop-reviewer", (p) => {
+      p.agent_type = "verid:security";
+      p.last_assistant_message = report;
+    }),
+  );
+// The project maps verid:security too, so a module closes only on its pass.
+const withSecurity = (): void =>
+  writeFileSync(
+    manifestFile,
+    manifest().replace(
+      '  coder: ["verid:coder"]\n',
+      '  coder: ["verid:coder"]\n  security: ["verid:security"]\n',
+    ),
+  );
 const coderStop = async (active: boolean): Promise<Run> =>
   await hook(
     fixture("subagent-stop-reviewer", (p) => {
@@ -280,6 +296,7 @@ describe("verid order and verid serve in an auto drive", () => {
         plan_reviews: 0,
         coder_rounds: {},
         module_reviews: 0,
+        security_reviews: 0,
         stop_holds: 0,
         progress: null,
         blocked: null,
@@ -612,6 +629,57 @@ describe("Stop in an auto drive", () => {
       held: 2,
       next: true,
     });
+  });
+
+  it("closes a module only once the mapped security reviewer passes it after the reviewer", async () => {
+    withSecurity();
+    await signed();
+    planPassed();
+    gitRepo();
+    seed({ tdd: calcGreen });
+    await reviewerStop("Verdict: pass");
+    const waiting = await stop(false);
+    const reviewed = state();
+    await securityStop("Verdict: fail");
+    const failed = state();
+    const menu = (await cli("menu")).stdout;
+    await securityStop("Verdict: pass");
+    const passed = state();
+    expect({
+      waiting: [waiting.code, waiting.stderr.includes("verid:security"), reviewed.modules.calc],
+      failed: [failed.security?.verdict, failed.auto.security_reviews, failed.modules.calc],
+      counted: menu.includes("security reviews 1/3"),
+      passed: [
+        typeof passed.modules.calc?.served_at,
+        passed.security,
+        passed.auto.security_reviews,
+      ],
+      audited: audit()
+        .filter((e) => e.event === "security_recorded")
+        .map((e) => e.verdict),
+    }).toEqual({
+      waiting: [2, true, undefined],
+      failed: ["fail", 1, undefined],
+      counted: true,
+      passed: ["string", null, 0],
+      audited: ["fail", "pass"],
+    });
+  });
+
+  it("leaves the drive stuck after the third failed security review", async () => {
+    withSecurity();
+    await signed();
+    planPassed();
+    gitRepo();
+    seed({ tdd: calcGreen, auto: { security_reviews: 2 } });
+    await reviewerStop("Verdict: pass");
+    await securityStop("Verdict: fail");
+    const r = await stop(false);
+    expect([
+      state().auto.security_reviews,
+      r.code,
+      r.stdout.includes("security reviewer has failed"),
+    ]).toEqual([3, 0, true]);
   });
 
   it("keeps the module open while the tree is dirty, and asks for a commit", async () => {

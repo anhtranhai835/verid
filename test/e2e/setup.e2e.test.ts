@@ -175,6 +175,7 @@ describe("setup commands", () => {
       architect: ["verid:architect"],
       planner: ["verid:planner"],
       qa: ["verid:qa"],
+      security: ["verid:security"],
     });
     expect(manifest.repos[0].test_cmd).toBeUndefined();
     expect(manifest.repos[0].e2e_globs).toEqual(["**/e2e/**", "**/*.e2e.*"]);

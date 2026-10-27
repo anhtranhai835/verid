@@ -28,6 +28,7 @@ describe("parseState", () => {
         language: null,
         runners: [],
         review: null,
+        security: null,
         writers: [],
         auto: {
           signed: null,
@@ -35,6 +36,7 @@ describe("parseState", () => {
           plan_reviews: 0,
           coder_rounds: {},
           module_reviews: 0,
+          security_reviews: 0,
           stop_holds: 0,
           progress: null,
           blocked: null,
@@ -64,6 +66,7 @@ describe("parseState", () => {
         plan_reviews: 0,
         coder_rounds: {},
         module_reviews: 0,
+        security_reviews: 0,
         stop_holds: 0,
         progress: null,
         blocked: null,

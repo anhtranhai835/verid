@@ -128,6 +128,7 @@ export const ROLE_NAMES = [
   "architect",
   "planner",
   "qa",
+  "security",
 ] as const;
 export type RoleName = (typeof ROLE_NAMES)[number];
 
@@ -152,6 +153,7 @@ const roles = z
     architect: z.optional(agentList),
     planner: z.optional(agentList),
     qa: z.optional(agentList),
+    security: z.optional(agentList),
   })
   .check(
     z.superRefine((r, ctx) => {
@@ -286,7 +288,14 @@ export const DEFAULT_ROLES: Roles = {
   architect: ["verid:architect"],
   planner: ["verid:planner"],
   qa: ["verid:qa"],
+  security: ["verid:security"],
 };
+
+/** What cook maps for these providers. On Codex alone the reviewer also checks security. */
+export function defaultRoles(providers: readonly Provider[]): Roles {
+  const { security: _, ...codexOnly } = DEFAULT_ROLES;
+  return providerRoles(providers.includes("claude-code") ? DEFAULT_ROLES : codexOnly, providers)!;
+}
 
 /** Keep Claude mappings while registering the user-layer Codex reviewer. */
 export function providerRoles(
@@ -543,6 +552,7 @@ const OLD_PRESETS = [
 export function manifestUpgrade(
   repo: Repo,
   roles?: Roles,
+  providers: readonly Provider[] = ["claude-code"],
 ): {
   tests: string[];
   ignore: string[];
@@ -554,11 +564,23 @@ export function manifestUpgrade(
   // Test globs the developer chose (--tests) share none with the defaults: they stay as chosen.
   const ownTests = !repo.test_globs.some((g) => TEST_GLOBS.includes(g));
   const used = new Set(Object.values(roles ?? {}).flat());
+  const claude = providers.includes("claude-code");
+  const { security: _, ...codexOnly } = DEFAULT_ROLES;
   const added: Roles =
     roles === undefined
-      ? DEFAULT_ROLES
+      ? claude
+        ? DEFAULT_ROLES
+        : codexOnly
       : Object.fromEntries(
-          (["researcher", "architect", "planner", "qa"] as const).flatMap((role) => {
+          (
+            [
+              "researcher",
+              "architect",
+              "planner",
+              "qa",
+              ...(claude ? (["security"] as const) : []),
+            ] as const
+          ).flatMap((role) => {
             const agents = DEFAULT_ROLES[role];
             return !roles[role] && agents && !agents.some((name) => used.has(name))
               ? [[role, agents]]

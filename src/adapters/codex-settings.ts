@@ -26,9 +26,10 @@ export function reviewerContent(): string {
     join(installationRoot(), "plugin", "codex", "verid-reviewer.toml"),
     "utf8",
   );
-  return template.replace("{{REVIEW_SKILL}}", () =>
-    join(installedSkills(), "review", "SKILL.md").replaceAll("\\", "/"),
-  );
+  const skill = (name: string) => join(installedSkills(), name, "SKILL.md").replaceAll("\\", "/");
+  return template
+    .replace("{{REVIEW_SKILL}}", () => skill("review"))
+    .replace("{{SECURITY_SKILL}}", () => skill("security"));
 }
 
 /** Codex reads command text, including a PowerShell call operator on Windows. */

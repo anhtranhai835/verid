@@ -12,7 +12,7 @@ import {
   restorePlugins,
 } from "../adapters/plugins.js";
 import {
-  DEFAULT_ROLES,
+  defaultRoles,
   DRIVES,
   LAYOUTS,
   manifestUpgrade,
@@ -329,7 +329,7 @@ export async function planCook(
     flags.src.length > 0 ||
     flags.tests.length > 0;
   if (existing) {
-    const upgrades = existing.repos.map((repo) => manifestUpgrade(repo, existing.roles));
+    const upgrades = existing.repos.map((repo) => manifestUpgrade(repo, existing.roles, providers));
     const upgrade = upgrades[0];
     roles =
       flags.upgrade && upgrade?.roles ? { ...existing.roles, ...upgrade.roles } : existing.roles;
@@ -381,7 +381,7 @@ export async function planCook(
     const checked = parseManifest({
       schemaVersion: 1,
       mode,
-      roles: providerRoles(DEFAULT_ROLES, providers),
+      roles: defaultRoles(providers),
       drive,
       layout,
       providers,
@@ -417,7 +417,7 @@ export async function planCook(
     const text = renderManifest(
       mode,
       repos,
-      providerRoles(DEFAULT_ROLES, providers),
+      defaultRoles(providers),
       drive,
       layout,
       checked.manifest.iterations,
@@ -430,7 +430,7 @@ export async function planCook(
         `iterations:\n  duration: ${JSON.stringify(duration)}\n  start_date: ${JSON.stringify(start_date)}\n  demo_day: ${JSON.stringify(demo_day)}`,
       );
     }
-    roles = providerRoles(DEFAULT_ROLES, providers);
+    roles = defaultRoles(providers);
     if (layout === "monorepo") repo = suggested;
     step("created", ".verid/manifest.yaml", {
       content: text,
@@ -732,11 +732,13 @@ export function manifestUpgradeLines(
         `  + ${key}: ${key === "providers" ? '["claude-code"]' : key === "allowed_agents" ? '["general-purpose"]' : "[]"}`,
     ),
     ...manifest.repos.flatMap((repo, i) =>
-      upgradeLines({ ...manifestUpgrade(repo, manifest.roles), ...(i > 0 && { roles: null }) }).map(
-        (line) =>
-          manifest.repos.length > 1 && !line.trimStart().startsWith("+ roles.")
-            ? `${repo.path}: ${line}`
-            : line,
+      upgradeLines({
+        ...manifestUpgrade(repo, manifest.roles, manifest.providers),
+        ...(i > 0 && { roles: null }),
+      }).map((line) =>
+        manifest.repos.length > 1 && !line.trimStart().startsWith("+ roles.")
+          ? `${repo.path}: ${line}`
+          : line,
       ),
     ),
   ];

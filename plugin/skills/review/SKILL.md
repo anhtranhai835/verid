@@ -1,6 +1,6 @@
 ---
 name: review
-description: Steps 6 to 8 of a verid project. Once every acceptance criterion of a module passes, verify the whole suite, have `verid:reviewer` review the module after the last change, and ask the developer to run `verid serve` (in an auto drive, commit the module and let verid serve it); for the `product` module, review the whole product and finish the branch.
+description: Steps 6 to 8 of a verid project. Once every acceptance criterion of a module passes, verify the whole suite, have `verid:reviewer` and then `verid:security` (when mapped) review the module after the last change, and ask the developer to run `verid serve` (in an auto drive, commit the module and let verid serve it); for the `product` module, review the whole product and finish the branch.
 ---
 
 # verid: review and serve
@@ -28,11 +28,25 @@ production code or a test after that voids the review, and so does a new `verid 
 Read the report. If it ends `Verdict: fail`, fix it through the `verid:build` loop (a failing test
 first, then the code), then dispatch the reviewer again.
 
+## 2b. Security review after the reviewer
+
+When the manifest maps `roles.security` (`verid menu` names the security reviewer), dispatch
+`verid:security` (or the security reviewer the manifest maps) once the reviewer has passed the module.
+It reads code only and cannot run commands, so give it the module name, its section of
+`.verid/plan.md`, `.verid/design.md`, the files the module changed (`git diff --stat`, and `git diff`
+for the module), and the output of the stack's dependency audit, which you run for it (for example
+`npm audit --json`, `pip-audit --format json`, `govulncheck ./...`).
+
+verid records its final report under `.verid/.state/reviews/`, and voids it as it voids the review.
+A report that ends `Verdict: fail` is fixed the same way: the `verid:build` loop, `verid taste`, the
+reviewer again, then the security reviewer again.
+
 ## 3. Serve
 
 Ask the developer to run `verid serve <module>` from their own terminal. verid serves a module only
 when every AC has a passing test, the last run passed, and the reviewer's report is newer than the
-last change. It prints the report's path, and the developer decides.
+last change; when `roles.security` is mapped, also only when the security reviewer's report passed
+after the last change. It prints the reports' paths, and the developer decides.
 
 If no reviewer is mapped, `verid serve` refuses: the developer adds `roles.reviewer` to
 `.verid/manifest.yaml` and installs the agent.
@@ -59,12 +73,14 @@ to 3 become:
    `.claude/settings.local.json` is left out. Bash cannot name that file, which is why `git add -A`
    is the way. Without git there is nothing to commit.
 3. **Review** as above: dispatch `verid:reviewer` after the commit. Its final report ends with
-   `Verdict: pass` or `Verdict: fail`. On a pass, verid serves the module once the review follows the
-   last change and the tree is clean, and the next module opens; `verid menu` says so, or says what
-   is still missing, such as a commit.
+   `Verdict: pass` or `Verdict: fail`. When `roles.security` is mapped, dispatch the security reviewer
+   once the reviewer passes, as in step 2b. On the passes verid needs, it serves the module once they
+   follow the last change and the tree is clean, and the next module opens; `verid menu` says so, or
+   says what is still missing, such as a commit.
 4. **On a fail**, or a report with no `Verdict:` line, fix the module through the `verid:build` loop
    (a failing test first), run `verid taste`, commit and dispatch the reviewer again. The third fail
-   leaves the drive stuck.
+   leaves the drive stuck. A failed security review is fixed the same way and has its own count:
+   the third leaves the drive stuck too.
 
 For `product`, a pass that closes the module ends the drive: `verid menu` says the product is done.
 Leave the branch as it is, tell the developer, and let them integrate the work with

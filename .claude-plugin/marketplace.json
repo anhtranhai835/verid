@@ -3,12 +3,12 @@
   "owner": {
     "name": "Anh Tran"
   },
-  "description": "Researcher, architect, planner, tester, coder, qa and reviewer agents and skills for verid's hook-enforced TDD in Claude Code",
+  "description": "Researcher, architect, planner, tester, coder, qa, reviewer and security agents and skills for verid's hook-enforced TDD in Claude Code",
   "plugins": [
     {
       "name": "verid",
       "source": "./plugin",
-      "description": "verid's researcher, architect, planner, tester, coder, qa and reviewer agents, and skills from design to review"
+      "description": "verid's researcher, architect, planner, tester, coder, qa, reviewer and security agents, and skills from design to review, security and edge cases"
     }
   ]
 }

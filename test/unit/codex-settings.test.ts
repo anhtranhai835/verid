@@ -5,6 +5,8 @@ import {
   mergeCodexReviewer,
   codexTrust,
   hasCodexReviewer,
+  installedSkills,
+  reviewerContent,
 } from "../../src/adapters/codex-settings.js";
 
 describe("Codex configuration", () => {
@@ -132,5 +134,17 @@ describe("Codex configuration", () => {
       expect(
         codexTrust(row.text, "C:/project", ["C:/project/.codex/hooks.json:pre_tool_use:0:0"]),
       ).toEqual({ project: row.project, hooks: row.hooks });
+  });
+  // Codex maps no security role: its one reviewer checks security as verid:security says.
+  it("points the Codex reviewer at the review and security skills it reads by path", () => {
+    const skills = installedSkills().replaceAll("\\", "/");
+    const text = reviewerContent();
+    const rows = [
+      [`${skills}/review/SKILL.md`, true],
+      [`${skills}/security/SKILL.md`, true],
+      ["Verdict: pass or Verdict: fail", true],
+      ["{{", false],
+    ] as const;
+    for (const [part, present] of rows) expect(text.includes(part), part).toBe(present);
   });
 });

@@ -73,6 +73,10 @@ describe("provider setup through the CLI", () => {
       expect(result.status, result.stderr).toBe(0);
       expect(parse(read(".verid/manifest.yaml")).providers).toEqual(row.providers);
       expect(parse(read(".verid/manifest.yaml")).allowed_agents).toEqual(["general-purpose"]);
+      // Codex alone has no security agent: its reviewer also checks security.
+      expect(parse(read(".verid/manifest.yaml")).roles.security).toEqual(
+        row.claude ? ["verid:security"] : undefined,
+      );
       expect(existsSync(join(project, "CLAUDE.md"))).toBe(row.claude);
       expect(existsSync(join(project, ".claude/settings.local.json"))).toBe(row.claude);
       expect(existsSync(join(project, ".claude/commands/verid/tip.md"))).toBe(row.claude);

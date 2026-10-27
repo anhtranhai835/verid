@@ -69,7 +69,7 @@ export function renderInstructions(
           `Research/design: verid:design → researcher ${agents("researcher")}; architect ${agents("architect")}.`,
           `Plan: verid:plan → planner ${agents("planner")}.`,
           `Build: verid:build → tester ${agents("tester")}, qa ${agents("qa")} for end-to-end tests, coder ${agents("coder")}.`,
-          `Review/serve: verid:review → reviewer ${agents("reviewer")}.`,
+          `Review/serve: verid:review → reviewer ${agents("reviewer")}${manifest.roles?.security ? `, then security reviewer ${agents("security")}` : ""}.`,
         ]),
     `Skill allowlist: ${skillAllowlist(manifest).join("; ")}.${provider === "codex" ? " Advisory on Codex: skill activation has no universal hook." : ""}`,
     `Agent allowlist (roles plus allowed_agents): ${agentAllowlist(manifest).join("; ") || "none"}.`,

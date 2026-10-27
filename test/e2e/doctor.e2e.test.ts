@@ -83,6 +83,21 @@ const plugins = (entries: Record<string, unknown>) =>
     join(config, "plugins/installed_plugins.json"),
     JSON.stringify({ version: 2, plugins: entries }),
   );
+// A verid plugin install as Claude Code keeps it: an agent file for each role cook maps.
+const VERID_AGENTS = [
+  "reviewer",
+  "tester",
+  "coder",
+  "researcher",
+  "architect",
+  "planner",
+  "qa",
+  "security",
+];
+const veridAgents = (installPath: string, agents = VERID_AGENTS) => {
+  for (const agent of agents)
+    put(join(installPath, "agents", `${agent}.md`), `---\nname: ${agent}\n---\n`);
+};
 const createHealthy = async () => {
   project = join(dir, `project-${sequence++}`);
   mkdirSync(project);
@@ -95,6 +110,7 @@ const createHealthy = async () => {
   commit();
   const installPath = join(config, "cache/plugins");
   mkdirSync(installPath, { recursive: true });
+  veridAgents(installPath);
   plugins({
     "superpowers@claude-plugins-official": [{ scope: "user", installPath }],
     "andrej-karpathy-skills@karpathy-skills": [{ scope: "user", installPath }],
@@ -105,6 +121,7 @@ const healthy = () => {
   project = join(dir, "project");
   rmSync(project, { recursive: true, force: true });
   cpSync(fixture, project, { recursive: true });
+  veridAgents(config);
   plugins({
     "superpowers@claude-plugins-official": [{ scope: "user", installPath: config }],
     "andrej-karpathy-skills@karpathy-skills": [{ scope: "user", installPath: config }],
@@ -427,6 +444,43 @@ describe("verid doctor", () => {
         expect(r.out).toContain("claude plugin install andrej-karpathy-skills@karpathy-skills");
       } else expect(r.out).toContain("= Plugin andrej-karpathy-skills looks installed");
       expect(snapshot()).toEqual(before);
+    }
+  });
+
+  // A changed reviewer also edits the manifest, so these rows compare only the agent problems.
+  it("names a mapped plugin agent that no installed plugin provides", async () => {
+    const rows = [
+      { agents: VERID_AGENTS, reviewer: undefined, says: [] },
+      {
+        agents: VERID_AGENTS.filter((a) => a !== "security"),
+        reviewer: undefined,
+        says: [
+          "! agent.verid:security: verid:security is mapped to roles.security",
+          "claude plugin update verid@verid",
+        ],
+      },
+      // Another plugin may name agents by frontmatter or declare its own paths: verid cannot tell.
+      { agents: VERID_AGENTS, reviewer: "feature-dev:code-reviewer", says: [] },
+      // Without the verid plugin, plugin.verid already says what to install.
+      { agents: null, reviewer: undefined, says: [] },
+      // An agent type with no plugin prefix is built in or the developer's own: not verid's to check.
+      { agents: VERID_AGENTS, reviewer: "my-reviewer", says: [] },
+    ];
+    for (const row of rows) {
+      healthy();
+      const installPath = join(dir, "verid-install");
+      rmSync(installPath, { recursive: true, force: true });
+      if (row.agents) veridAgents(installPath, row.agents);
+      plugins({
+        "superpowers@claude-plugins-official": [{ scope: "user", installPath: config }],
+        "andrej-karpathy-skills@karpathy-skills": [{ scope: "user", installPath: config }],
+        ...(row.agents && { "verid@verid": [{ scope: "user", installPath }] }),
+      });
+      if (row.reviewer) manifest((m) => (m.roles.reviewer = [row.reviewer]));
+      const r = await cli(["doctor"]);
+      const agentProblems = r.out.split("\n").filter((line) => line.startsWith("! agent."));
+      expect(agentProblems.length, r.out).toBe(row.says.length === 0 ? 0 : 1);
+      for (const text of row.says) expect(r.out, text).toContain(text);
     }
   });
 

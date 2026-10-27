@@ -4,7 +4,7 @@ import { existsSync, readFileSync, rmSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import { autoNextStep, autoPhase, changedServed } from "../core/auto.js";
+import { autoNextStep, autoPhase, changedServed, securityOf } from "../core/auto.js";
 import type { Manifest } from "../core/manifest.js";
 import {
   modulePhases,
@@ -403,6 +403,7 @@ async function approve(project: string, wanted: string | undefined): Promise<Cli
       },
       ac_stop_session: null,
       review: null,
+      security: null,
     });
     const acs = module.acs.join(", ");
     const count = module.acs.length;
@@ -447,6 +448,7 @@ function signAuto(project: string, manifest: Manifest, wanted: string | undefine
         Object.entries(state.modules).filter(([m]) => !edited.includes(m)),
       ),
       review: null,
+      security: null,
       auto: {
         ...FRESH_AUTO,
         signed: {
@@ -514,6 +516,7 @@ async function serve(project: string, wanted: string): Promise<CliResult> {
         detail_key: reason,
         acs,
         reviewer: reviewers,
+        security: (manifest.roles?.security ?? []).join(", "),
       });
     if (view.phase === "planned") throw notReady("serve.not_approved");
     if (view.phase === "done") throw notReady("serve.already");
@@ -526,6 +529,10 @@ async function serve(project: string, wanted: string): Promise<CliResult> {
     if (reviewers === "") throw notReady("serve.no_reviewer");
     const { review } = state;
     if (review?.module !== name) throw notReady("serve.no_review");
+    // A mapped security reviewer must pass the module too, after the last change.
+    const security = securityOf(state, manifest.roles);
+    if (security !== undefined && !(security?.module === name && security.verdict === "pass"))
+      throw notReady("serve.no_security");
 
     const served = { ...(state.modules[name] as Approval), served_at: new Date().toISOString() };
     const next = { ...state, modules: { ...state.modules, [name]: served } };
@@ -546,6 +553,9 @@ async function serve(project: string, wanted: string): Promise<CliResult> {
       `verid: module ${name} served`,
       bilingual("serve.done", { module: name }),
       bilingual("serve.review", { agent: review.agent_type, file: review.file }),
+      ...(security
+        ? [bilingual("serve.security", { agent: security.agent_type, file: security.file })]
+        : []),
       ...questions,
       bilingual(step.key, "module" in step ? { module: step.module } : {}),
     ];

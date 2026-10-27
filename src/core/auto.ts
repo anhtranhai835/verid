@@ -11,6 +11,7 @@ import {
   type ModuleView,
   type PlanModule,
 } from "./plan.js";
+import type { Roles } from "./manifest.js";
 import type { AutoState, State } from "./state.js";
 
 /** Every loop of an auto drive runs at most this many times before it is stuck. */
@@ -109,6 +110,7 @@ export type StuckReason =
   | "plan_reviews"
   | "coder_rounds"
   | "module_reviews"
+  | "security_reviews"
   | "no_progress";
 
 export type AutoPlanRead =
@@ -161,6 +163,8 @@ function stuck(f: AutoFacts, signed: NonNullable<AutoState["signed"]>): Stuck | 
   if (ac !== undefined) return { kind: "stuck", reason: "coder_rounds", detail: ac[0] };
   if (auto.module_reviews >= LIMIT)
     return { kind: "stuck", reason: "module_reviews", detail: String(auto.module_reviews) };
+  if (auto.security_reviews >= LIMIT)
+    return { kind: "stuck", reason: "security_reviews", detail: String(auto.security_reviews) };
   if (auto.stop_holds >= LIMIT)
     return { kind: "stuck", reason: "no_progress", detail: String(auto.stop_holds) };
   return null;
@@ -229,24 +233,40 @@ export function gitCleanAcross(
 /**
  * Whether verid closes the module itself: all its ACs have passing tests in a run that nothing has
  * changed since, the reviewer passed this module after its last change (any later write clears the
- * review), and the tree is committed. Where there is no git to ask, that last check is skipped.
+ * review), the security reviewer passed it too when one is mapped, and the tree is committed.
+ * Where there is no git to ask, that last check is skipped.
  */
 export function closeReady(
   view: ModuleView,
   tdd: Pick<State["tdd"], "last_run" | "failing" | "dirty">,
   review: State["review"],
   gitClean: boolean | null,
+  security?: State["security"],
 ): boolean {
   return (
     view.phase === "evaluating" &&
     tdd.last_run !== null &&
     tdd.failing.length === 0 &&
     !tdd.dirty &&
-    review?.module === view.name &&
-    review.verdict === "pass" &&
+    passed(review, view.name) &&
+    (security === undefined || passed(security, view.name)) &&
     gitClean !== false
   );
 }
+
+const passed = (report: State["review"], module: string): boolean =>
+  report?.module === module && report.verdict === "pass";
+const failed = (report: State["review"], module: string): boolean =>
+  report?.module === module && report.verdict === "fail";
+
+/**
+ * The security report as the gates take it: undefined when no security reviewer is mapped, so
+ * none is needed; null when one is mapped and has not reported yet.
+ */
+export const securityOf = (
+  state: Pick<State, "security">,
+  roles: Roles | undefined,
+): State["security"] | undefined => (roles?.security ? state.security : undefined);
 
 /**
  * What has progressed, as a string: equal while the outcome is. Time, order and the number of
@@ -273,6 +293,7 @@ export function progressKey(f: {
     plan_reviews: auto.plan_reviews,
     coder_rounds: auto.coder_rounds,
     module_reviews: auto.module_reviews,
+    security_reviews: auto.security_reviews,
   });
 }
 
@@ -291,6 +312,7 @@ export function autoNextStep(
   hasDesign: boolean,
   review: State["review"],
   gitClean: boolean | null,
+  security?: State["security"],
 ): { key: MessageKey; params: Record<string, string> } {
   switch (phase.kind) {
     case "unsigned":
@@ -308,14 +330,15 @@ export function autoNextStep(
     case "module": {
       const { name, phase: at } = phase.view;
       // A failed review stands until the next write, which is the start of its fix.
-      if (review?.module === name && review.verdict === "fail")
-        return { key: "auto.fix", params: { module: name } };
+      if (failed(review, name)) return { key: "auto.fix", params: { module: name } };
+      if (security !== undefined && failed(security, name))
+        return { key: "auto.security_fix", params: { module: name } };
       if (at === "cooking") return { key: "menu.cook", params: { module: name } };
-      const passed = review?.module === name && review.verdict === "pass";
-      return {
-        key: passed && gitClean === false ? "auto.commit" : "auto.review",
-        params: { module: name },
-      };
+      if (!passed(review, name)) return { key: "auto.review", params: { module: name } };
+      // The security reviewer reads the module once the reviewer has passed it.
+      if (security !== undefined && !passed(security, name))
+        return { key: "auto.security", params: { module: name } };
+      return { key: gitClean === false ? "auto.commit" : "auto.review", params: { module: name } };
     }
     case "done":
       return { key: "auto.done", params: {} };

@@ -22,11 +22,15 @@ workspace root; the same TDD cycle covers all repos.
 2. Read the real UI source: components, routes, accessible roles and labels, and existing test
    identifiers. Derive selectors from that source; never guess a selector. If the UI or the
    interface is missing or unclear, return the question to the main conversation.
-3. Use Playwright by default. Drive the product from outside and assert the observable behaviour,
+3. List the AC's edge cases with verid:edge-cases: user types, input extremes, timing, environment
+   and authorization matter most from outside. Its Critical and High scenarios that the AC asks
+   for are the journeys to pin, one failing test at a time; put the rest in your report, the ones the
+   AC does not cover as questions.
+4. Use Playwright by default. Drive the product from outside and assert the observable behaviour,
    with the AC code in each test name, such as `AC-3 signs up from the home page`. For a project
    using another end-to-end runner, follow it. Every test you write must match `e2e_globs` from
    the manifest, including Playwright tests. Do not disguise unit tests as end-to-end tests.
-4. Run `verid taste`; only its JUnit evidence counts. At COOKING your assertion failed and the
+5. Run `verid taste`; only its JUnit evidence counts. At COOKING your assertion failed and the
    test is frozen: stop and return it to the coder. At `RAW · stub`, report what cannot load so
    the coder can add the stub. If it passes in RAW, it has not shown missing behaviour: correct
    the test and watch it fail for the expected reason.

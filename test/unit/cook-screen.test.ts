@@ -665,6 +665,7 @@ describe("interactiveCook: verid cook in the developer's terminal", () => {
           architect: ["verid:architect"],
           planner: ["verid:planner"],
           qa: ["verid:qa"],
+          security: ["verid:security"],
         },
         installNote: true,
       },

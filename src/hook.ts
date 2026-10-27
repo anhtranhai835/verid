@@ -1,10 +1,11 @@
 import { createHash, randomInt } from "node:crypto";
-import { join, relative, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import type * as z from "zod/mini";
 import {
   autoNextStep,
   autoPhase,
   closeReady,
+  securityOf,
   coderRoundsAfter,
   LIMIT,
   parseVerdict,
@@ -26,7 +27,7 @@ import type { State } from "./core/state.js";
 import type { Manifest, Roles } from "./core/manifest.js";
 import { consumeOverride, handlePrompt, parseVeridPrompt, recordDenial } from "./core/override.js";
 import { modulePhases, openModule } from "./core/plan.js";
-import { decide } from "./core/policy.js";
+import { decide, isUnder } from "./core/policy.js";
 import { decideAgentContext, decideDispatch, decideKnownTool } from "./core/dispatch.js";
 import {
   CODEX_TOOLS,
@@ -61,6 +62,7 @@ import {
   inputHash,
   mcpFiles,
   lifecycleSchema,
+  normalizePath,
   policyContext,
   preToolUseSchema,
   projectDir as claudeProjectDir,
@@ -206,6 +208,17 @@ async function preToolUse(p: z.infer<typeof preToolUseSchema>): Promise<Result> 
     (f) => f.access === "write",
   );
   const base = policyContext(project, p.cwd);
+  // A security review read the module as it was, dependency, config and .env files included, so
+  // any write in the project outside .verid/ needs another. A folder linked from outside the
+  // project is in it as written.
+  const roots = [normalizePath(project), writtenPath(project)];
+  const verid = dirname(base.manifestPath);
+  const voidsSecurity = writes.some(
+    (w) =>
+      roots.some(
+        (root) => isUnder(w.path, root) || (w.written !== undefined && isUnder(w.written, root)),
+      ) && !isUnder(w.path, verid),
+  );
   // The manifest is read for a write to the plan only, so a broken one never blocks reads.
   const planManifest = writes.some((w) => w.path === base.planPath)
     ? await loadManifest(project)
@@ -248,11 +261,11 @@ async function preToolUse(p: z.infer<typeof preToolUseSchema>): Promise<Result> 
           : decideDispatch(p.tool_name, p.tool_input, manifest, lifted);
       if (dispatched.kind === "deny") return dispatched;
       return CODEX && p.tool_name === "collaborationspawn_agent"
-        ? decideAgentContext(
-            p.tool_input.agent_type,
-            p.tool_input.fork_turns,
-            manifest?.roles?.reviewer ?? [],
-          )
+        ? decideAgentContext(p.tool_input.agent_type, p.tool_input.fork_turns, [
+            // The read-only roles start fresh, so they judge the diff, not the writer's reasoning.
+            ...(manifest?.roles?.reviewer ?? []),
+            ...(manifest?.roles?.security ?? []),
+          ])
         : dispatched;
     };
   })().catch((err: unknown) => (): never => {
@@ -303,6 +316,9 @@ async function preToolUse(p: z.infer<typeof preToolUseSchema>): Promise<Result> 
   const first = judge(new Set());
   if (first === undefined || "write" in first) {
     if (first) move(paths, event(first), change(first));
+    // Only a pass to void is written, so other writes never wait on the state lock.
+    else if (voidsSecurity && readState(paths).security !== null)
+      withLock(paths, () => writeState(paths, withoutSecurity(readState(paths))));
     return { exit: 0 };
   }
 
@@ -331,6 +347,7 @@ async function preToolUse(p: z.infer<typeof preToolUseSchema>): Promise<Result> 
         continue;
       }
       if (rest) state = moved(paths, state, event(rest), change(rest));
+      else if (voidsSecurity) state = withoutSecurity(state);
       writeState(paths, state);
       return { exit: 0 };
     }
@@ -503,9 +520,12 @@ function moved(paths: StatePaths, state: State, event: CycleEvent, change: Move)
     change.writer === undefined || state.writers.includes(change.writer)
       ? state.writers
       : [...state.writers, change.writer];
-  // A review covers the code it read: a change after it needs another.
-  return { ...state, tdd, writers, ...(change.written && { review: null }) };
+  // A review covers the code it read: a change after it needs another, and so does a security review.
+  return { ...state, tdd, writers, ...(change.written && { review: null, security: null }) };
 }
+
+const withoutSecurity = (state: State): State =>
+  state.security === null ? state : { ...state, security: null };
 
 async function userPrompt(p: z.infer<typeof userPromptSchema>): Promise<Result> {
   // Codex has no attended-input signal: a prompt never opens an exception there, and peek and
@@ -725,6 +745,7 @@ function autoStop(
       facts.designHash !== null,
       state.review,
       git?.clean ?? null,
+      securityOf(state, manifest.roles),
     );
     const lines = [
       statusLine(manifest.mode, state.tdd, state.tdd.last_run),
@@ -781,7 +802,8 @@ function tryClose(
   if (phase.kind !== "module" || !facts.plan?.ok) return state;
   const { view } = phase;
   const clean = gitTree(project, manifest, state.auto.signed).clean;
-  if (!closeReady(view, state.tdd, state.review, clean)) return state;
+  if (!closeReady(view, state.tdd, state.review, clean, securityOf(state, manifest.roles)))
+    return state;
   const now = new Date().toISOString();
   appendAudit(paths.audit, { event: "module_served", module: view.name, by: "auto" });
   const approval = {
@@ -795,7 +817,8 @@ function tryClose(
     ...state,
     modules: { ...state.modules, [view.name]: approval },
     review: null,
-    auto: { ...state.auto, module_reviews: 0, coder_rounds: {} },
+    security: null,
+    auto: { ...state.auto, module_reviews: 0, security_reviews: 0, coder_rounds: {} },
   };
 }
 
@@ -811,8 +834,8 @@ async function subagentStop(p: z.infer<typeof lifecycleSchema>): Promise<Result>
   const paths = statePaths(project);
   const writer = writerFor(p.agent_id, p.agent_type, manifest.roles);
   const auto = manifest.drive === "auto";
-  if (writer === "reviewer") {
-    if (manifest.mode !== "remix") recordReview(p, project, paths, auto, manifest);
+  if (writer === "reviewer" || writer === "security") {
+    if (manifest.mode !== "remix") recordReview(p, project, paths, auto, manifest, writer);
     return { exit: 0 };
   }
   const agentId = p.agent_id;
@@ -876,7 +899,8 @@ function coderRounds(
  * The mapped reviewer's final report becomes a review. verid writes it, not the agent, under
  * .state where no agent reads or writes. A human drive reviews the open module. An auto drive
  * reviews its plan until the plan passes, then the module it is building; in any other phase
- * there is nothing to review. Remix has no module to review.
+ * there is nothing to review. Remix has no module to review. The security reviewer's report is
+ * recorded the same way, under its own name, and never reviews the plan.
  */
 function recordReview(
   p: z.infer<typeof lifecycleSchema>,
@@ -884,6 +908,7 @@ function recordReview(
   paths: StatePaths,
   auto: boolean,
   manifest: Manifest,
+  kind: "reviewer" | "security",
 ): void {
   const report = p.last_assistant_message ?? "";
   const sha256 = createHash("sha256").update(report, "utf8").digest("hex");
@@ -905,7 +930,7 @@ function recordReview(
     };
     const who = { session: p.session_id, agent_type: p.agent_type, agent_id: p.agent_id };
     // Audit first, then the report, then state: a failure on the way leaves the old review.
-    if (phase?.kind === "plan") {
+    if (kind === "reviewer" && phase?.kind === "plan") {
       const { name, file } = saved("plan");
       // A plan auto cannot run does not pass, whatever the reviewer says.
       const passed = verdict === "pass" && !phase.missing && phase.problem === null;
@@ -918,21 +943,28 @@ function recordReview(
         ...state,
         ...(hash === null
           ? { auto: { ...now, plan_reviews: now.plan_reviews + 1 } }
-          : { auto: { ...now, plan_sha256: hash, plan_reviews: 0 }, review: null }),
+          : {
+              auto: { ...now, plan_sha256: hash, plan_reviews: 0 },
+              review: null,
+              security: null,
+            }),
       });
       return;
     }
     if (!module) return;
-    const { name, file } = saved(module);
-    appendAudit(paths.audit, { event: "review_recorded", ...who, module, sha256, verdict, file });
+    const security = kind === "security";
+    const { name, file } = saved(security ? `security-${module}` : module);
+    const event = security ? "security_recorded" : "review_recorded";
+    appendAudit(paths.audit, { event, ...who, module, sha256, verdict, file });
     writeReview(paths, name, report);
-    const agent_type = p.agent_type ?? "";
+    const recorded = { module, agent_type: p.agent_type ?? "", file, sha256, at, verdict };
+    const failures = security ? "security_reviews" : "module_reviews";
     const next: State = {
       ...state,
-      review: { module, agent_type, file, sha256, at, verdict },
+      ...(security ? { security: recorded } : { review: recorded }),
       ...(auto &&
         verdict !== "pass" && {
-          auto: { ...state.auto, module_reviews: state.auto.module_reviews + 1 },
+          auto: { ...state.auto, [failures]: state.auto[failures] + 1 },
         }),
     };
     // A pass on a committed tree serves the module now, not at the agent's next stop.

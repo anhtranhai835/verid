@@ -620,6 +620,15 @@ describe("workspace auto and doctor", () => {
         at: "now",
         verdict: "pass",
       },
+      // Cook maps verid:security too, so a module closes only on its pass as well.
+      security: {
+        module: "product",
+        agent_type: "verid:security",
+        file: "security.md",
+        sha256: "fixture",
+        at: "now",
+        verdict: "pass",
+      },
     });
     for (const path of ["api", "web", ".verid"]) commit(join(project, path));
   };

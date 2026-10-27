@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -22,7 +22,7 @@ import { isDirectory, loadManifest } from "../adapters/manifest.js";
 import { errno, VeridError } from "../adapters/state-store.js";
 import { findRunners } from "../adapters/test-runner.js";
 import { repoFolder } from "../adapters/workspace.js";
-import type { Manifest } from "../core/manifest.js";
+import { ROLE_NAMES, type Manifest } from "../core/manifest.js";
 import type { MessageKey } from "../core/errors.js";
 import type { CliResult } from "./test.js";
 
@@ -98,26 +98,28 @@ export async function doctorCommand(project: string): Promise<CliResult> {
           file: recordFile,
         });
     }
+    // An install record of this plugin that applies here: for the user, or for this project.
+    const applicable = (name: string) =>
+      Object.entries(installed).flatMap(([key, entries]) =>
+        key.startsWith(`${name}@`) && Array.isArray(entries)
+          ? entries.filter(
+              (entry: unknown): entry is { installPath: string } =>
+                isObject(entry) &&
+                typeof entry.installPath === "string" &&
+                isDirectory(entry.installPath) &&
+                (entry.scope === "user" ||
+                  (["project", "local"].includes(String(entry.scope)) &&
+                    typeof entry.projectPath === "string" &&
+                    resolve(entry.projectPath) === resolve(project))),
+            )
+          : [],
+      );
     for (const [name, marketplace, source] of [
       ["superpowers", "superpowers-marketplace", "obra/superpowers-marketplace"],
       ["andrej-karpathy-skills", "karpathy-skills", "forrestchang/andrej-karpathy-skills"],
       ["verid", "verid", "anhtranhai835/verid"],
     ] as const) {
-      const found = Object.entries(installed).some(
-        ([key, entries]) =>
-          key.startsWith(`${name}@`) &&
-          Array.isArray(entries) &&
-          entries.some(
-            (entry: unknown) =>
-              isObject(entry) &&
-              typeof entry.installPath === "string" &&
-              isDirectory(entry.installPath) &&
-              (entry.scope === "user" ||
-                (["project", "local"].includes(String(entry.scope)) &&
-                  typeof entry.projectPath === "string" &&
-                  resolve(entry.projectPath) === resolve(project))),
-          ),
-      );
+      const found = applicable(name).length > 0;
       if (!found)
         problem(`plugin.${name}`, "doctor.plugin.missing", "doctor.plugin.fix", {
           name,
@@ -126,6 +128,25 @@ export async function doctorCommand(project: string): Promise<CliResult> {
         });
       else lines.push(say("doctor.plugin.ok", { name }));
     }
+    // A mapped verid agent ("verid:<name>") needs an install of verid that has it, as an older
+    // install lacks the agents a newer verid maps. Other plugins may name agents by frontmatter or
+    // declare their own paths, so verid cannot tell; without verid, plugin.verid says what to install.
+    const verids = applicable("verid");
+    if (verids.length > 0)
+      for (const role of ROLE_NAMES)
+        for (const agent of manifest?.roles?.[role] ?? []) {
+          const [plugin, name] = agent.split(":");
+          if (plugin !== "verid" || !name) continue;
+          const provided = verids.some((entry) =>
+            existsSync(join(entry.installPath, "agents", `${name}.md`)),
+          );
+          if (!provided)
+            problem(`agent.${agent}`, "doctor.agent.missing", "doctor.agent.fix", {
+              agent,
+              role,
+              plugin,
+            });
+        }
   }
   for (const provider of manifest?.providers ?? []) {
     const file = instructionFile(provider);

@@ -190,6 +190,9 @@ describe("autoPhase: where an auto drive stands", () => {
         autoPhase({ ...base, auto: { ...base.auto, coder_rounds: { "AC-1": 3 } } }),
       ),
       "module reviews": label(autoPhase({ ...base, auto: { ...base.auto, module_reviews: 3 } })),
+      "security reviews": label(
+        autoPhase({ ...base, auto: { ...base.auto, security_reviews: 3 } }),
+      ),
       stops: label(autoPhase({ ...base, auto: { ...base.auto, stop_holds: 3 } })),
       "two at once": label(autoPhase({ ...base, designHash: "d2", blockedFile: "x" })),
       "no plan": label(autoPhase({ ...base, plan: null, planHash: null })),
@@ -212,6 +215,7 @@ describe("autoPhase: where an auto drive stands", () => {
       "plan reviews": "stuck:plan_reviews:3",
       "coder rounds": "stuck:coder_rounds:AC-1",
       "module reviews": "stuck:module_reviews:3",
+      "security reviews": "stuck:security_reviews:3",
       stops: "stuck:no_progress:3",
       "two at once": "stuck:blocked:x",
       "no plan": "plan:true:null",
@@ -241,6 +245,7 @@ describe("the coder's rounds, closing a module, progress, and the next step", ()
     at: "t",
     verdict: "pass",
   };
+  const passSecurity = { ...passReview, agent_type: "verid:security" };
 
   it("counts a coder's red round for the ACs its red tests name, and forgets ACs that pass with none left", () => {
     expect({
@@ -308,6 +313,16 @@ describe("the coder's rounds, closing a module, progress, and the next step", ()
       "other module": closeReady(view, tdd, { ...passReview, module: "report" }, true),
       "review fail": closeReady(view, tdd, { ...passReview, verdict: "fail" }, true),
       "git dirty": closeReady(view, tdd, passReview, false),
+      "security pass": closeReady(view, tdd, passReview, true, passSecurity),
+      "no security review": closeReady(view, tdd, passReview, true, null),
+      "security fail": closeReady(view, tdd, passReview, true, {
+        ...passSecurity,
+        verdict: "fail",
+      }),
+      "security of another module": closeReady(view, tdd, passReview, true, {
+        ...passSecurity,
+        module: "report",
+      }),
     }).toEqual({
       ready: true,
       "no git": true,
@@ -319,6 +334,10 @@ describe("the coder's rounds, closing a module, progress, and the next step", ()
       "other module": false,
       "review fail": false,
       "git dirty": false,
+      "security pass": true,
+      "no security review": false,
+      "security fail": false,
+      "security of another module": false,
     });
   });
 
@@ -338,6 +357,7 @@ describe("the coder's rounds, closing a module, progress, and the next step", ()
       "new failure": same({ ...f, tdd: { ...f.tdd, failing: ["a"] } }),
       "plan edited": same({ ...f, planHash: "p2" }),
       "a review failed": same({ ...f, auto: { ...FRESH_AUTO, module_reviews: 1 } }),
+      "a security review failed": same({ ...f, auto: { ...FRESH_AUTO, security_reviews: 1 } }),
       "a round failed": same({ ...f, auto: { ...FRESH_AUTO, coder_rounds: { "AC-1": 1 } } }),
       "module closed": same({ ...f, served: ["calc", "report"] }),
     }).toEqual({
@@ -347,6 +367,7 @@ describe("the coder's rounds, closing a module, progress, and the next step", ()
       "new failure": false,
       "plan edited": false,
       "a review failed": false,
+      "a security review failed": false,
       "a round failed": false,
       "module closed": false,
     });
@@ -389,8 +410,9 @@ describe("the coder's rounds, closing a module, progress, and the next step", ()
       design = true,
       review: State["review"] = null,
       git: boolean | null = true,
+      security?: State["security"],
     ) => {
-      const s = autoNextStep(phase, research, design, review, git);
+      const s = autoNextStep(phase, research, design, review, git, security);
       return `${s.key}${Object.values(s.params)
         .map((v) => ` ${v}`)
         .join("")}`;
@@ -420,6 +442,28 @@ describe("the coder's rounds, closing a module, progress, and the next step", ()
         module: "report",
         verdict: "fail",
       }),
+      "review before security": step(open("evaluating"), true, true, null, true, null),
+      security: step(open("evaluating"), true, true, passReview, true, null),
+      "security failed": step(open("evaluating"), true, true, passReview, true, {
+        ...passSecurity,
+        verdict: "fail",
+      }),
+      "security failed, cooking": step(open("cooking"), true, true, null, true, {
+        ...passSecurity,
+        verdict: "fail",
+      }),
+      "security of another module": step(open("evaluating"), true, true, passReview, true, {
+        ...passSecurity,
+        module: "report",
+      }),
+      "security passed, dirty": step(
+        open("evaluating"),
+        true,
+        true,
+        passReview,
+        false,
+        passSecurity,
+      ),
       done: step({ kind: "done" }),
     }).toEqual({
       research: "menu.research",
@@ -435,6 +479,12 @@ describe("the coder's rounds, closing a module, progress, and the next step", ()
       "review failed": "auto.fix calc",
       "review failed, cooking": "auto.fix calc",
       "other module failed": "auto.review calc",
+      "review before security": "auto.review calc",
+      security: "auto.security calc",
+      "security failed": "auto.security_fix calc",
+      "security failed, cooking": "auto.security_fix calc",
+      "security of another module": "auto.security calc",
+      "security passed, dirty": "auto.commit calc",
       done: "auto.done",
     });
   });

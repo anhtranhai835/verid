@@ -169,7 +169,7 @@ describe("verid cook", () => {
     expect(got).toEqual(rows.map(([, , roles]) => [0, true, roles]));
   });
 
-  it("maps all seven plugin roles so the new agents meet their hook restrictions", () => {
+  it("maps every plugin role so the agents meet their hook restrictions", () => {
     expect(init(project, "--mode", "prep", ...NO_RUNNER).code).toBe(0);
     expect(parse(read(project, ".verid/manifest.yaml")).roles).toEqual({
       reviewer: ["verid:reviewer"],
@@ -179,6 +179,7 @@ describe("verid cook", () => {
       architect: ["verid:architect"],
       planner: ["verid:planner"],
       qa: ["verid:qa"],
+      security: ["verid:security"],
     });
     const rows = [
       ["verid:researcher", ".verid/research.md", 0, ""],
@@ -186,6 +187,7 @@ describe("verid cook", () => {
       ["verid:planner", "notes.md", 2, "VERID_BURNT_ROLE_DOC_ONLY"],
       ["verid:qa", "test/unit.test.ts", 2, "VERID_BURNT_ROLE_QA_E2E_ONLY"],
       ["verid:qa", "e2e/login.spec.ts", 0, ""],
+      ["verid:security", "notes.md", 2, "VERID_BURNT_ROLE_READ_ONLY"],
     ] as const;
     for (const [agent, rel, code, message] of rows) {
       const result = hook(project, "PreToolUse", writeAs(project, rel, agent));
@@ -404,6 +406,7 @@ describe("verid cook", () => {
         '  + roles.architect: ["verid:architect"]',
         '  + roles.planner: ["verid:planner"]',
         '  + roles.qa: ["verid:qa"]',
+        '  + roles.security: ["verid:security"]',
       ],
       test_cmd: ["  − test_cmd"],
       "explained in": 2,
