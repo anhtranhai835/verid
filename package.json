@@ -1,6 +1,6 @@
 {
   "name": "@anhtranhai835/verid",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Evidence-verified, hook-enforced TDD harness for Claude Code",
   "author": "Anh Tran",
   "license": "MIT",
