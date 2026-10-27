@@ -277,10 +277,59 @@ describe("repo rules", () => {
     expect(missing).toEqual([]);
   });
 
-  // The two refusals of the auto drive are not rules (no override lifts them) but the READMEs
-  // explain them too.
+  it("both READMEs list every gap the architecture gate leaves", () => {
+    const rows = [
+      [
+        "README.md",
+        "## Limitations",
+        [
+          "signing approves bytes",
+          "Remix design agreement has no signature gate",
+          "dependency direction is checked by review",
+          "blocks module close, not the violating edit",
+          "Spring runtime wiring",
+          "verid does not sandbox them",
+          "outside the freshness snapshot",
+          "changed and restored while a check runs",
+          "architecture result is not progress",
+        ],
+      ],
+      [
+        "README.vi.md",
+        "## Giới hạn",
+        [
+          "chữ ký chỉ duyệt byte",
+          "Thoả thuận thiết kế ở remix không có cổng chữ ký",
+          "reviewer kiểm chiều phụ thuộc",
+          "chặn đóng module, không chặn lần sửa vi phạm",
+          "wiring Spring",
+          "verid không sandbox chúng",
+          "nằm ngoài snapshot độ mới",
+          "bị sửa rồi trả lại trong lúc kiểm tra chạy",
+          "kết quả kiến trúc không tính là tiến triển",
+        ],
+      ],
+    ] as const;
+    for (const [file, heading, phrases] of rows) {
+      const limitations = readFileSync(join(root, file), "utf8").split(heading)[1] ?? "";
+      expect(
+        phrases.filter((phrase) => !limitations.includes(phrase)),
+        file,
+      ).toEqual([]);
+    }
+  });
+
+  // The two refusals of the auto drive and the architecture closure codes are not rules (no
+  // override lifts them) but the READMEs explain them too.
   it("both READMEs name every rule code and the auto drive's two refusals", () => {
-    const codes = [...RULE_CODES, "VERID_BURNT_AUTO_ORDER_MODULE", "VERID_BURNT_AUTO_SERVE"];
+    const codes = [
+      ...RULE_CODES,
+      "VERID_BURNT_AUTO_ORDER_MODULE",
+      "VERID_BURNT_AUTO_SERVE",
+      "VERID_BURNT_ARCHITECTURE_FAILED",
+      "VERID_BURNT_ARCHITECTURE_STALE",
+      "VERID_BURNT_ARCHITECTURE_UNAVAILABLE",
+    ];
     const missing = ["README.md", "README.vi.md"].flatMap((file) => {
       const text = readFileSync(join(root, file), "utf8");
       return codes.filter((c) => !new RegExp(`\\b${c}\\b`).test(text)).map((c) => `${file}: ${c}`);

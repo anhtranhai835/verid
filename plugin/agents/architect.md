@@ -22,6 +22,29 @@ Return a proposed draft with:
 - Dependencies as directed edges between components. They must form a DAG: check for cycles and
   resolve them in the proposal.
 - Decisions, the alternatives considered and their trade-offs; what is out of scope.
+- The design table below, with the rules agreed beside it.
+
+## The design table
+
+Propose one table of the architecture the code must keep, with the paths and interfaces the project
+chooses:
+
+| Repo | Bounded context / owner | Layer       | Paths                         | Public interface                   | May depend on   |
+| ---- | ----------------------- | ----------- | ----------------------------- | ---------------------------------- | --------------- |
+| api  | ordering / orders team  | domain      | `src/ordering/domain/**`      | aggregate operations, domain ports | domain only     |
+| api  | ordering / orders team  | application | `src/ordering/application/**` | place-order use case               | ordering domain |
+
+Keep bounded contexts, technical layers and delivery modules distinct: a plan module is a slice of
+delivery, not a row. Beside the table, agree the public APIs between contexts, the forbidden edges
+and cycles, shared and generated code, test exceptions, the framework annotation policy (for
+example Spring or JPA annotations in the domain) and, for existing code, how the rules are adopted.
+Keep it a short convention, not a new format: add abstractions only where a boundary needs one,
+never an interface per class. A project that runs an architecture checker encodes only the rules
+agreed here.
+
+verid signs `.verid/design.md` as bytes: editing a cell after the developer signs it locks
+production code until they sign again (in an auto drive, the drive is stuck). In remix nothing
+signs it; the main conversation records that the developer agreed.
 
 Do not finalise boundaries silently. You cannot talk to the developer: return open questions in
 your final message, each with 2–3 options, trade-offs and a recommendation. The main conversation

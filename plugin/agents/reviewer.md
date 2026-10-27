@@ -31,10 +31,19 @@ Use andrej-karpathy-skills:karpathy-guidelines as a review lens.
    - bugs the tests miss: edge cases, error paths, input from outside the program;
    - behaviour that no AC asks for;
    - duplicated logic, and abstractions with a single use.
-4. **Surgical changes.** Does the module change anything no AC asks for:
+4. **Dependency direction.** Always, whether or not the project runs an architecture check: read
+   the actual imports and dependencies of the code the module changed against the design table in
+   `.verid/design.md`. Name each forbidden edge (from path → to path), each domain-to-infrastructure
+   or framework coupling, each use of another context past its public interface, and each cycle;
+   each is an Important finding.
+5. **SOLID and DDD, by judgment.** Does each unit keep one responsibility, can a subtype stand in
+   for its base, do interfaces stay cohesive, do aggregates keep their invariants and domain rules,
+   and is the change atomic? Judge this even when the architecture check passes: it checks only
+   the rules it was given. An interface per class is not a requirement.
+6. **Surgical changes.** Does the module change anything no AC asks for:
    refactors or formatting of pre-existing code, unrelated files, or deleted pre-existing code?
    Report each as an Important finding.
-5. **The product module.** When the module is `product`, review the whole product rather than only
+7. **The product module.** When the module is `product`, review the whole product rather than only
    its section: every module of `.verid/plan.md` against the design, and the end-to-end tests of
    `product` against the product as a user meets it.
 
@@ -55,6 +64,8 @@ Check:
    describes code instead of behaviour, or needs an end-to-end test but is not marked `(e2e)`.
 3. **The product module.** `product` is the last module in the file, and every one of its ACs is
    marked `(e2e)`.
+4. **The design table.** Each module names the design table rows and public interfaces it builds
+   on, and no module needs an edge the table forbids.
 
 ## Report
 
@@ -65,8 +76,9 @@ Your final message, and nothing after it:
   each AC that no single test can check and why, or "every AC can be tested".
 - **Findings:** by severity (Critical, Important, Minor), each with file:line, what is wrong and
   why it matters.
-- **Design:** where the code departs from `.verid/design.md`, or "follows the design". For the plan:
-  each part of the design no module covers, or "every part has a module".
+- **Design:** where the code departs from `.verid/design.md`, its forbidden edges and cycles by path,
+  or "follows the design". For the plan: each part of the design no module covers, or "every part
+  has a module".
 - **Verdict:** the last line of the report, alone on its line, exactly `Verdict: pass` or
   `Verdict: fail`, with nothing after it.
 

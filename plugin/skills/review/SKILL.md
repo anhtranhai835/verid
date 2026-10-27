@@ -13,13 +13,18 @@ evidence (superpowers:verification-before-completion).
 ## 1. Verify
 
 Run `verid taste` for the whole suite. It must pass, with no change after it. `verid menu` should
-say to evaluate the module.
+say to evaluate the module. When the manifest configures `architecture_check`, the same run must
+pass every repo's check: a module closes only on a check that passed on the files, settings, design
+and module as they are, so run `verid taste` again after any later change. `verid menu` names a
+repo whose check failed, gave no evidence or is stale.
 
 ## 2. Review after the last change
 
 Dispatch `verid:reviewer` (or the reviewer the manifest maps) only once the code and tests are final.
-Give it the module name, its section of `.verid/plan.md`, `.verid/design.md`, and the files the
-module changed (for example from `git diff --stat`).
+Give it the module name, its section of `.verid/plan.md`, `.verid/design.md`, its design table rows,
+and the files the module changed (for example from `git diff --stat`). Ask it to check the
+dependency direction against the table every time, and SOLID and DDD by judgment, whether or not
+an architecture check ran.
 
 When the reviewer stops, verid records its final report under `.verid/.state/reviews/`. Any write to
 production code or a test after that voids the review, and so does a new `verid order`; running

@@ -93,6 +93,16 @@ const repo = z.strictObject({
   // Tests there are end-to-end: they alone cover an `(e2e)` AC (core/tdd.ts e2eCases).
   e2e_globs: z.optional(z.array(glob)),
   timeout_sec: z.optional(z.int().check(z.positive())),
+  // A project-owned structural check (ArchUnit, dependency-cruiser, Import Linter) run by
+  // `verid taste`; a module closes only on its fresh pass. Inputs add its rules, config and lock
+  // files to the code and tests its freshness covers; absent, nothing changes.
+  architecture_check: z.optional(
+    z.strictObject({
+      command: z.string().check(z.refine((cmd) => cmd.trim() !== "", nonEmpty)),
+      inputs: z.array(glob).check(z.minLength(1, nonEmpty)),
+      timeout_sec: z.optional(z.int().check(z.positive())),
+    }),
+  ),
 });
 
 // Under the 2-minute default of Claude Code's Bash tool, so a hung run is stopped and
@@ -533,6 +543,9 @@ export function renderManifest(
       ...(repo.ignore_globs ? [`    ignore_globs: ${JSON.stringify(repo.ignore_globs)}`] : []),
       ...(repo.e2e_globs ? [`    e2e_globs: ${JSON.stringify(repo.e2e_globs)}`] : []),
       ...(repo.timeout_sec ? [`    timeout_sec: ${repo.timeout_sec}`] : []),
+      ...(repo.architecture_check
+        ? [`    architecture_check: ${JSON.stringify(repo.architecture_check)}`]
+        : []),
     ]),
     "",
   ].join("\n");

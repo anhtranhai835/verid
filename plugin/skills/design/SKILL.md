@@ -43,6 +43,10 @@ yourself when no architect is mapped):
 - **Interfaces:** APIs, commands or screens, and how errors reach the user.
 - **Decisions:** each choice, with the options you set aside and why.
 - **Dependencies:** directed edges between components, with no cycles (a DAG).
+- **Design table:** one row per repo, bounded context and layer, with its paths, public interface
+  and what it may depend on (the architect's format), and beside it the agreed context APIs,
+  forbidden edges and cycles, shared and generated code, test exceptions, framework annotation
+  policy and how existing code adopts the rules. Contexts, layers and plan modules stay distinct.
 - **Out of scope:** what this project will not do.
 
 Keep it short: the plan and the tests carry the detail. The decisions are the developer's.
@@ -56,7 +60,13 @@ Each `verid order` signs `.verid/design.md` together with the module. If the des
 the order, verid locks production code until the developer runs `verid order <module>` again. A
 module already served is not affected. An editor that only re-saves the file (a BOM, CRLF line
 endings) changes it too. So settle the design before the first order; changing it later is allowed,
-and costs a new order.
+and costs a new order. The design table is part of those bytes. In remix there is no order: when
+the developer agrees a design table for existing code, say so in `.verid/design.md`; nothing signs
+it.
+
+The reviewer always checks dependency direction against the table. A project may also run its own
+checker (ArchUnit, dependency-cruiser or Import Linter) from `repos[].architecture_check` in the
+manifest, which only the developer edits; its rules encode only what the table agrees.
 
 ## Auto drive
 

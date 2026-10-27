@@ -9,6 +9,8 @@ import {
   securityOf,
   type AutoFacts,
 } from "../core/auto.js";
+import { architectureProblems, type ArchitectureProblem } from "../core/architecture.js";
+import { canonicalJson } from "../core/canonical-json.js";
 import type { Drive, Iterations, Manifest, Mode, Roles } from "../core/manifest.js";
 import { iterationDates } from "../core/iterations.js";
 import {
@@ -24,6 +26,7 @@ import {
 import { mappedAgents } from "../core/roles.js";
 import type { State } from "../core/state.js";
 import { cycleHint, cycleLabel } from "../core/tdd.js";
+import { bound, checkedRepos, contentsOf, type Contents } from "./architecture.js";
 import { gitTree } from "./git.js";
 import { bilingual } from "./i18n.js";
 import { errno } from "./state-store.js";
@@ -116,6 +119,78 @@ export function autoFactsOf(project: string, state: State, iterations = false): 
 }
 
 /**
+ * What an architecture check is bound to besides its files: the design as saved and the open
+ * module with its approval (in an auto drive, its plan section and the signature). A new order,
+ * signature or module needs a new check; remix has no module.
+ */
+export function checkBinding(project: string, state: State, manifest: Manifest): string {
+  return canonicalJson({
+    design: readDesignHash(project),
+    module: openApproval(project, state, manifest),
+  });
+}
+
+function openApproval(project: string, state: State, manifest: Manifest) {
+  if (manifest.mode === "remix") return null;
+  const iterations = manifest.iterations !== undefined;
+  if (manifest.drive === "auto") {
+    const facts = autoFactsOf(project, state, iterations);
+    const phase = autoPhase(facts);
+    if (phase.kind !== "module" || !facts.plan?.ok) return null;
+    const { name } = phase.view;
+    return { name, sha256: facts.plan.hashes[name] ?? null, at: state.auto.signed?.at ?? null };
+  }
+  const plan = readPlan(project, iterations);
+  if (!plan?.ok) return null;
+  const views = modulePhases(plan.modules, plan.hashes, state.modules, evidenceOf(project, state));
+  const open = openModule(views);
+  const approval = open && state.modules[open.name];
+  return approval ? { name: open.name, sha256: approval.sha256, at: approval.at } : null;
+}
+
+/**
+ * Why the open module cannot close on architecture, repo by repo: each configured check must have
+ * passed on its repo's files, settings, design and module as they are now. `contents` is what
+ * contentsOf read, before any state lock; a repo it lacks reads as stale. [] where no repo
+ * configures a check. Reads only; nothing is run.
+ */
+export function architectureOf(
+  project: string,
+  manifest: Manifest,
+  state: State,
+  contents: Contents,
+): ArchitectureProblem[] {
+  const repos = checkedRepos(manifest);
+  if (repos.length === 0) return [];
+  const binding = checkBinding(project, state, manifest);
+  return architectureProblems(
+    repos.map(({ repo }) => ({ repo: repo.path, snapshot: bound(contents[repo.path], binding) })),
+    state.architecture,
+  );
+}
+
+/**
+ * Whether a module waits to close: open, with every AC passing, so only the review, the git tree
+ * and the architecture checks are left. Never in remix.
+ */
+export function moduleClosing(project: string, state: State, manifest: Manifest): boolean {
+  if (manifest.mode === "remix") return false;
+  const iterations = manifest.iterations !== undefined;
+  if (manifest.drive === "auto") {
+    const phase = autoPhase(autoFactsOf(project, state, iterations));
+    return phase.kind === "module" && phase.view.phase === "evaluating";
+  }
+  const plan = readPlan(project, iterations);
+  if (!plan?.ok) return false;
+  const views = modulePhases(plan.modules, plan.hashes, state.modules, evidenceOf(project, state));
+  return openModule(views)?.phase === "evaluating";
+}
+
+/** An architecture problem as `verid menu` and the Stop holds say it. */
+export const architectureLine = (p: ArchitectureProblem): string =>
+  bilingual(p.code, { repo: p.repo, detail: p.detail, log: p.log });
+
+/**
  * The questions still open in `.verid/plan.md`, then `.verid/research.md`, one line each as
  * `  ? plan.md:4 which locale?`. A missing file has none; any other read error propagates.
  */
@@ -166,10 +241,22 @@ export function peekLines(
   return [
     head,
     ...(open ? [hint] : []),
+    ...architectureLines(project, manifest, state, plan),
     stepLine(plan, roles, singleWriter),
     bilingual("status.menu", {}),
   ];
 }
+
+/** Each configured repo whose check must run (again) before the module under evaluation closes. */
+const architectureLines = (
+  project: string,
+  manifest: Manifest | undefined,
+  state: State,
+  plan: ReturnType<typeof planStanding>,
+): string[] =>
+  manifest && plan.ok && openModule(plan.views)?.phase === "evaluating"
+    ? architectureOf(project, manifest, state, contentsOf(project, manifest)).map(architectureLine)
+    : [];
 
 /** The plan as `verid menu` reads it: the modules' phases, the open questions, the next step. */
 function planStanding(project: string, state: State, iterations = false) {
@@ -226,6 +313,9 @@ function autoStanding(
     state.review,
     clean,
     securityOf(state, roles),
+    manifest && phase.kind === "module" && phase.view.phase === "evaluating"
+      ? architectureOf(project, manifest, state, contentsOf(project, manifest))
+      : [],
   );
   const step = bilingual(next.key, { ...mappedAgents(roles, singleWriter), ...next.params });
   return { facts, phase, step };
@@ -321,6 +411,7 @@ export function menuLines(
     ...iterationLines(manifest?.iterations, plan.modules, views, today),
     ...views.map(moduleLine),
     ...plan.questions,
+    ...architectureLines(project, manifest, state, plan),
     stepLine(plan, roles, singleWriter),
   ];
 }

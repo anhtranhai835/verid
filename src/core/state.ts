@@ -140,6 +140,21 @@ const report = z.strictObject({
   verdict: z._default(z.enum(["pass", "fail"]), "fail"),
 });
 
+/**
+ * What a repo's architecture check showed in a `verid taste`, recorded only when the snapshot it
+ * ran on (files, settings, design and module) was unchanged by the end of the run.
+ */
+const architectureResult = z.strictObject({
+  snapshot: z.string(),
+  status: z.enum(["pass", "fail", "unavailable"]),
+  run: z.string(),
+  /** The checker's output, relative to the project. */
+  log: z.string(),
+  at: z.string(),
+  /** Why an unavailable check showed nothing: a timeout, or a command that did not start. */
+  detail: z._default(z.string(), ""),
+});
+
 /** Every field has a default, so this is what a project that never ran auto holds. */
 export const FRESH_AUTO = autoState.parse({});
 
@@ -191,9 +206,12 @@ const stateSchema = z.strictObject({
   /** agent_id of each subagent let write code or a test that has not stopped since. */
   writers: z._default(z.array(z.string()), []),
   auto: z._default(autoState, FRESH_AUTO),
+  /** Each configured repo's last architecture check, by repo path; every evidence run clears it. */
+  architecture: z._default(z.record(z.string(), architectureResult), {}),
 });
 
 export type State = z.infer<typeof stateSchema>;
+export type ArchitectureResult = z.infer<typeof architectureResult>;
 export type AutoState = State["auto"];
 export type DeniedAction = z.infer<typeof deniedAction>;
 export type PendingOverride = z.infer<typeof pendingOverride>;

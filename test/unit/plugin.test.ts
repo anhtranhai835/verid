@@ -198,6 +198,69 @@ describe("verid plugin", () => {
     ).toEqual([]);
   });
 
+  it("carries the agreed architecture to every role through the design table, with existing skills only", () => {
+    const says = (file: string, ...phrases: string[]) =>
+      phrases.every((phrase) => read(file).includes(phrase));
+    const role = (ok: boolean, label: string) => (ok ? label : "missing");
+    expect({
+      architect: role(
+        says(
+          "plugin/agents/architect.md",
+          "| Bounded context / owner | Layer",
+          "| Public interface",
+          "| May depend on",
+          "forbidden edges",
+          "never an interface per class",
+        ) && says("plugin/skills/design/SKILL.md", "design table", "remix"),
+        "design table",
+      ),
+      planner: role(
+        says("plugin/agents/planner.md", "design table") &&
+          says("plugin/skills/plan/SKILL.md", "design table"),
+        "maps modules to rows",
+      ),
+      coder: role(
+        says("plugin/agents/coder.md", "allowed edges", "never an interface per class"),
+        "follows allowed edges",
+      ),
+      tester: role(
+        says("plugin/agents/tester.md", "agreed public interface"),
+        "tests the interface",
+      ),
+      "mapped external coder": role(
+        says("plugin/skills/build/SKILL.md", "design table rows", "other plugins"),
+        "design rows supplied",
+      ),
+      qa: role(says("plugin/agents/qa.md", "analyzer"), "e2e only"),
+      reviewer: role(
+        says(
+          "plugin/agents/reviewer.md",
+          "Dependency direction",
+          "cycle",
+          "even when the architecture check passes",
+        ) &&
+          says("plugin/skills/review/SKILL.md", "architecture_check", "dependency direction") &&
+          says("plugin/codex/verid-reviewer.toml", "forbidden edge", "SOLID"),
+        "dependency direction required",
+      ),
+      "existing skill calls": role(
+        skills().sort().join() === "build,design,edge-cases,plan,review,security" &&
+          says("plugin/skills/design/SKILL.md", "superpowers:brainstorming") &&
+          says("plugin/skills/review/SKILL.md", "superpowers:requesting-code-review"),
+        "referenced, not vendored",
+      ),
+    }).toEqual({
+      architect: "design table",
+      planner: "maps modules to rows",
+      coder: "follows allowed edges",
+      tester: "tests the interface",
+      "mapped external coder": "design rows supplied",
+      qa: "e2e only",
+      reviewer: "dependency direction required",
+      "existing skill calls": "referenced, not vendored",
+    });
+  });
+
   it("asks the reviewer for the verdict line verid reads, and each auto step for its part", () => {
     expect({
       "reviewer pass": read("plugin/agents/reviewer.md").includes("Verdict: pass"),

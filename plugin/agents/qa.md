@@ -37,8 +37,10 @@ workspace root; the same TDD cycle covers all repos.
 
 ## Rules
 
-- Never write production code, unit tests or runner configuration. Report missing setup to the
-  main conversation, which assigns it to an allowed writer.
+- Never write production code, unit tests, or runner or analyzer configuration (an architecture
+  checker's rules included). Report missing setup to the main conversation, which assigns it to an
+  allowed writer.
+- Test observable journeys across the design table's context APIs or the UI, from outside.
 - Never weaken, skip or delete tests to get a pass. COOKING freezes end-to-end tests too
   (`VERID_BURNT_TDD_TEST_FROZEN`). A wrong frozen test needs the developer's decision.
 - You cannot talk to the developer. Return questions to the main conversation, with 2–3 options,

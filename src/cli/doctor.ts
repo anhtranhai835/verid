@@ -19,11 +19,14 @@ import {
 import { bilingual, inLanguage, t } from "../adapters/i18n.js";
 import { gitView } from "../adapters/git.js";
 import { isDirectory, loadManifest } from "../adapters/manifest.js";
-import { errno, VeridError } from "../adapters/state-store.js";
+import { checkedRepos, contentsOf, WORD } from "../adapters/architecture.js";
+import { architectureOf, moduleClosing } from "../adapters/plan-file.js";
+import { errno, readState, statePaths, VeridError } from "../adapters/state-store.js";
 import { findRunners } from "../adapters/test-runner.js";
 import { repoFolder } from "../adapters/workspace.js";
 import { ROLE_NAMES, type Manifest } from "../core/manifest.js";
-import type { MessageKey } from "../core/errors.js";
+import type { ErrorCode, MessageKey } from "../core/errors.js";
+import { parseState, type State } from "../core/state.js";
 import type { CliResult } from "./test.js";
 
 /** Read-only checks: never run a test, repair settings, or write the manifest cache. */
@@ -33,7 +36,7 @@ export async function doctorCommand(project: string): Promise<CliResult> {
   let problems = 0;
   const problem = (
     key: string,
-    detail: MessageKey,
+    detail: MessageKey | ErrorCode,
     fix: MessageKey,
     params: Record<string, string> = {},
   ) => {
@@ -301,6 +304,37 @@ export async function doctorCommand(project: string): Promise<CliResult> {
       });
     else if (repo.test_cmd) lines.push(say("doctor.repo.runner.custom", { repo: repo.path }));
     else lines.push(say("doctor.repo.runner.ok", { repo: repo.path, runners }));
+  }
+  // A configured architecture check is named, never run: its evidence comes from taste alone.
+  if (manifest && checkedRepos(manifest).length > 0) {
+    for (const { repo, check } of checkedRepos(manifest))
+      lines.push(
+        say("doctor.architecture.configured", { repo: repo.path, command: check.command }),
+      );
+    let state: State | null = null;
+    try {
+      state = readState(statePaths(project));
+    } catch (e) {
+      if (!(e instanceof VeridError)) throw e;
+      // No state yet: no check has run either. Broken state is a problem of its own.
+      const fresh = parseState('{"schemaVersion":1}');
+      if (e.code === "VERID_BURNT_STATE_MISSING" && fresh.ok) state = fresh.state;
+      else problem("architecture.state", e.code, "doctor.architecture.fix", e.params);
+    }
+    const contents = state ? contentsOf(project, manifest) : {};
+    // Missing or stale evidence blocks only a module waiting to close; an input or file the
+    // check cannot read is a setup problem whenever it shows.
+    const closing = state !== null && moduleClosing(project, state, manifest);
+    for (const p of state ? architectureOf(project, manifest, state, contents) : []) {
+      const setup = "unavailable" in (contents[p.repo] ?? {});
+      if (closing || setup)
+        problem(`architecture.${p.repo}`, p.code, "doctor.architecture.fix", {
+          repo: p.repo,
+          detail: p.detail,
+          log: p.log,
+        });
+      else lines.push(say("doctor.architecture.idle", { repo: p.repo, status: WORD[p.code] }));
+    }
   }
   lines.push(say(problems ? "doctor.problems" : "doctor.ok", { count: String(problems) }));
   return { exit: problems ? 1 : 0, stdout: `${lines.join("\n")}\n`, stderr: "" };

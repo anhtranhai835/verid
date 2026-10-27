@@ -46,6 +46,9 @@ You are given one acceptance criterion (AC) of the open module, for example
   say why.
 - A test pins behaviour. A test that only runs code, or asserts what the code happens to return
   today, proves nothing.
+- Test at the agreed public interface of the design table's row, not at internals, including the
+  invariant and substitutability cases the AC calls for. The project's own architecture tests (an
+  ArchUnit test, for example) are tests too: write them under the same gate when an AC asks for one.
 - When verid denies a call, read its message: it says what to do next. Do not look for another way
   around the rule. Only the developer can allow an exception, with `/verid tip`.
 - `verid cook`, `verid order`, `verid serve`, `verid stock` and `verid garnish` belong to the

@@ -37,6 +37,12 @@ You are given the AC the tester just covered, and its failing test.
 - Fix the code, not the test. If a failing test looks wrong, stop and say why.
 - Follow `.verid/design.md`. If the design does not settle something the code needs, stop and
   report the question instead of choosing.
+- Keep to the design table: depend only along its allowed edges, keep aggregate invariants in the
+  domain, and keep domain logic free of infrastructure and framework code. Add an abstraction only
+  when the failing test needs it; never an interface per class.
+- When the project configures an architecture check, `verid taste` runs it after a passing suite.
+  A failure (`VERID_BURNT_ARCHITECTURE_FAILED`) names a dependency to fix in the code, as a failing
+  test does; never weaken the checker's rules or configuration.
 - When verid denies a call, read its message: it says what to do next. Do not look for another way
   around the rule. Only the developer can allow an exception, with `/verid tip`.
 - `verid cook`, `verid order`, `verid serve`, `verid stock` and `verid garnish` belong to the

@@ -49,7 +49,9 @@ const manifest = (testCmd = `"${process.execPath}" "${RUNNER}" {junit}`) =>
     "",
   ].join("\n");
 
-beforeEach(() => {
+beforeEach(() => fresh());
+// A new project, so a test can walk through several from the start.
+function fresh(): void {
   // `$$` in the path: it must reach the test command unchanged ({junit} replacement).
   project = mkdtempSync(join(tmpdir(), "verid-auto-$$-"));
   stateFile = join(project, ".verid", ".state", "state.json");
@@ -59,7 +61,7 @@ beforeEach(() => {
   writeFileSync(join(project, ".verid", ".gitignore"), ".state/\n");
   writeFileSync(stateFile, FRESH_STATE);
   writeFileSync(manifestFile, manifest());
-});
+}
 afterEach(() => rmSync(project, { recursive: true, force: true }));
 
 type Payload = Record<string, any>;
@@ -760,6 +762,65 @@ describe("Stop in an auto drive", () => {
       r.code,
       r.stderr.includes(enMessage("auto.review", { module: "calc", reviewer: "verid:reviewer" })),
     ]).toEqual([undefined, 2, true]);
+  });
+
+  it("closes a module only on a fresh pass of its configured architecture check, at a stop or the reviewer's", async () => {
+    const checker = join(import.meta.dirname, "fake-checker.mjs");
+    const checked = (exit: number) =>
+      writeFileSync(
+        manifestFile,
+        `${manifest()}    architecture_check: ${JSON.stringify({
+          command: `"${process.execPath}" "${checker}" ${exit}`,
+          inputs: ["rules.cjs"],
+        })}\n`,
+      );
+    const commit = () => {
+      git("add", "-A");
+      git("commit", "-q", "--allow-empty", "-m", "work");
+    };
+    const outcomes: Record<string, string> = {};
+    for (const close of ["stop", "reviewer"] as const) {
+      rmSync(project, { recursive: true, force: true });
+      fresh();
+      await signed();
+      planPassed();
+      put("rules.cjs", "module.exports = [];\n");
+      checked(0);
+      scenario(0, "vitest-ac.xml");
+      gitRepo();
+      seed({ tdd: calcGreen }); // AC-1 passed, but no check has run
+      if (close === "stop") await reviewerStop("Verdict: pass");
+      const rows: [string, () => Promise<unknown>][] = [
+        ["missing", async () => {}],
+        ["failed", async () => (checked(1), await cli("taste"))],
+        [
+          "stale",
+          async () => {
+            checked(0);
+            await cli("taste");
+            put("rules.cjs", "module.exports = ['domain'];\n");
+          },
+        ],
+        ["fresh", async () => put("rules.cjs", "module.exports = [];\n")],
+      ];
+      for (const [name, prepare] of rows) {
+        await prepare();
+        commit();
+        const r = close === "stop" ? await stop(false) : await reviewerStop("Verdict: pass");
+        const why = /architecture check of repo \./.test(r.stderr) ? " · says why" : "";
+        outcomes[`${close} ${name}`] = `${state().modules.calc ? "closed" : "open"}${why}`;
+      }
+    }
+    expect(outcomes).toEqual({
+      "stop missing": "open · says why",
+      "stop failed": "open · says why",
+      "stop stale": "open · says why",
+      "stop fresh": "closed",
+      "reviewer missing": "open",
+      "reviewer failed": "open",
+      "reviewer stale": "open",
+      "reviewer fresh": "closed",
+    });
   });
 
   it("lets the agent stop once the product module is served last", async () => {

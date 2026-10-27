@@ -1,5 +1,6 @@
+import type { ArchitectureProblem } from "./architecture.js";
 import { canonicalJson } from "./canonical-json.js";
-import type { MessageKey } from "./errors.js";
+import type { ErrorCode, MessageKey } from "./errors.js";
 import {
   acsInName,
   moduleProblem,
@@ -233,8 +234,9 @@ export function gitCleanAcross(
 /**
  * Whether verid closes the module itself: all its ACs have passing tests in a run that nothing has
  * changed since, the reviewer passed this module after its last change (any later write clears the
- * review), the security reviewer passed it too when one is mapped, and the tree is committed.
- * Where there is no git to ask, that last check is skipped.
+ * review), the security reviewer passed it too when one is mapped, every configured architecture
+ * check passed on the files as they are, and the tree is committed. Where there is no git to ask,
+ * that last check is skipped.
  */
 export function closeReady(
   view: ModuleView,
@@ -242,6 +244,7 @@ export function closeReady(
   review: State["review"],
   gitClean: boolean | null,
   security?: State["security"],
+  architecture: readonly ArchitectureProblem[] = [],
 ): boolean {
   return (
     view.phase === "evaluating" &&
@@ -250,6 +253,7 @@ export function closeReady(
     !tdd.dirty &&
     passed(review, view.name) &&
     (security === undefined || passed(security, view.name)) &&
+    architecture.length === 0 &&
     gitClean !== false
   );
 }
@@ -304,7 +308,8 @@ export function stopHolds(auto: AutoState, key: string): { stop_holds: number; p
 
 /**
  * The one thing to do next. Role names ({tester}, {coder}, {reviewer}) are not params here: the
- * hook adds them where the project maps agents.
+ * hook adds them where the project maps agents. An architecture check that has not passed on the
+ * files as they are comes before the review, since fixing it voids a review.
  */
 export function autoNextStep(
   phase: AutoPhase,
@@ -313,7 +318,8 @@ export function autoNextStep(
   review: State["review"],
   gitClean: boolean | null,
   security?: State["security"],
-): { key: MessageKey; params: Record<string, string> } {
+  architecture: readonly ArchitectureProblem[] = [],
+): { key: MessageKey | ErrorCode; params: Record<string, string> } {
   switch (phase.kind) {
     case "unsigned":
       return {
@@ -334,6 +340,12 @@ export function autoNextStep(
       if (security !== undefined && failed(security, name))
         return { key: "auto.security_fix", params: { module: name } };
       if (at === "cooking") return { key: "menu.cook", params: { module: name } };
+      const [check] = architecture;
+      if (check)
+        return {
+          key: check.code,
+          params: { repo: check.repo, detail: check.detail, log: check.log },
+        };
       if (!passed(review, name)) return { key: "auto.review", params: { module: name } };
       // The security reviewer reads the module once the reviewer has passed it.
       if (security !== undefined && !passed(security, name))

@@ -27,7 +27,9 @@ import {
 } from "../core/tdd.js";
 import { DEFAULT_TIMEOUT_SEC, type Repo } from "../core/manifest.js";
 import { goneRunners, runnerKey, runnerLabel, type Runner } from "../core/runners.js";
+import { runArchitecture } from "../adapters/architecture.js";
 import { appendAudit } from "../adapters/audit-log.js";
+import { architectureLine, checkBinding } from "../adapters/plan-file.js";
 import { bilingual } from "../adapters/i18n.js";
 import { emitPluginEvent } from "../adapters/plugins.js";
 import { readJUnitFiles, xmlReports } from "../adapters/junit.js";
@@ -65,18 +67,20 @@ const RUN_DAYS = 30;
 /**
  * `verid taste`: run the manifest's test command, judge the run by its exit code and JUnit
  * report, keep it under .verid/.state/runs/<id>/ and move the TDD cycle.
- * Exit 0 = tests pass and 1 = tests fail (both are evidence); 2 = not evidence.
+ * Exit 0 = tests pass and 1 = tests fail (both are evidence); 2 = not evidence, or a configured
+ * architecture check did not pass after a passing suite (the test run still counts).
  */
 export async function testCommand(project: string): Promise<CliResult> {
   const paths = statePaths(project);
+  const manifest = await loadManifest(project);
   // remix: without a baseline every old failure would count as the agent's. Run nothing yet.
-  const remix = (await loadManifest(project))?.mode === "remix";
+  const remix = manifest?.mode === "remix";
   if (remix && readState(paths).baseline === null)
     throw new VeridError("VERID_BURNT_RUN_NO_BASELINE");
   const run = await runOnce(project);
   const { id, log, cases, classified, junitSha256 } = run;
 
-  const { verdict, from, to, fresh, known, changed, left } = withLock(paths, () => {
+  const { verdict, from, to, fresh, known, changed, left, rev } = withLock(paths, () => {
     const state = readState(paths);
     const from: Cycle = { state: state.tdd.state, stub: state.tdd.stub };
     // A test written meanwhile (or another run finishing) bumped rev: this run may predate it.
@@ -145,12 +149,25 @@ export async function testCommand(project: string): Promise<CliResult> {
         },
         ...(remix && { baseline: kept }),
         runners,
+        // Architecture checks ran on what came before this run: each needs to run again.
+        architecture: {},
       });
     }
-    return { verdict, from, to, fresh, known, changed, left };
+    return { verdict, from, to, fresh, known, changed, left, rev: state.tdd.rev + 1 };
   });
 
   if (verdict.kind === "invalid") return notEvidence(run, verdict.code, "taste");
+  // After a passing suite only; a failing check leaves the cycle where the tests put it.
+  const architecture =
+    manifest && verdict.kind === "pass"
+      ? await runArchitecture(
+          project,
+          manifest,
+          checkBinding(project, readState(paths), manifest),
+          run,
+          rev,
+        )
+      : { lines: [], problems: [] };
 
   const c = count(cases ?? []);
   const lines = [
@@ -171,14 +188,23 @@ export async function testCommand(project: string): Promise<CliResult> {
   if (from.state === "PLATED" && verdict.kind === "fail")
     lines.push(bilingual("tdd.refactor_broke", { failed: String(verdict.failing.length) }));
   lines.push(bilingual(cycleHint(to), {}), bilingual("taste.log", { log: shown(project, log) }));
+  lines.push(...architecture.lines);
   const warnings = await emitPluginEvent(project, "taste", {
     passed: verdict.kind === "pass",
     counts: c,
   });
+  // The log is under .verid/.state, which the agent cannot read: its tail is shown here.
+  const refused = architecture.problems.map((p) =>
+    [
+      `verid [${p.code}]`,
+      architectureLine(p),
+      ...(p.log ? [tail(join(project, p.log), p.log).trimEnd()] : []),
+    ].join("\n"),
+  );
   return {
-    exit: verdict.kind === "pass" ? 0 : 1,
+    exit: refused.length > 0 ? 2 : verdict.kind === "pass" ? 0 : 1,
     stdout: `${lines.join("\n")}\n`,
-    stderr: warnings.length ? `${warnings.join("\n")}\n` : "",
+    stderr: [...refused, ...warnings].map((line) => `${line}\n`).join(""),
   };
 }
 

@@ -91,6 +91,7 @@ const base: State = {
   security: null,
   writers: [],
   auto: FRESH_AUTO,
+  architecture: {},
 };
 const ctx: PromptContext = {
   session: "s1",

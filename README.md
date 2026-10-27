@@ -138,7 +138,7 @@ The auto drive:
 2. **Sign.** The developer reads both and runs `verid order` (no module) in their own terminal; verid records their sha256. Unless the drive gets stuck, this is the only command the developer types.
 3. **Plan.** The agent writes `.verid/plan.md`, ending with `product`, and the reviewer reviews it against the design. A review ends with `Verdict: pass` or `Verdict: fail`; no such line counts as fail. Production code stays locked until the plan passes.
 4. **Build.** verid opens the first module not yet served, in plan order. On Claude Code, the tester (qa for `(e2e)` ACs when mapped) and coder build each AC test-first; on Codex, the main agent does both. The agent commits the module on `feat/<module>`, the reviewer reviews it, then the security reviewer when `roles.security` is mapped. Branches are a skill instruction; the hook's clean-tree check is unchanged.
-5. **Close.** verid closes the module once every AC has a passing test, the last run passed with no change since, the review after the last change says pass (and the security review too, when mapped), and git is clean: the project subtree and listed repos in monorepo, every listed repo and `.verid` in workspace (untracked files count, `.claude/settings.local.json` does not). The next module opens; the drive is done when `product` closes last, and a module served after `product` reopens it.
+5. **Close.** verid closes the module once every AC has a passing test, the last run passed with no change since, every configured architecture check passed on the files as they are, the review after the last change says pass (and the security review too, when mapped), and git is clean: the project subtree and listed repos in monorepo, every listed repo and `.verid` in workspace (untracked files count, `.claude/settings.local.json` does not). The next module opens; the drive is done when `product` closes last, and a module served after `product` reopens it.
 
 Stop holds the agent every time, saying what comes next, until the drive is done or stuck. `verid menu` and the session-start message show the drive (signed, plan reviewed, modules, counters n/3, next step or why it is stuck); `verid peek` shows the cycle and the next step.
 
@@ -152,23 +152,62 @@ Stop holds the agent every time, saying what comes next, until the drive is done
 
 **Esc and switching.** Press Esc to ask the agent something: Stop does not run on an interrupt, and holds the agent again after it answers. To switch drive, edit `drive:` in `.verid/manifest.yaml`. Served modules stay served; human to auto needs the signing and a plan review; auto to human needs `verid order <module>` for the open module.
 
+## Architecture
+
+In prep and recipe, `.verid/design.md` holds a design table that the architect proposes and the developer agrees:
+
+```markdown
+| Repo | Bounded context / owner | Layer       | Paths                         | Public interface                   | May depend on                   |
+| ---- | ----------------------- | ----------- | ----------------------------- | ---------------------------------- | ------------------------------- |
+| api  | ordering / orders team  | domain      | `src/ordering/domain/**`      | aggregate operations, domain ports | domain only                     |
+| api  | ordering / orders team  | application | `src/ordering/application/**` | place-order use case               | ordering domain                 |
+| api  | ordering / orders team  | adapters    | `src/ordering/adapters/**`    | HTTP and persistence adapters      | ordering application and domain |
+```
+
+Beside it the design agrees the APIs between contexts, forbidden edges and cycles, shared and generated code, test exceptions, the framework annotation policy (Spring or JPA in the domain) and how existing code adopts the rules. Bounded contexts, layers and plan modules stay distinct, and no interface per class is required. The table is part of the file `verid order` signs: an edited cell locks production code until the next order, and leaves an auto drive stuck. In remix nothing signs it; the agreement is written in the file.
+
+The planner maps modules to rows and interfaces in plain prose; the coder keeps to the allowed edges; the tester tests at the agreed interface; qa tests journeys across context APIs and never writes analyzer configuration; the build skill gives every mapped agent, other plugins' included, the rows its AC touches. The reviewer always reads the real imports for forbidden edges, domain-to-infrastructure coupling, context API breaches and cycles, and judges SOLID and DDD whatever a tool says.
+
+A repo can also run a checker the project owns. It is opt-in, and `verid cook` and `verid upgrade` never add it:
+
+```yaml
+repos:
+  - path: .
+    architecture_check:
+      command: npm run architecture
+      inputs: [".dependency-cruiser.cjs", "tsconfig.json", "package.json", "package-lock.json"]
+      timeout_sec: 100 # optional; the repo's timeout by default
+```
+
+`command` runs through the shell in the repo's root. `inputs` are repo-relative globs, each matching at least one file, for the checker's rules and config, resolver, build and lock files and local wrappers; they count even where `ignore_globs` frees them. verid installs, bundles and configures no tool:
+
+| Project            | Project-owned check                                                                                                                                                                                                                                         |
+| :----------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Spring Boot / Java | [ArchUnit](https://www.archunit.org/userguide/html/000_Index.html) tests run by the Maven or Gradle task that compiles the current classes (`mvn -q test -Dtest=ArchitectureTest`): packages and layers, context edges and cycles, agreed annotation rules  |
+| TypeScript         | [dependency-cruiser](https://github.com/sverweij/dependency-cruiser) `forbidden` rules with the tsconfig resolver for aliases, re-exports and type imports (`npx depcruise src --config .dependency-cruiser.cjs`); blocking rules must make it exit nonzero |
+| Python             | [Import Linter](https://import-linter.readthedocs.io/en/stable/contract_types/) layers, independence and forbidden contracts over declared root packages (`lint-imports`)                                                                                   |
+
+After a passing suite, `verid taste` runs each configured check and records its result in `.verid/.state/`, with the log under the run. Exit 0 passes; another exit fails (`VERID_BURNT_ARCHITECTURE_FAILED`); a command that cannot start or times out, a file it reads (code, a test or an input) that cannot be read or links outside the repo, or an input that matches nothing, gives no evidence (`VERID_BURNT_ARCHITECTURE_UNAVAILABLE`). Either makes taste exit 2, while the test run still moves the cycle. A check gives no AC coverage and never runs in `verid stock`, a hook or doctor. Remix runs configured checks too, with no module to close.
+
+A pass holds for a snapshot: the repo's code and test files and the declared inputs (added and deleted files included), the check's settings and the repo's globs, the design and the open module's approval. It is recorded only when the snapshot and the TDD revision did not change during the run, and every gate recomputes the snapshot, so any change since needs another taste (`VERID_BURNT_ARCHITECTURE_STALE`). `verid serve` and the auto drive, at a Stop or right after the reviewer's pass, close a module only when every configured repo passed on its current snapshot; `verid menu` names the repo to fix or rerun. A workspace's `.verid` is not a checked repo. Doctor names each configured check, marked not executed. Missing, stale or failed evidence is a problem only while a module waits to close, and a note otherwise; an input or file the check cannot read is always a problem.
+
 ## Commands
 
-| Command                             | Who                       | What it does                                                                                                                                                                                                 |
-| :---------------------------------- | :------------------------ | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `verid cook [--dry-run] [--yes]`    | developer                 | previews setup for this project and machine; offers an older manifest its new defaults                                                                                                                       |
-| `verid upgrade [--dry-run] [--yes]` | developer                 | adds missing manifest defaults, regenerates verid's commands and refreshes this machine's hook paths                                                                                                         |
-| `verid doctor`                      | anyone                    | checks Node, repos, uncommitted changes, `default_branch` when set, runners, hooks, provider instruction blocks, installed plugins and the verid agents the roles map; read-only, exits 1 on problems        |
-| `verid taste`                       | agent                     | runs the tests; only these runs count as evidence                                                                                                                                                            |
-| `verid peek`                        | anyone                    | the cycle, the next step, and why the last run did not count                                                                                                                                                 |
-| `verid menu`                        | anyone                    | research, modules with their AC coverage, open questions, the next step                                                                                                                                      |
-| `verid stock`                       | developer                 | remix: records the failing tests as the baseline                                                                                                                                                             |
-| `verid order [module]`              | developer                 | prep, recipe: approves a module of `.verid/plan.md`, signing `.verid/design.md` too; auto: signs research and design, and resumes after a stop                                                               |
-| `verid serve <module>`              | developer                 | prep, recipe, human drive only: closes the open module once every AC passes and the reviewer reviewed it after the last change (and the security reviewer passed it, when mapped); prints the reviews' paths |
-| `verid garnish`                     | developer                 | opens production code for a conversation that only refactors                                                                                                                                                 |
-| `/verid:tip <reason>`               | developer, in Claude Code | asks to let the action just blocked through, with a one-time code                                                                                                                                            |
-| `/verid:confirm <code>`             | developer, in Claude Code | lets that exact action through once                                                                                                                                                                          |
-| `/verid:peek`, `/verid:menu`        | developer, in Claude Code | what `verid peek` and `verid menu` show, to you only                                                                                                                                                         |
+| Command                             | Who                       | What it does                                                                                                                                                                                                                                                                  |
+| :---------------------------------- | :------------------------ | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `verid cook [--dry-run] [--yes]`    | developer                 | previews setup for this project and machine; offers an older manifest its new defaults                                                                                                                                                                                        |
+| `verid upgrade [--dry-run] [--yes]` | developer                 | adds missing manifest defaults, regenerates verid's commands and refreshes this machine's hook paths                                                                                                                                                                          |
+| `verid doctor`                      | anyone                    | checks Node, repos, uncommitted changes, `default_branch` when set, runners, hooks, provider instruction blocks, installed plugins, the verid agents the roles map and the evidence of configured architecture checks, which it never runs; read-only, exits 1 on problems    |
+| `verid taste`                       | agent                     | runs the tests, then after a passing suite each configured architecture check; only these runs count as evidence                                                                                                                                                              |
+| `verid peek`                        | anyone                    | the cycle, the next step, and why the last run did not count                                                                                                                                                                                                                  |
+| `verid menu`                        | anyone                    | research, modules with their AC coverage, open questions, the next step                                                                                                                                                                                                       |
+| `verid stock`                       | developer                 | remix: records the failing tests as the baseline                                                                                                                                                                                                                              |
+| `verid order [module]`              | developer                 | prep, recipe: approves a module of `.verid/plan.md`, signing `.verid/design.md` too; auto: signs research and design, and resumes after a stop                                                                                                                                |
+| `verid serve <module>`              | developer                 | prep, recipe, human drive only: closes the open module once every AC passes, every configured architecture check passed on the current files and the reviewer reviewed it after the last change (and the security reviewer passed it, when mapped); prints the reviews' paths |
+| `verid garnish`                     | developer                 | opens production code for a conversation that only refactors                                                                                                                                                                                                                  |
+| `/verid:tip <reason>`               | developer, in Claude Code | asks to let the action just blocked through, with a one-time code                                                                                                                                                                                                             |
+| `/verid:confirm <code>`             | developer, in Claude Code | lets that exact action through once                                                                                                                                                                                                                                           |
+| `/verid:peek`, `/verid:menu`        | developer, in Claude Code | what `verid peek` and `verid menu` show, to you only                                                                                                                                                                                                                          |
 
 `verid cook` takes repeatable `--provider claude-code|codex`, `--mode prep|recipe|remix`, `--drive human|auto`, `--layout monorepo|workspace`, `--lang vi|en`, `--test-cmd` (your own test command) and repeatable `--src`/`--tests` globs, and asks when given none in a terminal. In prep or recipe, add `--iterations --duration "2 weeks" --start-date 2026-10-12 --demo-day Friday`, supplying all three settings; the interactive flow asks after drive. Once a manifest exists, `--provider`, `--mode`, `--drive`, `--layout`, `--iterations`, `--duration`, `--start-date`, `--demo-day`, `--test-cmd`, `--src` and `--tests` are ignored with a note: edit `.verid/manifest.yaml` by hand. The developer's commands refuse inside Claude Code and recognized Codex tool shells; the hook also blocks recognizable developer calls.
 
@@ -320,6 +359,7 @@ repos:
     ignore_globs: ["**/*.md", "**/*.json", …] # never production code
     e2e_globs: ["**/e2e/**", "**/*.e2e.*"] # end-to-end tests
     timeout_sec: 100 # optional
+    # architecture_check: { command: "npm run architecture", inputs: [".dependency-cruiser.cjs"] } # optional, see Architecture
 ```
 
 - Only the developer edits the manifest; `verid cook` writes the defaults, where every file is code unless it is a test, a document, data, config, a build file or a tool's folder.
@@ -463,6 +503,21 @@ A hook is not an OS sandbox: verid closes the usual shortcuts, not every path a 
 - While stuck, a code write needs two `/verid tip`s (the stuck lock, then no open module), like any call two rules block.
 - Auto holds every Stop whatever `stop_hook_active` says: if Claude Code changes what that flag means, the agent may stop mid-drive.
 
+**Architecture**
+
+- The design table, SOLID/DDD semantics and review thoroughness are judgments; signing approves bytes.
+- Remix design agreement has no signature gate.
+- Architecture tools are opt-in per repo; without one, dependency direction is checked by review.
+- A configured architecture gate blocks module close, not the violating edit.
+- Static checks cover configured rules and resolution, not Spring runtime wiring, reflection or computed dynamic loading.
+- Project checker code and dependencies run with your rights and can weaken results; verid does not sandbox them. The agent can edit the checker's rules and configuration like any file the manifest leaves free; the next pass then reflects the edited rules.
+- Undeclared checker inputs, external tools and environment changes are outside the freshness snapshot, and so are files in folders the manifest leaves free (such as `node_modules` or `dist`) and in hidden folders (such as `.gradle` or `.import_linter_cache`, which checkers rewrite as they run) unless an input names them. A checker that rewrites its own inputs stays stale.
+- A declared input changed and restored while a check runs is not caught: free files do not move the TDD revision, and the snapshots before and after the run match, so a check that read weakened rules can record a pass the final diff does not show.
+- In the auto drive an architecture result is not progress: a fix that turns a failed check into a pass counts only once it leads to a commit, a review or a test change, so three holds in a row on failing or uncommitted fixes leave the drive stuck, as for any loop.
+- Every close path, the session-start menu, `/verid:menu` and `/verid:peek` read the checked repos' files again, outside the state lock but within the hook's timeout. In a very large repo that read can push a hook past it: Claude Code and Codex then let that Stop through (the auto drive loses that hold), a reviewer stop that times out records no review, and the session-start menu is lost. The module still closes only on a fresh pass.
+- On Linux and macOS, a link in a checked repo to a FIFO or another special file blocks the snapshot's read; a hook doing that read then times out and fails open as above.
+- A missing program is found before the run only for a plain command name or path; behind a shell built-in or form verid does not read, cmd.exe answers it with exit 1, which reads as a failed check.
+
 **Runners**
 
 - Doctor recognizes runners from build files or a custom `test_cmd`; it does not run tests or verify that the runner's executable is installed.
@@ -479,7 +534,7 @@ A hook is not an OS sandbox: verid closes the usual shortcuts, not every path a 
 - jest-junit needs `JEST_JUNIT_REPORT_TEST_SUITE_ERRORS=true`, or a test file that fails to load is missing from the report.
 - In compiled languages a test calling a missing class leaves no report, so the first stub needs an override; verid says so for Maven and Gradle, and never reads the build log.
 - A `timeout_sec` over the Bash tool's 2 minutes lets Claude Code kill `verid taste` first, and the tests may keep running.
-- Repo timeouts run sequentially, so their sum can exceed the Bash tool's timeout even when each repo stays under it.
+- Repo timeouts run sequentially, and architecture checks run after the suite, so their sum can exceed the Bash tool's timeout even when each stays under its own.
 - Globs ignore case on every platform.
 
 **Self-protection and overrides**

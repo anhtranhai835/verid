@@ -24,8 +24,10 @@ import { hasCurrentCodexHooks } from "../adapters/codex-settings.js";
 import { bilingual, setLanguage, t, veridName, type Lang } from "../adapters/i18n.js";
 import { loadManifest, manifestFile } from "../adapters/manifest.js";
 import { appendAudit } from "../adapters/audit-log.js";
+import { contentsOf } from "../adapters/architecture.js";
 import { gitTree, gitView } from "../adapters/git.js";
 import {
+  architectureOf,
   autoFactsOf,
   blockedFile,
   designFile,
@@ -499,6 +501,8 @@ async function serve(project: string, wanted: string): Promise<CliResult> {
     throw new VeridError("VERID_BURNT_AUTO_SERVE");
   const { mode, plan, name, manifest } = await planModule(project, "serve", wanted);
   const paths = statePaths(project);
+  // Read before the lock: a long walk must not hold it.
+  const contents = contentsOf(project, manifest);
   const result = withLock(paths, () => {
     const state = readState(paths);
     const views = modulePhases(
@@ -525,6 +529,10 @@ async function serve(project: string, wanted: string): Promise<CliResult> {
     if (last_run === null) throw notReady("serve.no_run");
     if (failing.length > 0) throw notReady("serve.failed");
     if (dirty) throw notReady("serve.dirty");
+    // Every configured architecture check passed on the files, design and module as they are.
+    const [check] = architectureOf(project, manifest, state, contents);
+    if (check)
+      throw new VeridError(check.code, { repo: check.repo, detail: check.detail, log: check.log });
     // The developer reads a review by the mapped reviewer, recorded after the last change.
     if (reviewers === "") throw notReady("serve.no_reviewer");
     const { review } = state;

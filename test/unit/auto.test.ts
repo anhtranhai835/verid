@@ -323,6 +323,10 @@ describe("the coder's rounds, closing a module, progress, and the next step", ()
         ...passSecurity,
         module: "report",
       }),
+      "architecture fresh": closeReady(view, tdd, passReview, true, undefined, []),
+      "architecture stale": closeReady(view, tdd, passReview, true, undefined, [
+        { code: "VERID_BURNT_ARCHITECTURE_STALE", repo: "api", detail: "", log: "" },
+      ]),
     }).toEqual({
       ready: true,
       "no git": true,
@@ -338,6 +342,8 @@ describe("the coder's rounds, closing a module, progress, and the next step", ()
       "no security review": false,
       "security fail": false,
       "security of another module": false,
+      "architecture fresh": true,
+      "architecture stale": false,
     });
   });
 
@@ -411,8 +417,9 @@ describe("the coder's rounds, closing a module, progress, and the next step", ()
       review: State["review"] = null,
       git: boolean | null = true,
       security?: State["security"],
+      architecture: Parameters<typeof autoNextStep>[6] = [],
     ) => {
-      const s = autoNextStep(phase, research, design, review, git, security);
+      const s = autoNextStep(phase, research, design, review, git, security, architecture);
       return `${s.key}${Object.values(s.params)
         .map((v) => ` ${v}`)
         .join("")}`;
@@ -421,6 +428,12 @@ describe("the coder's rounds, closing a module, progress, and the next step", ()
       kind: "module",
       view: { ...view, phase },
     });
+    const unavailable = {
+      code: "VERID_BURNT_ARCHITECTURE_UNAVAILABLE" as const,
+      repo: "api",
+      detail: "timed out after 1 s",
+      log: "l.log",
+    };
     expect({
       research: step({ kind: "unsigned" }, false, false),
       design: step({ kind: "unsigned" }, true, false),
@@ -464,6 +477,28 @@ describe("the coder's rounds, closing a module, progress, and the next step", ()
         false,
         passSecurity,
       ),
+      architecture: step(open("evaluating"), true, true, null, true, undefined, [unavailable]),
+      "architecture after a review": step(
+        open("evaluating"),
+        true,
+        true,
+        passReview,
+        true,
+        undefined,
+        [unavailable],
+      ),
+      "architecture, review failed": step(
+        open("evaluating"),
+        true,
+        true,
+        { ...passReview, verdict: "fail" },
+        true,
+        undefined,
+        [unavailable],
+      ),
+      "architecture, cooking": step(open("cooking"), true, true, null, true, undefined, [
+        unavailable,
+      ]),
       done: step({ kind: "done" }),
     }).toEqual({
       research: "menu.research",
@@ -485,6 +520,11 @@ describe("the coder's rounds, closing a module, progress, and the next step", ()
       "security failed, cooking": "auto.security_fix calc",
       "security of another module": "auto.security calc",
       "security passed, dirty": "auto.commit calc",
+      architecture: "VERID_BURNT_ARCHITECTURE_UNAVAILABLE api timed out after 1 s l.log",
+      "architecture after a review":
+        "VERID_BURNT_ARCHITECTURE_UNAVAILABLE api timed out after 1 s l.log",
+      "architecture, review failed": "auto.fix calc",
+      "architecture, cooking": "menu.cook calc",
       done: "auto.done",
     });
   });

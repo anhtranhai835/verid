@@ -50,8 +50,16 @@ For each AC of the open module without a passing test:
    then the minimum code, runs `verid taste` until PLATED, and refactors.
 3. Read both reports. Check them with `verid peek`, not by trust: only `verid taste` runs count.
 
-Give each agent its task, not your conversation. One module and one cycle are open at a time, so
-never run two writers at once.
+Give each agent its task, not your conversation, and in it the design table rows, allowed edges
+and public interfaces of `.verid/design.md` that its AC touches. Agents from other plugins mapped
+in `roles` do not know verid or the table: their task is all they get. One module and one cycle are
+open at a time, so never run two writers at once.
+
+When the manifest configures `architecture_check`, `verid taste` runs the project's checker after a
+passing suite. A failing check (`VERID_BURNT_ARCHITECTURE_FAILED`) is fixed in the code through the
+coder, like a failing test; nobody weakens its rules. One that shows no evidence
+(`VERID_BURNT_ARCHITECTURE_UNAVAILABLE`) needs its command or inputs restored, and a change to the
+manifest is the developer's.
 
 When the manifest maps both a tester and a coder, the roles are split: you write neither tests nor
 production code yourself (`VERID_BURNT_ROLE_TESTER_ONLY`, `VERID_BURNT_ROLE_CODER_ONLY`), and each

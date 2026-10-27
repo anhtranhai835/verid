@@ -50,6 +50,8 @@ The whole product, as a user meets it.
   across the whole file. Write the behaviour, not the code: each AC becomes a test whose name
   carries its code.
 - Each module needs at least one AC. A module can add a short description and a test list.
+- In the description, name the design table rows (bounded context, layer) and the public
+  interfaces the module uses or adds, as plain prose; verid does not parse it.
 - Mark an AC `(e2e)` when only an end-to-end test proves it: `- AC-3 (e2e): …`. verid counts it only
   from a passing end-to-end test: one the Playwright runner reports, or one in a path that matches
   `e2e_globs` in `.verid/manifest.yaml`.

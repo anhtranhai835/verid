@@ -41,6 +41,7 @@ describe("parseState", () => {
           progress: null,
           blocked: null,
         },
+        architecture: {},
       },
     });
   });
@@ -174,6 +175,11 @@ describe("parseState", () => {
       [
         "a non-string passed AC",
         '{"schemaVersion":1,"tdd":{"state":"RAW","last_run":null,"passed_acs":[1]}}',
+        "VERID_BURNT_STATE_CORRUPT",
+      ],
+      [
+        "an architecture result with an unknown status",
+        '{"schemaVersion":1,"architecture":{"api":{"snapshot":"s","status":"ok","run":"r","log":"l","at":"t"}}}',
         "VERID_BURNT_STATE_CORRUPT",
       ],
     ];

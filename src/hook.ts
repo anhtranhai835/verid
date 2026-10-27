@@ -36,6 +36,7 @@ import {
   codexPayload,
   codexProject,
 } from "./adapters/codex.js";
+import { checkedRepos, contentsOf, type Contents } from "./adapters/architecture.js";
 import { decideInstructions } from "./adapters/instruction-protection.js";
 import {
   mappedAgents,
@@ -75,6 +76,7 @@ import { gitTree } from "./adapters/git.js";
 import { bilingual, inLanguage, setLanguage, t, type Lang } from "./adapters/i18n.js";
 import { loadManifest, tddLayouts } from "./adapters/manifest.js";
 import {
+  architectureOf,
   autoFactsOf,
   designMissing,
   evidenceOf,
@@ -706,6 +708,7 @@ function autoStop(
   paths: StatePaths,
   manifest: Manifest,
 ): Result | null {
+  const contents = contentsBefore(project, paths, manifest);
   return withLock(paths, () => {
     let state = readState(paths);
     if (state.auto.signed === null) return null;
@@ -714,7 +717,7 @@ function autoStop(
     state = latchBlocked(paths, state, facts.blockedFile, session);
     facts = { ...facts, auto: state.auto };
     const before = autoPhase(facts);
-    const next = tryClose(project, paths, state, facts, manifest);
+    const next = tryClose(project, paths, state, facts, manifest, contents);
     const closed = next !== state && before.kind === "module" ? before.view.name : null;
     state = next;
     facts = { ...facts, auto: state.auto, approvals: state.modules };
@@ -746,6 +749,9 @@ function autoStop(
       state.review,
       git?.clean ?? null,
       securityOf(state, manifest.roles),
+      phase.kind === "module" && phase.view.phase === "evaluating"
+        ? architectureOf(project, manifest, state, contents)
+        : [],
     );
     const lines = [
       statusLine(manifest.mode, state.tdd, state.tdd.last_run),
@@ -761,6 +767,20 @@ function autoStop(
     writeState(paths, state);
     return { exit: 2, stderr: `${lines}\n` };
   });
+}
+
+/**
+ * Each configured repo's files, read before the state lock is taken so a long walk never holds
+ * it, and only while the auto drive's module could close; {} otherwise, which no check passes.
+ */
+function contentsBefore(project: string, paths: StatePaths, manifest: Manifest): Contents {
+  if (manifest.drive !== "auto" || checkedRepos(manifest).length === 0) return {};
+  const phase = autoPhase(
+    autoFactsOf(project, readState(paths), manifest.iterations !== undefined),
+  );
+  return phase.kind === "module" && phase.view.phase === "evaluating"
+    ? contentsOf(project, manifest)
+    : {};
 }
 
 /** Stuck or done: the drive has nothing left for the agent, so Stop lets it go. */
@@ -797,13 +817,16 @@ function tryClose(
   state: State,
   facts: AutoFacts,
   manifest: Manifest,
+  contents: Contents,
 ): State {
   const phase = autoPhase(facts);
   if (phase.kind !== "module" || !facts.plan?.ok) return state;
   const { view } = phase;
   const clean = gitTree(project, manifest, state.auto.signed).clean;
-  if (!closeReady(view, state.tdd, state.review, clean, securityOf(state, manifest.roles)))
-    return state;
+  const architecture =
+    view.phase === "evaluating" ? architectureOf(project, manifest, state, contents) : [];
+  const security = securityOf(state, manifest.roles);
+  if (!closeReady(view, state.tdd, state.review, clean, security, architecture)) return state;
   const now = new Date().toISOString();
   appendAudit(paths.audit, { event: "module_served", module: view.name, by: "auto" });
   const approval = {
@@ -913,6 +936,8 @@ function recordReview(
   const report = p.last_assistant_message ?? "";
   const sha256 = createHash("sha256").update(report, "utf8").digest("hex");
   const verdict = parseVerdict(report);
+  // Only a pass can close the module, so only a pass is worth the walk inside this hook's timeout.
+  const contents = verdict === "pass" ? contentsBefore(project, paths, manifest) : {};
   withLock(paths, () => {
     const state = readState(paths);
     const facts = auto ? autoFactsOf(project, state, manifest.iterations !== undefined) : null;
@@ -970,7 +995,9 @@ function recordReview(
     // A pass on a committed tree serves the module now, not at the agent's next stop.
     writeState(
       paths,
-      facts ? tryClose(project, paths, next, { ...facts, auto: next.auto }, manifest) : next,
+      facts
+        ? tryClose(project, paths, next, { ...facts, auto: next.auto }, manifest, contents)
+        : next,
     );
   });
 }

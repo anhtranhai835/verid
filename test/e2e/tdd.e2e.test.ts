@@ -1803,6 +1803,80 @@ describe("prep and recipe plan", () => {
     expect(served.stdout).toContain(join(".verid", ".state", "reviews", "calc-"));
   });
 
+  it("serves a module only once every configured architecture check passed on the files as they are", async () => {
+    const CHECKER = join(import.meta.dirname, "fake-checker.mjs");
+    const check = (exit: number) =>
+      `    architecture_check: ${JSON.stringify({
+        command: `"${process.execPath}" "${CHECKER}" ${exit}`,
+        inputs: ["rules.cjs"],
+      })}\n`;
+    const one = (exit: number | null) =>
+      manifest("src/**", undefined, ".", "recipe") + (exit === null ? "" : check(exit)) + ROLES;
+    const repo = (path: string, exit: number) =>
+      [
+        `  - path: ${path}`,
+        `    test_cmd: ${JSON.stringify(`"${process.execPath}" "${RUNNER}" {junit}`)}`,
+        '    source_globs: ["src/**"]',
+        '    test_globs: ["test/**"]',
+        check(exit).trimEnd(),
+      ].join("\n");
+    const two = [
+      "schemaVersion: 1",
+      "mode: recipe",
+      "repos:",
+      repo("api", 0),
+      repo("web", 1),
+      ROLES,
+    ].join("\n");
+    const rows: [string, string, (() => Promise<unknown>) | null][] = [
+      ["configured after the last run", one(null), async () => writeFileSync(manifestFile, one(0))],
+      ["a failed check", one(1), null],
+      [
+        "a change after the check",
+        one(0),
+        async () => writeFileSync(join(project, "rules.cjs"), "module.exports = ['domain'];\n"),
+      ],
+      ["one of two repos failed", two, null],
+      ["a fresh pass", one(0), null],
+    ];
+    const outcomes: Record<string, string> = {};
+    for (const [name, text, after] of rows) {
+      freshState();
+      writeFileSync(manifestFile, text);
+      writeFileSync(designPath(), "# Design\n");
+      writeFileSync(planPath(), "## Module: calc\n- AC-1: adds\n");
+      for (const dir of [".", "api", "web"]) {
+        mkdirSync(join(project, dir), { recursive: true });
+        writeFileSync(join(project, dir, "rules.cjs"), "module.exports = [];\n");
+        writeFileSync(
+          join(project, dir, "scenario.json"),
+          JSON.stringify({ exit: 0, junit: "vitest-ac.xml", output: "fake runner output" }),
+        );
+      }
+      expect((await cli("order", "calc")).code).toBe(0);
+      await cli("taste");
+      await reviewed();
+      await after?.();
+      const menu = (await cli("menu")).stdout;
+      const r = await cli("serve", "calc");
+      const repoNamed = /architecture check of repo (\S+)/.exec(r.stderr)?.[1] ?? "";
+      outcomes[name] = [
+        r.code === 0 ? "served" : /verid \[(\w+)\]/.exec(r.stderr)?.[1],
+        repoNamed,
+        menu.includes(`architecture check of repo ${repoNamed}`) ? "menu says so" : "",
+      ]
+        .filter(Boolean)
+        .join(" · ");
+    }
+    expect(outcomes).toEqual({
+      "configured after the last run": "VERID_BURNT_ARCHITECTURE_STALE · . · menu says so",
+      "a failed check": "VERID_BURNT_ARCHITECTURE_FAILED · . · menu says so",
+      "a change after the check": "VERID_BURNT_ARCHITECTURE_STALE · . · menu says so",
+      "one of two repos failed": "VERID_BURNT_ARCHITECTURE_FAILED · web · menu says so",
+      "a fresh pass": "served",
+    });
+  });
+
   it("serves a module only with a passing security review after its last change, once one is mapped", async () => {
     const security = `${ROLES}  security: ["verid:security"]\n`;
     // The mapped security reviewer stops: verid records its final report beside the review.

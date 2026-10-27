@@ -708,6 +708,65 @@ describe("upgradeManifestText", () => {
     expect(text).toContain("# keep this researcher");
   });
 
+  it("reads an opt-in architecture_check per repo, and keeps it through render and upgrade", async () => {
+    const check = {
+      command: "npm run architecture",
+      inputs: [".dependency-cruiser.cjs", "tsconfig.json"],
+      timeout_sec: 100,
+    };
+    const manifestWith = (architecture_check: unknown) => ({
+      schemaVersion: 1,
+      mode: "prep",
+      repos: [{ ...repo, ...(architecture_check !== undefined && { architecture_check }) }],
+    });
+    const status = (doc: unknown) => {
+      const r = parseManifest(doc);
+      return !r.ok ? "invalid" : r.manifest.repos[0]?.architecture_check ? "enabled" : "disabled";
+    };
+    const preserved = async (via: "render" | "upgrade") => {
+      const r = parseManifest(manifestWith(check));
+      if (!r.ok) return "invalid";
+      const text =
+        via === "render"
+          ? renderManifest("prep", r.manifest.repos)
+          : await upgradeManifestText(renderManifest("prep", r.manifest.repos), {
+              tests: ["**/vite.config.*"],
+              ignore: [],
+              e2e: [],
+              roles: null,
+              dropTestCmd: true,
+            });
+      const back = parseManifest(parse(text));
+      return back.ok &&
+        JSON.stringify(back.manifest.repos[0]?.architecture_check) === JSON.stringify(check)
+        ? "preserved"
+        : "lost";
+    };
+    expect({
+      absent: status(manifestWith(undefined)),
+      valid: status(manifestWith(check)),
+      "no timeout": status(manifestWith({ command: "mvn -q test", inputs: ["pom.xml"] })),
+      "empty command": status(manifestWith({ ...check, command: " " })),
+      "empty inputs": status(manifestWith({ ...check, inputs: [] })),
+      "parent path": status(manifestWith({ ...check, inputs: ["../rules"] })),
+      "unknown field": status(manifestWith({ ...check, rules: "strict" })),
+      "zero timeout": status(manifestWith({ ...check, timeout_sec: 0 })),
+      render: await preserved("render"),
+      upgrade: await preserved("upgrade"),
+    }).toEqual({
+      absent: "disabled",
+      valid: "enabled",
+      "no timeout": "enabled",
+      "empty command": "invalid",
+      "empty inputs": "invalid",
+      "parent path": "invalid",
+      "unknown field": "invalid",
+      "zero timeout": "invalid",
+      render: "preserved",
+      upgrade: "preserved",
+    });
+  });
+
   it("adds the missing defaults and drops an old preset, keeping comments and the developer's entries", async () => {
     const raw = [
       "# verid manifest: only the developer edits this file. Commit it with the project.",

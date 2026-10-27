@@ -13,16 +13,26 @@ export interface TestRun {
   timedOut: boolean;
 }
 
-/**
- * Runs the manifest's test command through the platform shell (cmd.exe on Windows,
- * /bin/sh elsewhere) with VERID_JUNIT set to the report path, and keeps its whole output
- * in `logFile`. After `timeoutMs` the command is killed together with its children.
- */
+/** Runs the manifest's test command as runCommand does, with VERID_JUNIT set to the report path. */
 export function runTestCommand(
   command: string,
   cwd: string,
   logFile: string,
   junit: string,
+  timeoutMs: number,
+  env: Record<string, string> = {},
+): Promise<TestRun> {
+  return runCommand(command, cwd, logFile, timeoutMs, { ...env, VERID_JUNIT: junit });
+}
+
+/**
+ * Runs a command through the platform shell (cmd.exe on Windows, /bin/sh elsewhere) and keeps its
+ * whole output in `logFile`. After `timeoutMs` the command is killed together with its children.
+ */
+export function runCommand(
+  command: string,
+  cwd: string,
+  logFile: string,
   timeoutMs: number,
   env: Record<string, string> = {},
 ): Promise<TestRun> {
@@ -34,7 +44,7 @@ export function runTestCommand(
     const unc = process.platform === "win32" && cwd.startsWith("\\\\");
     const child = spawn(unc ? `pushd "${cwd}" && ${command}` : command, {
       cwd: unc ? tmpdir() : cwd,
-      env: { ...process.env, ...env, VERID_JUNIT: junit },
+      env: { ...process.env, ...env },
       shell: true,
       stdio: ["ignore", "pipe", "pipe"],
       windowsHide: true,

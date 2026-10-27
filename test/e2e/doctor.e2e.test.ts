@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import {
   cpSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
@@ -498,6 +499,59 @@ describe("verid doctor", () => {
     const r = await cli(["doctor"]);
     expect(r.code, r.err + r.out).toBe(0);
     expect(r.out).toContain("custom test_cmd");
+  });
+
+  it("reports a configured architecture check without running it: missing evidence is a problem only while a module waits to close", async () => {
+    const sideEffect = `node -e "require('fs').writeFileSync('ran.txt','x')"`;
+    const statePath = () => join(project, ".verid", ".state", "state.json");
+    // Module calc is ordered and its one AC passed, so it waits to close.
+    const waiting = async () => {
+      put(join(project, ".verid", "research.md"), "# Research\n");
+      put(join(project, ".verid", "design.md"), "# Design\n");
+      put(join(project, ".verid", "plan.md"), "## Module: calc\n- AC-1: adds\n");
+      commit();
+      expect((await cli(["order", "calc"])).code).toBe(0);
+      const s = JSON.parse(readFileSync(statePath(), "utf8"));
+      writeFileSync(statePath(), JSON.stringify({ ...s, tdd: { ...s.tdd, passed_acs: ["AC-1"] } }));
+    };
+    const check = { command: sideEffect, inputs: ["package.json"] };
+    const rows: [string, Record<string, unknown> | null, () => Promise<void> | void][] = [
+      ["no gate", null, () => {}],
+      ["never run, no module waiting", check, () => {}],
+      ["never run, a module waiting", check, waiting],
+      ["an input matching nothing", { command: sideEffect, inputs: ["rules/*.cjs"] }, () => {}],
+      ["state that cannot be read", check, () => writeFileSync(statePath(), "{nope")],
+    ];
+    const outcomes: Record<string, unknown> = {};
+    for (const [name, gate, setup] of rows) {
+      healthy();
+      if (gate) {
+        manifest((m) => (m.repos[0].architecture_check = gate));
+        commit();
+      }
+      await setup();
+      const r = await cli(["doctor"]);
+      outcomes[name] = [
+        r.code,
+        r.out.includes("architecture check") && r.out.includes("(not executed)"),
+        /no module waits to close|No architecture check of repo \.|architecture check of repo \. gave no evidence|verid state is corrupt/.exec(
+          r.out,
+        )?.[0] ?? "",
+        existsSync(join(project, "ran.txt")),
+      ];
+    }
+    expect(outcomes).toEqual({
+      "no gate": [0, false, "", false],
+      "never run, no module waiting": [0, true, "no module waits to close", false],
+      "never run, a module waiting": [1, true, "No architecture check of repo .", false],
+      "an input matching nothing": [
+        1,
+        true,
+        "architecture check of repo . gave no evidence",
+        false,
+      ],
+      "state that cannot be read": [1, true, "verid state is corrupt", false],
+    });
   });
 
   it("reports corrupt or unsupported plugin records with a fix", async () => {

@@ -89,6 +89,10 @@ export const ERROR_CODES = [
   "VERID_BURNT_PRODUCT_TOO_EARLY",
   "VERID_BURNT_AUTO_ORDER_MODULE",
   "VERID_BURNT_AUTO_SERVE",
+  // Closure errors, not rules: no override lifts them, and only a fresh pass clears them.
+  "VERID_BURNT_ARCHITECTURE_FAILED",
+  "VERID_BURNT_ARCHITECTURE_STALE",
+  "VERID_BURNT_ARCHITECTURE_UNAVAILABLE",
 ] as const;
 export type ErrorCode = (typeof ERROR_CODES)[number];
 
@@ -218,6 +222,9 @@ export const MESSAGE_KEYS = [
   "doctor.repo.runner.missing",
   "doctor.repo.runner.fix",
   "doctor.repo.runner.ok",
+  "doctor.architecture.configured",
+  "doctor.architecture.idle",
+  "doctor.architecture.fix",
   "doctor.problems",
   "doctor.ok",
   "baseline.done",

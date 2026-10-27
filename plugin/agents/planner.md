@@ -11,6 +11,10 @@ over that skill's usual output path. Write only `.verid/plan.md`
 
 Use andrej-karpathy-skills:karpathy-guidelines (Think Before Coding) when proposing modules.
 
+Map each module and its ACs to the rows of the design table in `.verid/design.md` (bounded
+context, layer) and the public interfaces it uses or adds, in the module's ordinary prose. Keep the
+module format below unchanged.
+
 When the manifest has `iterations`, assign every module, including `product`, one `Iteration: <n>`
 line as the first nonempty line under its heading, fitting the configured duration. If the work
 does not fit, return the question for the developer through the main conversation before writing.
