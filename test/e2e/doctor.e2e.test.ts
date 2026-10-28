@@ -306,6 +306,80 @@ describe("verid doctor", () => {
     }
   });
 
+  it("checks branches, main and the open module's history offline, and runs nothing of the repository's", async () => {
+    const as = (message: string) => {
+      git("add", ".");
+      git(
+        "-c",
+        "user.name=t",
+        "-c",
+        "user.email=t@t",
+        "commit",
+        "-q",
+        "--allow-empty",
+        "-m",
+        message,
+      );
+    };
+    const run = async (setup: () => void | Promise<void>) => {
+      healthy();
+      await setup();
+      const r = await cli(["doctor"]);
+      const keys = r.out.split("\n").flatMap((l) => /^! ([\w.]+)/.exec(l)?.[1] ?? []);
+      return `${r.code} ${keys.join(",")}${r.out.includes("2 commits") ? " · 2 commits" : ""}`;
+    };
+    const ordered = async () => {
+      put(join(project, ".verid/research.md"), "# Research\n");
+      put(join(project, ".verid/design.md"), "# Design\n");
+      put(join(project, ".verid/plan.md"), "## Module: calc\n- AC-1: sums\n");
+      as("docs: plan calc");
+      expect((await cli(["order", "calc"])).code).toBe(0);
+      git("checkout", "-qb", "feat/calc");
+    };
+    const trap = join(dir, "ran.txt");
+    const rows = {
+      main: await run(() => {}),
+      "work branch": await run(() => git("checkout", "-qb", "feat/a")),
+      "badly named": await run(() => git("checkout", "-qb", "feature")),
+      detached: await run(() => git("checkout", "-q", "--detach")),
+      "main unclear": await run(() => {
+        manifest((m) => delete m.repos[0].default_branch);
+        as("chore: drop default_branch");
+        git("branch", "master");
+      }),
+      "two good commits": await run(async () => {
+        await ordered();
+        put(join(project, "a.txt"), "a");
+        as("feat(calc): add sums");
+        put(join(project, "b.txt"), "b");
+        as("fix(calc): handle zero");
+      }),
+      "bad message": await run(async () => {
+        await ordered();
+        put(join(project, "a.txt"), "a");
+        as("wip");
+      }),
+      "repository program": await run(() => {
+        put(
+          join(dir, "trap.mjs"),
+          `require("node:fs").writeFileSync(${JSON.stringify(trap)}, "ran")`,
+        );
+        git("config", "core.fsmonitor", `node "${join(dir, "trap.mjs").replaceAll("\\", "/")}"`);
+      }),
+    };
+    expect({ ...rows, "program ran": existsSync(trap) }).toEqual({
+      main: "0 ",
+      "work branch": "0 ",
+      "badly named": "1 repo.branch",
+      detached: "1 repo.branch",
+      "main unclear": "1 repo.main",
+      "two good commits": "0  · 2 commits",
+      "bad message": "1 module.history",
+      "repository program": "0 ",
+      "program ran": false,
+    });
+  }, 60_000); // eight doctor runs over real repositories: slow on a busy machine
+
   it("checks all hook events against this install and explains stale or broken settings", async () => {
     const rows = [
       { kind: "stale" },

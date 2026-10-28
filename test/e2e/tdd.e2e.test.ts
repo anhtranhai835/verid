@@ -1513,6 +1513,7 @@ describe("prep and recipe plan", () => {
         at: expect.stringMatching(/^\d{4}-\d\d-\d\dT[\d:.]+Z$/),
         served_at: null,
         design_sha256: sha256(readFileSync(designPath())),
+        work: {}, // outside Git: no history to check
       },
     });
     expect(audit().at(-1)).toMatchObject({

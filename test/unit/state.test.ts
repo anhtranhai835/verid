@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseState } from "../../src/core/state.js";
+import { FRESH_AUTO, parseState } from "../../src/core/state.js";
 
 describe("parseState", () => {
   it("fills defaults so a hand-made bootstrap file works", () => {
@@ -40,6 +40,7 @@ describe("parseState", () => {
           stop_holds: 0,
           progress: null,
           blocked: null,
+          work: null,
         },
         architecture: {},
       },
@@ -71,6 +72,7 @@ describe("parseState", () => {
         stop_holds: 0,
         progress: null,
         blocked: null,
+        work: null,
       },
       verdict: "fail",
     });
@@ -116,6 +118,55 @@ describe("parseState", () => {
     expect(parseState(JSON.stringify({ schemaVersion: 1, review, writers: ["a1"] }))).toMatchObject(
       { ok: true, state: { review, writers: ["a1"] } },
     );
+  });
+
+  it("keeps where each module's work began, auto's open work and the work a review read", () => {
+    const work = { ".": { main: "main", base: "a".repeat(40) } };
+    const parsed = parseState(
+      JSON.stringify({
+        schemaVersion: 1,
+        modules: {
+          calc: { sha256: "a", acs: [], at: "t", work },
+          outside: { sha256: "b", acs: [], at: "t", work: {} },
+          legacy: { sha256: "c", acs: [], at: "t" },
+        },
+        review: {
+          module: "calc",
+          agent_type: "r",
+          file: "f",
+          sha256: "h",
+          at: "t",
+          identity: "w1",
+        },
+        security: { module: "calc", agent_type: "s", file: "f", sha256: "h", at: "t" },
+        auto: { work: { module: "calc", roots: work } },
+      }),
+    );
+    const state = parsed.ok ? parsed.state : null;
+    expect({
+      bases: state?.modules.calc?.work,
+      "outside git": state?.modules.outside?.work,
+      legacy: state?.modules.legacy?.work,
+      identity: state?.review?.identity,
+      "no identity": state?.security?.identity,
+      auto: state?.auto.work,
+      "fresh auto": parseState('{"schemaVersion":1}').ok && FRESH_AUTO.work,
+      "bad base": parseState(
+        JSON.stringify({
+          schemaVersion: 1,
+          auto: { work: { module: "calc", roots: { ".": { main: "main" } } } },
+        }),
+      ).ok,
+    }).toEqual({
+      bases: work,
+      "outside git": {},
+      legacy: undefined,
+      identity: "w1",
+      "no identity": null,
+      auto: { module: "calc", roots: work },
+      "fresh auto": null,
+      "bad base": false,
+    });
   });
 
   // Broken state fails closed: every tool call is then blocked until the developer looks at it.

@@ -686,7 +686,7 @@ describe("decide: bash", () => {
       ["node C:\\x\\verid\\dist\\hook.js < p.json", DEVELOPER],
       ["node dist/hook < p.json", DEVELOPER],
       ["cd dist && node hook.js < p.json", DEVELOPER],
-      ["ls .git/hooks", ALLOW],
+      ["ls src/hooks", ALLOW],
       ["node dist/hooks/x.js", ALLOW],
     ]);
   });

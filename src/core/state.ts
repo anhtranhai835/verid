@@ -79,6 +79,11 @@ const tdd = z.strictObject({
   crashed: z._default(z.array(z.string()), []),
 });
 
+/** Where one Git root stood when a module's work began: its main and main's commit then. */
+const workRoot = z.strictObject({ main: z.string(), base: z.string() });
+/** A module's work roots by repo path; {} when the project was not in Git. */
+const work = z.record(z.string(), workRoot);
+
 /**
  * What `verid order <module>` recorded: the sha256 of the module's section of plan.md and the
  * AC codes it lists; `verid serve` adds when the module was closed.
@@ -90,6 +95,8 @@ const moduleApproval = z.strictObject({
   served_at: z._default(z.nullable(z.string()), null),
   /** sha256 of `.verid/design.md` when it was ordered; null for an order made before designs. */
   design_sha256: z._default(z.nullable(z.string()), null),
+  /** Recorded at order; absent on an order made before verid recorded where work begins. */
+  work: z.optional(work),
 });
 
 const count = z._default(z.int().check(z.nonnegative()), 0);
@@ -127,6 +134,8 @@ const autoState = z.strictObject({
   progress: z._default(z.nullable(z.string()), null),
   /** Why the run is stuck, copied from `.verid/blocked.md`; null while it is not. */
   blocked: z._default(z.nullable(z.string()), null),
+  /** Where the open module's work began, recorded when the drive opened it. */
+  work: z._default(z.nullable(z.strictObject({ module: z.string(), roots: work })), null),
 });
 
 /** A read-only reviewer's recorded report on the open module. */
@@ -138,6 +147,8 @@ const report = z.strictObject({
   at: z.string(),
   /** Whether the report passed the module; a report written before verdicts counts as fail. */
   verdict: z._default(z.enum(["pass", "fail"]), "fail"),
+  /** The work it read: each Git root's HEAD and uncommitted changes; null outside Git. */
+  identity: z._default(z.nullable(z.string()), null),
 });
 
 /**

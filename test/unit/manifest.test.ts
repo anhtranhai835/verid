@@ -767,6 +767,53 @@ describe("upgradeManifestText", () => {
     });
   });
 
+  it("reads an optional root git block of exact names, and keeps it through upgrade", async () => {
+    const withGit = (git: unknown) => ({ schemaVersion: 1, mode: "prep", repos: [repo], git });
+    const status = (git: unknown) => {
+      const r = parseManifest(withGit(git));
+      return r.ok ? JSON.stringify(r.manifest.git) : r.detail;
+    };
+    const text = `schemaVersion: 1\nmode: prep\ngit: # main and extra protected refs\n  default_branch: trunk\n  protected_refs: ["refs/heads/release"]\n${renderManifest(
+      "prep",
+      { path: ".", ...repo },
+    )
+      .split("\n")
+      .slice(4)
+      .join("\n")}`;
+    const upgraded = await upgradeManifestText(text, {
+      tests: ["**/vite.config.*"],
+      ignore: [],
+      e2e: [],
+      roles: null,
+      dropTestCmd: true,
+    });
+    const back = parseManifest(parse(upgraded));
+    expect({
+      both: status({
+        default_branch: "main",
+        protected_refs: ["refs/heads/release", "refs/tags/v1"],
+      }),
+      "branch only": status({ default_branch: "trunk" }),
+      "full ref as branch": status({ default_branch: "refs/heads/main" }),
+      "pattern ref": status({ protected_refs: ["refs/heads/release/*"] }),
+      "short ref": status({ protected_refs: ["release"] }),
+      "option-like": status({ default_branch: "-x" }),
+      "unknown key": status({ disable: true }),
+      upgrade: back.ok ? JSON.stringify(back.manifest.git) : back.detail,
+      "comment kept": upgraded.includes("# main and extra protected refs"),
+    }).toEqual({
+      both: '{"default_branch":"main","protected_refs":["refs/heads/release","refs/tags/v1"]}',
+      "branch only": '{"default_branch":"trunk"}',
+      "full ref as branch": "git.default_branch: must be a short branch name such as main",
+      "pattern ref": "git.protected_refs.0: must be a full exact ref such as refs/heads/release",
+      "short ref": "git.protected_refs.0: must be a full exact ref such as refs/heads/release",
+      "option-like": "git.default_branch: must be a short branch name such as main",
+      "unknown key": "git: unknown key disable",
+      upgrade: '{"default_branch":"trunk","protected_refs":["refs/heads/release"]}',
+      "comment kept": true,
+    });
+  });
+
   it("adds the missing defaults and drops an old preset, keeping comments and the developer's entries", async () => {
     const raw = [
       "# verid manifest: only the developer edits this file. Commit it with the project.",

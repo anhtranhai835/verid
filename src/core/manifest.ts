@@ -211,6 +211,32 @@ const iterations = z
     }),
   );
 
+// What `git check-ref-format` refuses, plus wildcards: protection names exact refs only.
+const refName = (name: string) =>
+  name !== "" &&
+  !/[\x00-\x20~^:?*[\\\x7f]|\.\.|@\{|\/\/|^[-/.]|[/.]$|\.lock$|\/\./.test(name) &&
+  name !== "@";
+// Main for every Git root without a repo's own default_branch, and refs pushes must never reach on
+// top of main; nothing here can switch the Git rules off.
+const git = z.strictObject({
+  default_branch: z.optional(
+    z.string().check(
+      z.refine((name) => refName(name) && !name.startsWith("refs/"), {
+        error: "must be a short branch name such as main",
+      }),
+    ),
+  ),
+  protected_refs: z.optional(
+    z.array(
+      z.string().check(
+        z.refine((ref) => refName(ref) && /^refs\/[^/]+\/./.test(ref), {
+          error: "must be a full exact ref such as refs/heads/release",
+        }),
+      ),
+    ),
+  ),
+});
+
 /** Unknown keys are rejected rather than ignored. */
 const manifestSchema = z
   .strictObject({
@@ -232,6 +258,7 @@ const manifestSchema = z
     drive: z._default(z.enum(DRIVES, { error: "must be human or auto" }), "human"),
     layout: z._default(z.enum(LAYOUTS, { error: "must be monorepo or workspace" }), "monorepo"),
     iterations: z.optional(iterations),
+    git: z.optional(git),
     repos: z.array(repo).check(z.minLength(1, nonEmpty)),
   })
   .check(

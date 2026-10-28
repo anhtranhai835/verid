@@ -302,6 +302,7 @@ describe("verid order and verid serve in an auto drive", () => {
         stop_holds: 0,
         progress: null,
         blocked: null,
+        work: null,
       },
       "blocked.md": false,
       "after design change": null,
@@ -699,7 +700,7 @@ describe("Stop in an auto drive", () => {
     ]).toEqual([undefined, 2, true]);
   });
 
-  it("does not close a module signed inside git once the repository is gone, and closes it when it is back", async () => {
+  it("does not close a module signed inside git once the repository is gone, and closes it on a review once it is back", async () => {
     await signed();
     gitRepo();
     await cli("order"); // signed again, now inside the repository
@@ -711,24 +712,28 @@ describe("Stop in an auto drive", () => {
     const away = await stop(false);
     const servedAway = state().modules.calc;
     renameSync(join(project, ".git-moved"), join(project, ".git"));
+    // The review ran while git could not say which work it read: it takes another one.
     const back = await stop(false);
+    await reviewerStop("Verdict: pass");
     expect({
       "served while gone": servedAway,
       "asks for a commit": [
         away.code,
         away.stderr.includes(enMessage("auto.commit", { module: "calc" })),
       ],
-      "served when back": typeof state().modules.calc?.served_at,
-      "says so": back.stderr.includes(enMessage("auto.closed", { module: "calc" })),
+      "asks for a review when back": back.stderr.includes(
+        enMessage("auto.review", { module: "calc", reviewer: "verid:reviewer" }),
+      ),
+      "served on that review": typeof state().modules.calc?.served_at,
     }).toEqual({
       "served while gone": undefined,
       "asks for a commit": [2, true],
-      "served when back": "string",
-      "says so": true,
+      "asks for a review when back": true,
+      "served on that review": "string",
     });
   });
 
-  it("closes the reviewed module at the stop after the agent commits, and says so", async () => {
+  it("asks for a new review of work committed after one, then closes the module at a stop", async () => {
     await signed();
     planPassed();
     gitRepo();
@@ -736,13 +741,20 @@ describe("Stop in an auto drive", () => {
     put("src-new.txt", "x");
     await reviewerStop("Verdict: pass");
     git("add", "-A");
-    git("commit", "-q", "-m", "calc");
+    git("commit", "-q", "-m", "feat(calc): add numbers");
+    const again = await stop(false);
+    seed({ tdd: { ...calcGreen, dirty: true } }); // a change no run has seen keeps it open
+    await reviewerStop("Verdict: pass");
+    seed({ tdd: calcGreen }); // the run shows it
     const r = await stop(false);
     expect([
+      again.stderr.includes(
+        enMessage("auto.review", { module: "calc", reviewer: "verid:reviewer" }),
+      ),
       typeof state().modules.calc?.served_at,
       r.code,
       r.stderr.includes(enMessage("auto.closed", { module: "calc" })),
-    ]).toEqual(["string", 2, true]);
+    ]).toEqual([true, "string", 2, true]);
   });
 
   it("drops the module's passing review once an edited plan passes its review again", async () => {
@@ -755,7 +767,7 @@ describe("Stop in an auto drive", () => {
     writePlan(CALC_AND_PRODUCT.replace("AC-1: adds two numbers", "AC-1: adds two integers"));
     await reviewerStop("Verdict: pass"); // the edited plan passes
     git("add", "-A");
-    git("commit", "-q", "-m", "calc");
+    git("commit", "-q", "-m", "feat(calc): add numbers");
     const r = await stop(false);
     expect([
       state().modules.calc,
@@ -774,10 +786,6 @@ describe("Stop in an auto drive", () => {
           inputs: ["rules.cjs"],
         })}\n`,
       );
-    const commit = () => {
-      git("add", "-A");
-      git("commit", "-q", "--allow-empty", "-m", "work");
-    };
     const outcomes: Record<string, string> = {};
     for (const close of ["stop", "reviewer"] as const) {
       rmSync(project, { recursive: true, force: true });
@@ -787,6 +795,8 @@ describe("Stop in an auto drive", () => {
       put("rules.cjs", "module.exports = [];\n");
       checked(0);
       scenario(0, "vitest-ac.xml");
+      // The checker's rules stay out of Git, so changing them leaves the reviewed work as it was.
+      put(".gitignore", "rules.cjs\n");
       gitRepo();
       seed({ tdd: calcGreen }); // AC-1 passed, but no check has run
       if (close === "stop") await reviewerStop("Verdict: pass");
@@ -805,7 +815,6 @@ describe("Stop in an auto drive", () => {
       ];
       for (const [name, prepare] of rows) {
         await prepare();
-        commit();
         const r = close === "stop" ? await stop(false) : await reviewerStop("Verdict: pass");
         const why = /architecture check of repo \./.test(r.stderr) ? " · says why" : "";
         outcomes[`${close} ${name}`] = `${state().modules.calc ? "closed" : "open"}${why}`;
@@ -821,7 +830,7 @@ describe("Stop in an auto drive", () => {
       "reviewer stale": "open",
       "reviewer fresh": "closed",
     });
-  });
+  }, 60_000); // sixteen checks and closes in real repositories: slow on a busy machine
 
   it("lets the agent stop once the product module is served last", async () => {
     await signed();

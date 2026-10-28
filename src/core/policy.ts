@@ -129,6 +129,11 @@ function decideFile(
               /^settings[^/]*\.json$/.test(p),
           )),
     ],
+    [
+      "VERID_BURNT_GIT_INTERNALS",
+      "inside a repository's .git",
+      write && [a.path, a.display, a.written ?? ""].some(isGitInternal),
+    ],
     ["VERID_BURNT_MANIFEST_PROTECTED", "verid manifest", write && a.path === ctx.manifestPath],
     ["VERID_BURNT_PLAN_NO_RESEARCH", "plan before research", plan && ctx.researchMissing],
     ["VERID_BURNT_PLAN_NO_DESIGN", "plan before design", plan && ctx.designMissing],
@@ -202,6 +207,11 @@ const BASH_RULES: [RuleCode, string, (command: string, ctx: PolicyContext) => bo
     "VERID_BURNT_MANIFEST_PROTECTED",
     "mentions the verid manifest",
     (c) => c.includes("manifest.yaml"),
+  ],
+  [
+    "VERID_BURNT_GIT_INTERNALS",
+    "names a path inside .git or a Git configuration file",
+    (c) => c.split(/[\s'"`;|&<>()=,]+/).some((t) => t !== "" && isGitInternal(t)),
   ],
   ["VERID_BURNT_BASH_NESTED_CODEX", "starts a nested Codex session", (c) => NESTED_CODEX.test(c)],
   [
@@ -395,6 +405,24 @@ function isPluginPath(path: string): boolean {
         ["plugins.json", "plugins", "plugin-data"].includes(parts[i + 1] ?? "")),
   );
 }
+
+/**
+ * A path inside a repository's `.git` folder or a worktree's `.git` file, or a Git configuration
+ * file Git reads for every repository (`~/.gitconfig`, `~/.config/git/config`, `gitconfig`).
+ */
+const isGitInternal = (path: string): boolean => {
+  const parts = path
+    .toLowerCase()
+    .split(/[\\/]+/)
+    .map((part) => part.replace(/[. ]+$/, ""));
+  const base = parts.at(-1) ?? "";
+  return (
+    parts.includes(".git") ||
+    base === ".gitconfig" ||
+    base === "gitconfig" ||
+    (base === "config" && parts.at(-2) === "git" && parts.at(-3) === ".config")
+  );
+};
 
 /** `.claude/commands/verid` and what is in it, anywhere: the project's or the user's. */
 function isVeridCommand(path: string): boolean {

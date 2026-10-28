@@ -1,6 +1,7 @@
 import type { ArchitectureProblem } from "./architecture.js";
 import { canonicalJson } from "./canonical-json.js";
 import type { ErrorCode, MessageKey } from "./errors.js";
+import type { CloseProblem } from "./git-convention.js";
 import {
   acsInName,
   moduleProblem,
@@ -232,11 +233,22 @@ export function gitCleanAcross(
 }
 
 /**
+ * The module's work as Git shows it now: what a review must have read (each root's HEAD and
+ * uncommitted changes; null outside Git), and why its history cannot close, if it cannot.
+ */
+export interface WorkNow {
+  identity: string | null;
+  problem: CloseProblem | null;
+}
+const NO_GIT: WorkNow = { identity: null, problem: null };
+
+/**
  * Whether verid closes the module itself: all its ACs have passing tests in a run that nothing has
- * changed since, the reviewer passed this module after its last change (any later write clears the
- * review), the security reviewer passed it too when one is mapped, every configured architecture
- * check passed on the files as they are, and the tree is committed. Where there is no git to ask,
- * that last check is skipped.
+ * changed since, the reviewer passed this module as its work is now (any later write clears the
+ * review, and a commit or change gives other work), the security reviewer passed it too when one
+ * is mapped, every configured architecture check passed on the files as they are, every commit
+ * since its work began is a Conventional Commit, and the tree is committed. Where there is no git
+ * to ask, the Git checks are skipped.
  */
 export function closeReady(
   view: ModuleView,
@@ -245,21 +257,23 @@ export function closeReady(
   gitClean: boolean | null,
   security?: State["security"],
   architecture: readonly ArchitectureProblem[] = [],
+  work: WorkNow = NO_GIT,
 ): boolean {
   return (
     view.phase === "evaluating" &&
     tdd.last_run !== null &&
     tdd.failing.length === 0 &&
     !tdd.dirty &&
-    passed(review, view.name) &&
-    (security === undefined || passed(security, view.name)) &&
+    passed(review, view.name, work) &&
+    (security === undefined || passed(security, view.name, work)) &&
     architecture.length === 0 &&
+    work.problem === null &&
     gitClean !== false
   );
 }
 
-const passed = (report: State["review"], module: string): boolean =>
-  report?.module === module && report.verdict === "pass";
+const passed = (report: State["review"], module: string, work: WorkNow = NO_GIT): boolean =>
+  report?.module === module && report.verdict === "pass" && report.identity === work.identity;
 const failed = (report: State["review"], module: string): boolean =>
   report?.module === module && report.verdict === "fail";
 
@@ -319,6 +333,7 @@ export function autoNextStep(
   gitClean: boolean | null,
   security?: State["security"],
   architecture: readonly ArchitectureProblem[] = [],
+  work: WorkNow = NO_GIT,
 ): { key: MessageKey | ErrorCode; params: Record<string, string> } {
   switch (phase.kind) {
     case "unsigned":
@@ -346,11 +361,15 @@ export function autoNextStep(
           key: check.code,
           params: { repo: check.repo, detail: check.detail, log: check.log },
         };
-      if (!passed(review, name)) return { key: "auto.review", params: { module: name } };
+      // A review covers committed work: commit first, then fix the history, then review.
+      if (gitClean === false) return { key: "auto.commit", params: { module: name } };
+      if (work.problem)
+        return { key: work.problem.code, params: { ...work.problem.params, module: name } };
+      if (!passed(review, name, work)) return { key: "auto.review", params: { module: name } };
       // The security reviewer reads the module once the reviewer has passed it.
-      if (security !== undefined && !passed(security, name))
+      if (security !== undefined && !passed(security, name, work))
         return { key: "auto.security", params: { module: name } };
-      return { key: gitClean === false ? "auto.commit" : "auto.review", params: { module: name } };
+      return { key: "auto.review", params: { module: name } };
     }
     case "done":
       return { key: "auto.done", params: {} };

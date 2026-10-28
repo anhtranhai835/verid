@@ -329,6 +329,8 @@ describe("repo rules", () => {
       "VERID_BURNT_ARCHITECTURE_FAILED",
       "VERID_BURNT_ARCHITECTURE_STALE",
       "VERID_BURNT_ARCHITECTURE_UNAVAILABLE",
+      "VERID_BURNT_GIT_WORK_BASE",
+      "VERID_BURNT_GIT_COMMIT_MESSAGE",
     ];
     const missing = ["README.md", "README.vi.md"].flatMap((file) => {
       const text = readFileSync(join(root, file), "utf8");

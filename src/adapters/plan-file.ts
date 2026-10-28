@@ -27,7 +27,7 @@ import { mappedAgents } from "../core/roles.js";
 import type { State } from "../core/state.js";
 import { cycleHint, cycleLabel } from "../core/tdd.js";
 import { bound, checkedRepos, contentsOf, type Contents } from "./architecture.js";
-import { gitTree } from "./git.js";
+import { gitTree, type Work } from "./git.js";
 import { bilingual } from "./i18n.js";
 import { errno } from "./state-store.js";
 
@@ -90,6 +90,33 @@ export function readPlan(project: string, iterations = false): PlanRead | null {
     plan.modules.map((m) => [m.name, createHash("sha256").update(m.text, "utf8").digest("hex")]),
   );
   return { ok: true, modules: plan.modules, hashes };
+}
+
+/**
+ * The open module and where its work began: the auto drive's recorded work, or the human order's.
+ * Null when no module is open; work undefined when none was recorded for it.
+ */
+export function openWork(
+  project: string,
+  manifest: Pick<Manifest, "drive" | "iterations">,
+  state: State,
+): { module: string; work: Work | undefined } | null {
+  const iterations = manifest.iterations !== undefined;
+  if (manifest.drive === "auto") {
+    const phase = autoPhase(autoFactsOf(project, state, iterations));
+    if (phase.kind !== "module") return null;
+    const { name } = phase.view;
+    return {
+      module: name,
+      work: state.auto.work?.module === name ? state.auto.work.roots : undefined,
+    };
+  }
+  const plan = readPlan(project, iterations);
+  const views = plan?.ok
+    ? modulePhases(plan.modules, plan.hashes, state.modules, evidenceOf(project, state))
+    : [];
+  const name = openModule(views)?.name;
+  return name === undefined ? null : { module: name, work: state.modules[name]?.work };
 }
 
 /**

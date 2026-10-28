@@ -62,7 +62,7 @@ const makeRepo = (rel: string, branch = "main", committed = false) => {
 };
 const commit = (dir: string) => {
   git(dir, "add", "-A");
-  git(dir, "commit", "-q", "--allow-empty", "-m", "fixture");
+  git(dir, "commit", "-q", "--allow-empty", "-m", "chore: fixture");
 };
 // In process; the spawned hook runs below and hook.e2e prove the built files run this code.
 const inProcessEnv = (extra: NodeJS.ProcessEnv = {}) => ({
@@ -582,6 +582,21 @@ describe("workspace auto and doctor", () => {
     });
     return { code: result.status, out: result.stdout, err: result.stderr };
   };
+  // A reviewer passes the work as it is: a review counts for the commits it read.
+  const review = (agent = "verid:reviewer") =>
+    spawnSync(process.execPath, [HOOK], {
+      cwd: project,
+      env: { ...env(), CLAUDE_PROJECT_DIR: project },
+      encoding: "utf8",
+      input: JSON.stringify({
+        hook_event_name: "SubagentStop",
+        session_id: "workspace",
+        cwd: project,
+        agent_id: agent,
+        agent_type: agent,
+        last_assistant_message: "Verdict: pass",
+      }),
+    });
   const ready = async () => {
     makeRepo("api");
     makeRepo("web");
@@ -641,26 +656,13 @@ describe("workspace auto and doctor", () => {
   it("checks every repo when a passing reviewer closes a module", async () => {
     await ready();
     put("web/untracked.txt");
-    const review = () =>
-      spawnSync(process.execPath, [HOOK], {
-        cwd: project,
-        env: { ...env(), CLAUDE_PROJECT_DIR: project },
-        encoding: "utf8",
-        input: JSON.stringify({
-          hook_event_name: "SubagentStop",
-          session_id: "workspace",
-          cwd: project,
-          agent_id: "reviewer",
-          agent_type: "verid:reviewer",
-          last_assistant_message: "Verdict: pass",
-        }),
-      });
     expect(review().status).toBe(0);
     expect(state().modules.product?.served_at ?? null).toBeNull();
     commit(join(project, "web"));
     expect(review().status).toBe(0);
+    expect(review("verid:security").status).toBe(0);
     expect(state().modules.product.served_at).toBeTypeOf("string");
-  });
+  }, 60_000); // spawned hooks reading three repositories: slow on a busy machine
 
   it("holds the module for dirt in any repo or .verid and closes it once all are clean", async () => {
     await ready();
@@ -672,10 +674,12 @@ describe("workspace auto and doctor", () => {
       expect(state().modules.product?.served_at ?? null).toBeNull();
       commit(join(project, path));
     }
+    review();
+    review("verid:security");
     const closed = stop();
     expect(closed.code, closed.err).toBe(0);
     expect(state().modules.product.served_at).toBeTypeOf("string");
-  });
+  }, 60_000); // spawned hooks reading three repositories: slow on a busy machine
 
   it("treats a repo that loses git after signing as dirty", async () => {
     await ready();

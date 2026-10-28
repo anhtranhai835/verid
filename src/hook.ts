@@ -13,6 +13,7 @@ import {
   stopHolds,
   type AutoFacts,
   type AutoPhase,
+  type WorkNow,
 } from "./core/auto.js";
 import {
   ERROR_CODES,
@@ -72,7 +73,16 @@ import {
   writtenPath,
   type FileAction,
 } from "./adapters/claude-code.js";
-import { gitTree } from "./adapters/git.js";
+import {
+  captureWork,
+  gitCallFacts,
+  gitTree,
+  HOOK_GIT_BUDGET_MS,
+  readHistories,
+  workIdentity,
+  workRoots,
+} from "./adapters/git.js";
+import { closeHistory, decideGit, gitCalls, isHarmless } from "./core/git-convention.js";
 import { bilingual, inLanguage, setLanguage, t, type Lang } from "./adapters/i18n.js";
 import { loadManifest, tddLayouts } from "./adapters/manifest.js";
 import {
@@ -273,11 +283,43 @@ async function preToolUse(p: z.infer<typeof preToolUseSchema>): Promise<Result> 
   })().catch((err: unknown) => (): never => {
     throw err;
   });
+  // The Git rules need the manifest and the repositories' facts even for a plain commit or push:
+  // read them now, and defer an error until the policy rules have judged the call.
+  const git = await (async () => {
+    if (action.kind !== "bash") return null;
+    // Codex runs shell lines in PowerShell on Windows: each reading of the line is judged.
+    const readings = [
+      gitCalls(action.command),
+      ...(CODEX ? [gitCalls(action.command, "powershell")] : []),
+    ];
+    if (readings.every((calls) => calls.every(isHarmless))) return null;
+    const manifest = await loadManifest(project);
+    if (!manifest) return null;
+    const deadline = Date.now() + HOOK_GIT_BUDGET_MS;
+    const judged = readings.map((calls) => ({
+      calls,
+      facts: gitCallFacts(calls, p.cwd, project, manifest, deadline),
+    }));
+    const rules = { protectedRefs: manifest.git?.protected_refs ?? [] };
+    return (lifted: ReadonlySet<RuleCode>) =>
+      judged.flatMap(({ calls, facts }) => decideGit(calls, facts, rules, lifted));
+  })().catch((err: unknown) => (): never => {
+    throw err;
+  });
   // The policy rules on every action, then the role rules and the TDD gate on the writes, once
   // the rules the developer has allowed are lifted. An override covers one rule, so a rule still
   // denying needs its own. Undefined: nothing denies and no code or test is written.
   const judge = (lifted: ReadonlySet<RuleCode>): Deny | Judged | undefined => {
-    const policy = strictest([action, ...files].map((a) => decide(a, ctx, lifted)));
+    const rules = [action, ...files].map((a) => decide(a, ctx, lifted));
+    // Judged with the policy rules, so an invariant among them is never hidden behind an
+    // overridable one; an error reading Git waits until no policy rule denies.
+    let gitRules: PolicyDecision[] = [];
+    try {
+      gitRules = git?.(lifted) ?? [];
+    } catch (err) {
+      if (!rules.some((d) => d.kind === "deny")) throw err;
+    }
+    const policy = strictest([...rules, ...gitRules]);
     if (policy.kind === "deny") return policy;
     if (CODEX) {
       const known = decideKnownTool(p.tool_name, CODEX_TOOLS);
@@ -715,11 +757,12 @@ function autoStop(
     let facts = autoFactsOf(project, state, manifest.iterations !== undefined);
     const session = p.session_id;
     state = latchBlocked(paths, state, facts.blockedFile, session);
+    state = withWork(project, paths, state, facts, manifest);
     facts = { ...facts, auto: state.auto };
     const before = autoPhase(facts);
-    const next = tryClose(project, paths, state, facts, manifest, contents);
-    const closed = next !== state && before.kind === "module" ? before.view.name : null;
-    state = next;
+    const tried = tryClose(project, paths, state, facts, manifest, contents);
+    const closed = tried.state !== state && before.kind === "module" ? before.view.name : null;
+    state = tried.state;
     facts = { ...facts, auto: state.auto, approvals: state.modules };
     let phase = autoPhase(facts);
     let git: ReturnType<typeof gitTree> | null = null;
@@ -742,6 +785,7 @@ function autoStop(
         phase = autoPhase({ ...facts, auto: state.auto });
       }
     }
+    const evaluating = phase.kind === "module" && phase.view.phase === "evaluating";
     const step = autoNextStep(
       phase,
       facts.researchHash !== null,
@@ -749,13 +793,17 @@ function autoStop(
       state.review,
       git?.clean ?? null,
       securityOf(state, manifest.roles),
-      phase.kind === "module" && phase.view.phase === "evaluating"
-        ? architectureOf(project, manifest, state, contents)
-        : [],
+      evaluating ? architectureOf(project, manifest, state, contents) : [],
+      evaluating && phase.kind === "module"
+        ? workNow(project, manifest, state, phase.view.name)
+        : undefined,
     );
     const lines = [
       statusLine(manifest.mode, state.tdd, state.tdd.last_run),
       ...(closed === null ? [] : [bilingual("auto.closed", { module: closed })]),
+      ...tried.counts.map(({ repo, commits }) =>
+        bilingual("git.commits", { module: closed ?? "", repo, count: String(commits) }),
+      ),
       bilingual(step.key, { ...mappedNames(manifest.roles), ...step.params }),
     ].join("\n");
     // The agent may stop, and the developer sees why.
@@ -807,9 +855,76 @@ function latchBlocked(
 }
 
 /**
+ * The open auto module's record of where its work began, taken when the drive has opened a module
+ * it has none for: main's commit in each Git root then, so every commit of the module is checked
+ * at close. The state as given otherwise, or when main cannot be told, which the close then names.
+ * Audits the record; the caller writes the state, under the lock.
+ */
+function withWork(
+  project: string,
+  paths: StatePaths,
+  state: State,
+  facts: AutoFacts,
+  manifest: Manifest,
+): State {
+  const phase = autoPhase({ ...facts, auto: state.auto, approvals: state.modules });
+  if (phase.kind !== "module" || state.auto.work?.module === phase.view.name) return state;
+  // A repository signed inside Git that has lost it is not a project outside Git.
+  const presence = gitTree(project, manifest, state.auto.signed).presence;
+  const signed = state.auto.signed?.git_repos ?? { ".": state.auto.signed?.git ?? false };
+  if (Object.entries(signed).some(([repo, inGit]) => inGit && presence[repo] === false))
+    return state;
+  const roots = captureWork(project, manifest);
+  if ("detail" in roots) return state;
+  appendAudit(paths.audit, {
+    event: "work_started",
+    module: phase.view.name,
+    roots: Object.fromEntries(Object.entries(roots).map(([repo, r]) => [repo, r.base])),
+  });
+  return { ...state, auto: { ...state.auto, work: { module: phase.view.name, roots } } };
+}
+
+/** The open module's work as Git shows it now: what a review must have read, and its history. */
+function workNow(
+  project: string,
+  manifest: Manifest,
+  state: State,
+  module: string,
+): WorkNow & { counts: { repo: string; commits: number }[] } {
+  const identity = workIdentity(project, manifest);
+  if (state.auto.work?.module !== module) {
+    const captured = captureWork(project, manifest);
+    const params =
+      "detail" in captured
+        ? { repo: String(captured.repo), detail: String(captured.detail) }
+        : { repo: ".", detail: "the start of this module's work was not recorded" };
+    return { identity, problem: { code: "VERID_BURNT_GIT_WORK_BASE", params }, counts: [] };
+  }
+  // Every Git root now must have its start recorded: Git that appeared since counts.
+  const roots = workRoots(project, manifest);
+  const work = state.auto.work.roots;
+  const uncovered = Array.isArray(roots) ? roots.find((r) => !(r.repo in work)) : roots;
+  if (uncovered !== undefined)
+    return {
+      identity,
+      problem: {
+        code: "VERID_BURNT_GIT_WORK_BASE",
+        params: {
+          repo: uncovered.repo,
+          detail: "error" in uncovered ? uncovered.error : "Git appeared after the module opened",
+        },
+      },
+      counts: [],
+    };
+  return { identity, ...closeHistory(readHistories(project, work)) };
+}
+
+/**
  * An auto drive serves its open module itself once closeReady holds, recorded as `verid serve`
- * records it, and the next module starts its review and coder loops from zero. The state as given
- * when the module is not ready. Audits the close; the caller writes the state, under the lock.
+ * records it, and the next module starts its review and coder loops from zero, with its own record
+ * of where its work begins. The state as given when the module is not ready, and the repos the
+ * closed module made more than one commit in. Audits the close; the caller writes the state, under
+ * the lock.
  */
 function tryClose(
   project: string,
@@ -818,17 +933,29 @@ function tryClose(
   facts: AutoFacts,
   manifest: Manifest,
   contents: Contents,
-): State {
+): { state: State; counts: { repo: string; commits: number }[] } {
+  const unchanged = { state, counts: [] };
   const phase = autoPhase(facts);
-  if (phase.kind !== "module" || !facts.plan?.ok) return state;
+  if (phase.kind !== "module" || !facts.plan?.ok) return unchanged;
   const { view } = phase;
   const clean = gitTree(project, manifest, state.auto.signed).clean;
   const architecture =
     view.phase === "evaluating" ? architectureOf(project, manifest, state, contents) : [];
   const security = securityOf(state, manifest.roles);
-  if (!closeReady(view, state.tdd, state.review, clean, security, architecture)) return state;
+  // Git history is read only once everything else holds.
+  const early = { identity: state.review?.identity ?? null, problem: null };
+  if (!closeReady(view, state.tdd, state.review, clean, security, architecture, early))
+    return unchanged;
+  const work = workNow(project, manifest, state, view.name);
+  if (!closeReady(view, state.tdd, state.review, clean, security, architecture, work))
+    return unchanged;
   const now = new Date().toISOString();
-  appendAudit(paths.audit, { event: "module_served", module: view.name, by: "auto" });
+  appendAudit(paths.audit, {
+    event: "module_served",
+    module: view.name,
+    by: "auto",
+    ...(work.counts.length > 0 && { commits: work.counts }),
+  });
   const approval = {
     sha256: facts.plan.hashes[view.name] as string,
     acs: view.acs,
@@ -836,13 +963,15 @@ function tryClose(
     served_at: now,
     design_sha256: facts.designHash,
   };
-  return {
+  const served: State = {
     ...state,
     modules: { ...state.modules, [view.name]: approval },
     review: null,
     security: null,
     auto: { ...state.auto, module_reviews: 0, security_reviews: 0, coder_rounds: {} },
   };
+  const opened = { ...facts, auto: served.auto, approvals: served.modules };
+  return { state: withWork(project, paths, served, opened, manifest), counts: work.counts };
 }
 
 /**
@@ -938,6 +1067,8 @@ function recordReview(
   const verdict = parseVerdict(report);
   // Only a pass can close the module, so only a pass is worth the walk inside this hook's timeout.
   const contents = verdict === "pass" ? contentsBefore(project, paths, manifest) : {};
+  // The work the report read, so a commit or change after it needs another review.
+  const identity = workIdentity(project, manifest);
   withLock(paths, () => {
     const state = readState(paths);
     const facts = auto ? autoFactsOf(project, state, manifest.iterations !== undefined) : null;
@@ -964,7 +1095,7 @@ function recordReview(
       writeReview(paths, name, report);
       const { auto: now } = state;
       // A module review read the plan as it was: once a changed plan passes, it needs another.
-      writeState(paths, {
+      const reviewed: State = {
         ...state,
         ...(hash === null
           ? { auto: { ...now, plan_reviews: now.plan_reviews + 1 } }
@@ -973,7 +1104,10 @@ function recordReview(
               review: null,
               security: null,
             }),
-      });
+      };
+      // A passing plan opens its first module, whose work begins here.
+      const opened = { ...facts!, auto: reviewed.auto };
+      writeState(paths, withWork(project, paths, reviewed, opened, manifest));
       return;
     }
     if (!module) return;
@@ -982,21 +1116,30 @@ function recordReview(
     const event = security ? "security_recorded" : "review_recorded";
     appendAudit(paths.audit, { event, ...who, module, sha256, verdict, file });
     writeReview(paths, name, report);
-    const recorded = { module, agent_type: p.agent_type ?? "", file, sha256, at, verdict };
+    const recorded = {
+      module,
+      agent_type: p.agent_type ?? "",
+      file,
+      sha256,
+      at,
+      verdict,
+      identity,
+    };
     const failures = security ? "security_reviews" : "module_reviews";
+    const opened = facts ? withWork(project, paths, state, facts, manifest) : state;
     const next: State = {
-      ...state,
+      ...opened,
       ...(security ? { security: recorded } : { review: recorded }),
       ...(auto &&
         verdict !== "pass" && {
-          auto: { ...state.auto, [failures]: state.auto[failures] + 1 },
+          auto: { ...opened.auto, [failures]: opened.auto[failures] + 1 },
         }),
     };
     // A pass on a committed tree serves the module now, not at the agent's next stop.
     writeState(
       paths,
       facts
-        ? tryClose(project, paths, next, { ...facts, auto: next.auto }, manifest, contents)
+        ? tryClose(project, paths, next, { ...facts, auto: next.auto }, manifest, contents).state
         : next,
     );
   });

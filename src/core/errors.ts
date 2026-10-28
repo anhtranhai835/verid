@@ -28,6 +28,11 @@ export const RULE_CODES = [
   "VERID_BURNT_ROLE_QA_E2E_ONLY",
   "VERID_BURNT_AUTO_STUCK",
   "VERID_BURNT_AUTO_NO_MODULE",
+  "VERID_BURNT_GIT_MAIN_COMMIT",
+  "VERID_BURNT_GIT_BRANCH_NAME",
+  "VERID_BURNT_GIT_PROTECTED_PUSH",
+  "VERID_BURNT_GIT_UNRESOLVED",
+  "VERID_BURNT_GIT_INTERNALS",
 ] as const;
 export type RuleCode = (typeof RULE_CODES)[number];
 
@@ -93,6 +98,8 @@ export const ERROR_CODES = [
   "VERID_BURNT_ARCHITECTURE_FAILED",
   "VERID_BURNT_ARCHITECTURE_STALE",
   "VERID_BURNT_ARCHITECTURE_UNAVAILABLE",
+  "VERID_BURNT_GIT_WORK_BASE",
+  "VERID_BURNT_GIT_COMMIT_MESSAGE",
 ] as const;
 export type ErrorCode = (typeof ERROR_CODES)[number];
 
@@ -218,6 +225,9 @@ export const MESSAGE_KEYS = [
   "doctor.repo.branch.detached",
   "doctor.repo.branch.fix",
   "doctor.repo.branch.ok",
+  "doctor.repo.main",
+  "doctor.repo.main.fix",
+  "doctor.module.history.fix",
   "doctor.repo.runner.custom",
   "doctor.repo.runner.missing",
   "doctor.repo.runner.fix",
@@ -244,6 +254,11 @@ export const MESSAGE_KEYS = [
   "serve.no_review",
   "serve.review",
   "serve.no_security",
+  "serve.review_stale",
+  "git.commits",
+  "git.no_history",
+  "commits.none",
+  "commits.no_record",
   "serve.security",
   "menu.research",
   "menu.design",
@@ -367,6 +382,9 @@ const OVERRIDABLE: ReadonlySet<RuleCode> = new Set([
   "VERID_BURNT_ROLE_QA_E2E_ONLY",
   "VERID_BURNT_AUTO_STUCK",
   "VERID_BURNT_AUTO_NO_MODULE",
+  "VERID_BURNT_GIT_MAIN_COMMIT",
+  "VERID_BURNT_GIT_BRANCH_NAME",
+  "VERID_BURNT_GIT_PROTECTED_PUSH",
 ]);
 export const isOverridable = (code: RuleCode): boolean => OVERRIDABLE.has(code);
 

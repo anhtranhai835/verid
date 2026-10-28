@@ -30,8 +30,14 @@ When the reviewer stops, verid records its final report under `.verid/.state/rev
 production code or a test after that voids the review, and so does a new `verid order`; running
 `verid taste` does not.
 
+In a git project, commit the module's work on its branch before the review, with Conventional
+Commit messages: verid ties a review to the work it read, so a commit, an amended message or a
+changed file after it needs another review. The reviewer cannot run Git: give it the output of
+`verid menu --commits`, every commit since the module began with its message and diff, then what
+is still uncommitted (secret files are left out). It judges each commit as one complete change.
+
 Read the report. If it ends `Verdict: fail`, fix it through the `verid:build` loop (a failing test
-first, then the code), then dispatch the reviewer again.
+first, then the code), commit, then dispatch the reviewer again.
 
 ## 2b. Security review after the reviewer
 
@@ -49,9 +55,11 @@ reviewer again, then the security reviewer again.
 ## 3. Serve
 
 Ask the developer to run `verid serve <module>` from their own terminal. verid serves a module only
-when every AC has a passing test, the last run passed, and the reviewer's report is newer than the
-last change; when `roles.security` is mapped, also only when the security reviewer's report passed
-after the last change. It prints the reports' paths, and the developer decides.
+when every AC has a passing test, the last run passed, and the reviewer's report read the work as it
+is now; when `roles.security` is mapped, also only when the security reviewer's report passed on
+that work. In git it also reads every commit since the module was ordered: each must be a
+Conventional Commit, and more than one commit only earns a note. It prints the reports' paths, and
+the developer decides.
 
 If no reviewer is mapped, `verid serve` refuses: the developer adds `roles.reviewer` to
 `.verid/manifest.yaml` and installs the agent.
@@ -73,11 +81,13 @@ to 3 become:
 1. **Verify** as above: `verid taste` for the whole suite, passing, with no change after it.
 2. **Commit** every change of the module, new files included, on its `feat/<module>` branch
    suggested by `verid:build`; do not push:
-   `git add -A`, then `git commit` with a conventional message that names the module. verid serves a
+   `git add -A`, then `git commit` with a Conventional Commit message that names the module, such as
+   `feat(<module>): <what it adds>`. verid serves a
    module only when the project's tree is clean, untracked files included; only
    `.claude/settings.local.json` is left out. Bash cannot name that file, which is why `git add -A`
    is the way. Without git there is nothing to commit.
-3. **Review** as above: dispatch `verid:reviewer` after the commit. Its final report ends with
+3. **Review** as above, with `verid menu --commits`: dispatch `verid:reviewer` after the commit. A
+   commit after the review needs another one. Its final report ends with
    `Verdict: pass` or `Verdict: fail`. When `roles.security` is mapped, dispatch the security reviewer
    once the reviewer passes, as in step 2b. On the passes verid needs, it serves the module once they
    follow the last change and the tree is clean, and the next module opens; `verid menu` says so, or

@@ -40,10 +40,15 @@ Use andrej-karpathy-skills:karpathy-guidelines as a review lens.
    for its base, do interfaces stay cohesive, do aggregates keep their invariants and domain rules,
    and is the change atomic? Judge this even when the architecture check passes: it checks only
    the rules it was given. An interface per class is not a requirement.
-6. **Surgical changes.** Does the module change anything no AC asks for:
+6. **Commits.** When you are given the module's work history (`verid menu --commits`), judge each
+   commit: one complete change, with a message that says truly what it does; a later commit only
+   repairs what a review asked for. Name each commit that mixes unrelated changes, leaves the work
+   half done or misstates itself as an Important finding. In a git project without that history,
+   say under Findings that it was not given.
+7. **Surgical changes.** Does the module change anything no AC asks for:
    refactors or formatting of pre-existing code, unrelated files, or deleted pre-existing code?
    Report each as an Important finding.
-7. **The product module.** When the module is `product`, review the whole product rather than only
+8. **The product module.** When the module is `product`, review the whole product rather than only
    its section: every module of `.verid/plan.md` against the design, and the end-to-end tests of
    `product` against the product as a user meets it.
 

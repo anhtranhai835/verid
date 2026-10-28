@@ -25,7 +25,16 @@ import { bilingual, setLanguage, t, veridName, type Lang } from "../adapters/i18
 import { loadManifest, manifestFile } from "../adapters/manifest.js";
 import { appendAudit } from "../adapters/audit-log.js";
 import { contentsOf } from "../adapters/architecture.js";
-import { gitTree, gitView } from "../adapters/git.js";
+import {
+  captureWork,
+  gitTree,
+  gitView,
+  readHistories,
+  workIdentity,
+  workLog,
+  workRoots,
+} from "../adapters/git.js";
+import { closeHistory } from "../core/git-convention.js";
 import {
   architectureOf,
   autoFactsOf,
@@ -33,6 +42,7 @@ import {
   designFile,
   evidenceOf,
   menuLines,
+  openWork,
   peekLines,
   planFile,
   questionLines,
@@ -94,6 +104,8 @@ export async function runCli(args: readonly string[]): Promise<CliResult> {
       r = await pluginCommand(project, rest, hasTerminal() ? terminalIo() : undefined);
     else if (cmd === "peek" && rest.length === 0) r = await status(project);
     else if (cmd === "menu" && rest.length === 0) r = await menu(project);
+    else if (cmd === "menu" && rest.length === 1 && rest[0] === "--commits")
+      r = await commits(project);
     else if (cmd === "garnish" && rest.length === 0) r = refactor(project);
     else if (cmd === "stock" && rest.length === 0) r = await baselineCommand(project);
     else if (cmd === "order" && rest.length <= 1) r = await approve(project, rest[0]);
@@ -274,7 +286,7 @@ function usage(project: string, wrong: Misuse | null): CliResult {
     },
     { emoji: "👅", command: `${v} taste`, what: say("usage.taste") },
     { emoji: "👀", command: `${v} peek`, what: say("usage.peek") },
-    { emoji: "📋", command: `${v} menu`, what: say("usage.menu") },
+    { emoji: "📋", command: `${v} menu [--commits]`, what: say("usage.menu") },
     {
       emoji: "🧾",
       command: `${v} order [module]`,
@@ -309,6 +321,24 @@ async function menu(project: string): Promise<CliResult> {
     stdout: `${menuLines(project, manifest.mode, state, manifest.roles, manifest.drive, manifest).join("\n")}\n`,
     stderr: "",
   };
+}
+
+/**
+ * `verid menu --commits`: the open module's work as Git shows it, for a reviewer that cannot run
+ * Git: every commit since the recorded start with its message and diff, then what is uncommitted.
+ * Read-only; secret files and verid's state are never shown.
+ */
+async function commits(project: string): Promise<CliResult> {
+  const manifest = await loadManifest(project);
+  if (!manifest)
+    throw new VeridError("VERID_BURNT_MANIFEST_MISSING", { path: manifestFile(project) });
+  const open = openWork(project, manifest, readState(statePaths(project)));
+  const say = (text: string) => ({ exit: 0 as const, stdout: `${text}\n`, stderr: "" });
+  if (open === null) return say(bilingual("commits.none", {}));
+  const { module, work } = open;
+  if (work === undefined) return say(bilingual("commits.no_record", { module }));
+  if (Object.keys(work).length === 0) return say(bilingual("git.no_history", { module }));
+  return say([`verid: work history of module ${module}`, ...workLog(project, work)].join("\n"));
 }
 
 /**
@@ -360,6 +390,8 @@ async function approve(project: string, wanted: string | undefined): Promise<Cli
 
   const sha256 = plan.hashes[name] as string;
   const paths = statePaths(project);
+  // Where the module's work begins in each Git root: main's commit now. Read before the lock.
+  const captured = captureWork(project, manifest!);
   const result = withLock(paths, () => {
     const state = readState(paths);
     const views = modulePhases(
@@ -377,6 +409,16 @@ async function approve(project: string, wanted: string | undefined): Promise<Cli
       });
     if (open && open.name !== name)
       throw new VeridError("VERID_BURNT_MODULE_OPEN", { module: open.name });
+    // A re-order of the open module keeps where its work began, so earlier commits stay checked.
+    const before = state.modules[name];
+    const kept = before?.served_at === null ? before.work : undefined;
+    if (kept === undefined && "detail" in captured)
+      throw new VeridError("VERID_BURNT_GIT_WORK_BASE", {
+        module: name,
+        repo: String(captured.repo),
+        detail: String(captured.detail),
+      });
+    const work = kept ?? (captured as Exclude<typeof captured, { detail: string }>);
     // Audit first: if it fails, state is untouched and nothing was approved.
     appendAudit(paths.audit, {
       event: "plan_approved",
@@ -401,6 +443,7 @@ async function approve(project: string, wanted: string | undefined): Promise<Cli
           at: new Date().toISOString(),
           served_at: null,
           design_sha256: design,
+          work,
         },
       },
       ac_stop_session: null,
@@ -461,6 +504,8 @@ function signAuto(project: string, manifest: Manifest, wanted: string | undefine
           git_repos: gitTree(project, manifest).presence,
         },
         plan_sha256: unchanged ? state.auto.plan_sha256 : null,
+        // Where the open module's work began stays as recorded.
+        work: state.auto.work,
       },
     };
     // blocked.md is removed below, so it is not read as a reason to stop. Nothing is committed or
@@ -501,8 +546,10 @@ async function serve(project: string, wanted: string): Promise<CliResult> {
     throw new VeridError("VERID_BURNT_AUTO_SERVE");
   const { mode, plan, name, manifest } = await planModule(project, "serve", wanted);
   const paths = statePaths(project);
-  // Read before the lock: a long walk must not hold it.
+  // Read before the lock: a long walk must not hold it, nor Git reads.
   const contents = contentsOf(project, manifest);
+  const identity = workIdentity(project, manifest);
+  const roots = workRoots(project, manifest);
   const result = withLock(paths, () => {
     const state = readState(paths);
     const views = modulePhases(
@@ -533,13 +580,37 @@ async function serve(project: string, wanted: string): Promise<CliResult> {
     const [check] = architectureOf(project, manifest, state, contents);
     if (check)
       throw new VeridError(check.code, { repo: check.repo, detail: check.detail, log: check.log });
+    // Every message since the work began is a Conventional Commit, read again now. An order made
+    // before verid recorded where work begins needs a new order where there is Git to check.
+    const work = state.modules[name]?.work;
+    // Every Git root now must have its start recorded: Git that appeared after the order counts.
+    const uncovered = Array.isArray(roots) ? roots.find((r) => !(r.repo in (work ?? {}))) : roots;
+    if (uncovered !== undefined)
+      throw new VeridError("VERID_BURNT_GIT_WORK_BASE", {
+        module: name,
+        repo: uncovered.repo,
+        detail:
+          "error" in uncovered
+            ? uncovered.error
+            : work === undefined
+              ? "ordered before verid recorded where work begins"
+              : "Git appeared after the order",
+      });
+    const history = closeHistory(readHistories(project, work ?? {}));
+    if (history.problem)
+      throw new VeridError(history.problem.code, { module: name, ...history.problem.params });
     // The developer reads a review by the mapped reviewer, recorded after the last change.
     if (reviewers === "") throw notReady("serve.no_reviewer");
     const { review } = state;
     if (review?.module !== name) throw notReady("serve.no_review");
+    // A commit, an amended message or a changed file after the review: the reviewer read other work.
+    if (review.identity !== identity) throw notReady("serve.review_stale");
     // A mapped security reviewer must pass the module too, after the last change.
     const security = securityOf(state, manifest.roles);
-    if (security !== undefined && !(security?.module === name && security.verdict === "pass"))
+    if (
+      security !== undefined &&
+      !(security?.module === name && security.verdict === "pass" && security.identity === identity)
+    )
       throw notReady("serve.no_security");
 
     const served = { ...(state.modules[name] as Approval), served_at: new Date().toISOString() };
@@ -563,6 +634,12 @@ async function serve(project: string, wanted: string): Promise<CliResult> {
       bilingual("serve.review", { agent: review.agent_type, file: review.file }),
       ...(security
         ? [bilingual("serve.security", { agent: security.agent_type, file: security.file })]
+        : []),
+      ...history.counts.map(({ repo, commits }) =>
+        bilingual("git.commits", { module: name, repo, count: String(commits) }),
+      ),
+      ...(Array.isArray(roots) && roots.length === 0
+        ? [bilingual("git.no_history", { module: name })]
         : []),
       ...questions,
       bilingual(step.key, "module" in step ? { module: step.module } : {}),

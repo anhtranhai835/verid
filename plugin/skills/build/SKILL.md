@@ -28,11 +28,24 @@ workspace root to collect every repo's evidence.
 
 ## A branch per module
 
-In a git project, suggest one branch `feat/<module>` for the open module, for example
-`feat/signup`. This is a suggestion for the developer in human drive; the hook does not enforce
-branches. In auto drive, create or switch to that module's branch from the completed work so
-far, and commit that module on it during `verid:review`. Keep prior modules' commits; never
-discard changes to switch branches. The clean-tree check is unchanged. Without git, skip this.
+In a git project, the open module's work goes on its own branch `feat/<module>` made from main,
+for example `git switch -c feat/signup`. The hook refuses commits, merges, rebases, resets and any
+other change to main's history (`VERID_BURNT_GIT_MAIN_COMMIT`), a work branch whose name does not
+start with `feat/`, `fix/`, `chore/`, `docs/`, `refactor/` or `test/` and a name
+(`VERID_BURNT_GIT_BRANCH_NAME`), a push that reaches main or another protected ref
+(`VERID_BURNT_GIT_PROTECTED_PUSH`), and a Git command whose repository, branch or ref it cannot read
+(`VERID_BURNT_GIT_UNRESOLVED`): run Git commands on their own, with literal paths and refs.
+
+- A bug found later starts a NEW `fix/<slug>` branch from main as the developer last updated it;
+  never continue the branch of a module that is done.
+- Each commit is one complete change with a Conventional Commit message
+  (`<type>[(scope)][!]: <description>`); a later commit only repairs what a review asked for.
+- One branch, one pull request. Do not push to main or merge: hand the branch to the developer
+  with superpowers:finishing-a-development-branch. The developer squash-merges it and deletes it.
+
+In auto drive, create or switch to that module's branch from the completed work so far, and commit
+that module on it during `verid:review`. Keep prior modules' commits; never discard changes to
+switch branches. Without git, skip this.
 
 For a workspace, apply the branch suggestion to each repo involved in the module and commit
 its changes there. Commit shared planning changes in the `.verid` repo too; auto waits for
@@ -88,7 +101,8 @@ exception is truly needed, explain why to the developer; only they can type `/ve
 When the first line of `verid menu` says `drive auto` (the session-start message says it too), verid
 opens the first module not yet served, so you wait for no order. Do not read the manifest with Bash
 to find out: verid blocks it. The roles are split, so dispatch the mapped tester (qa for an
-`(e2e)` AC when mapped) and coder as above. Commit each module on its `feat/<module>` branch.
+`(e2e)` AC when mapped) and coder as above. Commit each module on its `feat/<module>` branch, with
+Conventional Commit messages.
 
 - **Three coder rounds per AC.** A round ends when a coder's stop goes through while a failing test
   whose name carries that AC code is still red. The third such round leaves the drive stuck. Give the

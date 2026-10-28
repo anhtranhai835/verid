@@ -1,9 +1,10 @@
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { gitView } from "../../src/adapters/git.js";
+import { gitCallFacts, gitView } from "../../src/adapters/git.js";
+import { decideGit, gitCalls } from "../../src/core/git-convention.js";
 
 const GIT_ENV = ["GIT_CONFIG_GLOBAL", "GIT_CONFIG_NOSYSTEM", "XDG_CONFIG_HOME"] as const;
 let saved: Record<string, string | undefined>;
@@ -103,6 +104,52 @@ describe("gitView", () => {
       "sibling folder dirty": true,
       "config hides untracked": false,
     });
+  });
+
+  it("gives up on Git once the hook's time budget is spent, which refuses the call", () => {
+    const dir = committed();
+    const calls = gitCalls("git commit -m x");
+    const manifest = { repos: [], layout: "monorepo" as const };
+    const judge = (deadline: number) => {
+      const facts = gitCallFacts(calls, dir, dir, manifest, deadline);
+      const denied = decideGit(calls, facts, { protectedRefs: [] }, new Set());
+      return denied.map((d) => (d.kind === "deny" ? d.code : d.kind)).join() || "allow";
+    };
+    expect({
+      "within budget": judge(Date.now() + 10_000),
+      "budget spent": judge(Date.now() - 1),
+    }).toEqual({
+      "within budget": "VERID_BURNT_GIT_MAIN_COMMIT",
+      "budget spent": "VERID_BURNT_GIT_UNRESOLVED",
+    });
+  });
+
+  it("refuses a Git call when a manifest repo's default_branch cannot be read", () => {
+    const dir = committed();
+    git(dir, "switch", "-q", "-c", "feat/a");
+    const broken = repo();
+    writeFileSync(join(broken, ".git", "config"), "[core\nbroken");
+    const calls = gitCalls("git commit -m x");
+    const judge = (
+      repos: {
+        path: string;
+        default_branch: string;
+        source_globs: string[];
+        test_globs: string[];
+      }[],
+    ) => {
+      const facts = gitCallFacts(calls, dir, dir, { repos });
+      const denied = decideGit(calls, facts, { protectedRefs: [] }, new Set());
+      return denied.map((d) => (d.kind === "deny" ? d.code : d.kind)).join() || "allow";
+    };
+    const declared = { default_branch: "master", source_globs: ["**"], test_globs: ["t/**"] };
+    expect({
+      readable: judge([{ path: ".", ...declared }]),
+      unreadable: judge([
+        { path: ".", ...declared },
+        { path: relative(dir, broken), ...declared },
+      ]),
+    }).toEqual({ readable: "allow", unreadable: "VERID_BURNT_GIT_UNRESOLVED" });
   });
 
   it("counts a repo git fails to read as not clean", () => {

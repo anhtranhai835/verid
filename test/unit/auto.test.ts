@@ -244,6 +244,7 @@ describe("the coder's rounds, closing a module, progress, and the next step", ()
     sha256: "s",
     at: "t",
     verdict: "pass",
+    identity: null,
   };
   const passSecurity = { ...passReview, agent_type: "verid:security" };
 
@@ -344,6 +345,83 @@ describe("the coder's rounds, closing a module, progress, and the next step", ()
       "security of another module": false,
       "architecture fresh": true,
       "architecture stale": false,
+    });
+  });
+
+  it("closes only on reviews of the work as it is now, with a Git history that holds", () => {
+    const tdd = { last_run: "r1", failing: [], dirty: false };
+    const now = { identity: "w2", problem: null };
+    const read = (identity: string) => ({ ...passReview, identity });
+    const message = {
+      code: "VERID_BURNT_GIT_COMMIT_MESSAGE" as const,
+      params: { repo: ".", commit: "abc", header: "wip" },
+    };
+    expect({
+      current: closeReady(view, tdd, read("w2"), true, undefined, [], now),
+      "review read other work": closeReady(view, tdd, read("w1"), true, undefined, [], now),
+      "security read other work": closeReady(
+        view,
+        tdd,
+        read("w2"),
+        true,
+        { ...passSecurity, identity: "w1" },
+        [],
+        now,
+      ),
+      "history problem": closeReady(view, tdd, read("w2"), true, undefined, [], {
+        ...now,
+        problem: message,
+      }),
+    }).toEqual({
+      current: true,
+      "review read other work": false,
+      "security read other work": false,
+      "history problem": false,
+    });
+  });
+
+  it("asks for a commit before the review, then the Git fix, then a review of the committed work", () => {
+    const open: AutoPhase = { kind: "module", view };
+    const now = { identity: "w2", problem: null };
+    const message = {
+      code: "VERID_BURNT_GIT_COMMIT_MESSAGE" as const,
+      params: { repo: ".", commit: "abc", header: "wip" },
+    };
+    const step = (...args: Parameters<typeof autoNextStep>) => {
+      const s = autoNextStep(...args);
+      return `${s.key} ${Object.values(s.params).join(" ")}`;
+    };
+    expect({
+      "uncommitted, no review": step(open, true, true, null, false, undefined, [], now),
+      "history problem": step(open, true, true, null, true, undefined, [], {
+        ...now,
+        problem: message,
+      }),
+      "review of other work": step(
+        open,
+        true,
+        true,
+        { ...passReview, identity: "w1" },
+        true,
+        undefined,
+        [],
+        now,
+      ),
+      "security of other work": step(
+        open,
+        true,
+        true,
+        { ...passReview, identity: "w2" },
+        true,
+        { ...passSecurity, identity: "w1" },
+        [],
+        now,
+      ),
+    }).toEqual({
+      "uncommitted, no review": "auto.commit calc",
+      "history problem": "VERID_BURNT_GIT_COMMIT_MESSAGE . abc wip calc",
+      "review of other work": "auto.review calc",
+      "security of other work": "auto.security calc",
     });
   });
 

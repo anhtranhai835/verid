@@ -1,10 +1,216 @@
 import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { createHash, randomUUID } from "node:crypto";
+import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { gitCleanAcross } from "../core/auto.js";
+import {
+  needsFacts,
+  resolveMain,
+  type CallFacts,
+  type GitCall,
+  type RepoFacts,
+  type RootHistory,
+} from "../core/git-convention.js";
 import { repoPathKey, type Manifest } from "../core/manifest.js";
+import { isSecretPath } from "../core/policy.js";
 import type { AutoState } from "../core/state.js";
 import { errno } from "./state-store.js";
+
+/**
+ * Git as verid reads it: an argument array, never a shell; untranslated, so messages read the
+ * same on every machine; without the optional locks the agent's own Git needs; bounded in time
+ * and output, where running out counts as a failure.
+ */
+export function runGit(
+  cwd: string,
+  args: readonly string[],
+  maxBuffer = 16 * 1024 * 1024,
+  timeout = 15_000,
+) {
+  return spawnSync("git", ["--no-optional-locks", "-c", "core.fsmonitor=false", ...args], {
+    cwd,
+    encoding: "utf8",
+    windowsHide: true,
+    env: { ...process.env, LC_ALL: "C" },
+    timeout,
+    maxBuffer,
+  });
+}
+const ok = (r: ReturnType<typeof runGit>) => !r.error && r.status === 0;
+
+/**
+ * How long the hook gives Git for one tool call, all repositories together: well inside the 10 s the
+ * hooks are registered with, so verid refuses before the host gives up and lets the call run.
+ */
+export const HOOK_GIT_BUDGET_MS = 6_000;
+
+// Git that has to finish by `deadline`; past it, a failure without running Git.
+function runBy(deadline: number, cwd: string, args: readonly string[]) {
+  const left = deadline - Date.now();
+  if (left <= 0)
+    return {
+      error: new Error("verid's time for Git ran out"),
+      status: null,
+      stdout: "",
+      stderr: "",
+    } as unknown as ReturnType<typeof runGit>;
+  return runGit(cwd, args, undefined, Math.min(15_000, left));
+}
+const failure = (r: ReturnType<typeof runGit>) =>
+  r.error
+    ? `git did not run: ${errno(r.error) ?? r.error.message}`
+    : (r.stderr.trim().split("\n")[0] ?? `git exited ${r.status}`);
+
+/** A folder as one key: the same folder spelled two ways on Windows is one repository. */
+export const folderKey = (path: string): string => {
+  const full = resolve(path);
+  return process.platform === "win32" ? full.toLowerCase() : full;
+};
+// Git Bash names drives `/c/...`; resolve() would read that as a folder on the current drive.
+const shellPath = (path: string) =>
+  process.platform === "win32" ? path.replace(/^\/([a-zA-Z])(?=\/|$)/, "$1:") : path;
+
+/** The top folder of the repository holding `folder`; null outside one; an error otherwise. */
+export function gitTop(folder: string, deadline = Infinity): string | null | { error: string } {
+  const r = runBy(deadline, folder, ["rev-parse", "--show-toplevel"]);
+  if (ok(r)) return resolve(r.stdout.trim());
+  return NOT_A_REPO.test(r.stderr ?? "") ? null : { error: failure(r) };
+}
+
+/**
+ * The default_branch each manifest repo declares, by the repository top it lives in: a monorepo's
+ * paths in one repository declare for that one root.
+ */
+export function declaredMains(
+  project: string,
+  manifest: Pick<Manifest, "repos">,
+  deadline = Infinity,
+): Map<string, string[]> | { error: string } {
+  const out = new Map<string, string[]>();
+  for (const repo of manifest.repos) {
+    if (!repo.default_branch) continue;
+    const folder = resolve(project, ...repo.path.split("/"));
+    if (!existsSync(folder)) continue;
+    const top = gitTop(folder, deadline);
+    if (top === null) continue;
+    // A declaration verid cannot place must not let main fall back to another branch.
+    if (typeof top !== "string") return { error: `default_branch of ${repo.path}: ${top.error}` };
+    out.set(folderKey(top), [...(out.get(folderKey(top)) ?? []), repo.default_branch]);
+  }
+  return out;
+}
+
+/** Everything the Git rules read about the repository holding `folder`, before the line runs. */
+export function repoFacts(
+  folder: string,
+  rootDefault: string | undefined,
+  declared: () => Map<string, string[]> | { error: string },
+  deadline = Infinity,
+): RepoFacts | { error: string } {
+  if (!existsSync(folder)) return { error: `no folder ${folder}` };
+  const where = runBy(deadline, folder, ["rev-parse", "--show-toplevel", "--absolute-git-dir"]);
+  if (!ok(where))
+    return { error: NOT_A_REPO.test(where.stderr ?? "") ? "not a git repository" : failure(where) };
+  const [topLine = "", gitDir = ""] = where.stdout.trim().split("\n");
+  const top = resolve(topLine);
+  const head = runBy(deadline, folder, ["symbolic-ref", "--quiet", "HEAD"]);
+  if (!ok(head) && head.status !== 1) return { error: failure(head) };
+  const symbolic = ok(head) ? head.stdout.trim() : "";
+  const branch = symbolic.startsWith("refs/heads/") ? symbolic.slice("refs/heads/".length) : null;
+  const refs = runBy(deadline, folder, [
+    "for-each-ref",
+    "--format=%(refname)%00%(symref)",
+    "refs/heads",
+    "refs/tags",
+    "refs/remotes",
+  ]);
+  if (!ok(refs)) return { error: failure(refs) };
+  const heads: string[] = [];
+  const tags: string[] = [];
+  const remoteBranches: string[] = [];
+  let originHead: string | null = null;
+  for (const line of refs.stdout.split("\n").filter(Boolean)) {
+    const [name = "", symref = ""] = line.split("\0");
+    if (name.startsWith("refs/heads/")) heads.push(name.slice("refs/heads/".length));
+    else if (name.startsWith("refs/tags/")) tags.push(name.slice("refs/tags/".length));
+    else if (name === "refs/remotes/origin/HEAD")
+      originHead = symref.startsWith("refs/remotes/origin/")
+        ? symref.slice("refs/remotes/origin/".length)
+        : null;
+    else if (name.startsWith("refs/remotes/") && symref === "")
+      remoteBranches.push(name.slice("refs/remotes/".length));
+  }
+  const settings = runBy(deadline, folder, [
+    "config",
+    "-z",
+    "--get-regexp",
+    "^(push\\.default|push\\.recursesubmodules|pull\\.rebase|rebase\\.updaterefs|remote\\..*|branch\\..*|alias\\..*)$",
+  ]);
+  if (!ok(settings) && settings.status !== 1) return { error: failure(settings) };
+  const config: Record<string, string[]> = {};
+  for (const entry of (ok(settings) ? settings.stdout : "").split("\0").filter(Boolean)) {
+    const cut = entry.indexOf("\n");
+    const key = cut === -1 ? entry : entry.slice(0, cut);
+    (config[key] ??= []).push(cut === -1 ? "true" : entry.slice(cut + 1));
+  }
+  // A rebase stops on a detached HEAD; the branch it rewrites is the one it will update.
+  const rebasing =
+    branch === null
+      ? (["rebase-merge", "rebase-apply"]
+          .map((dir) => join(gitDir, dir, "head-name"))
+          .filter((file) => existsSync(file))
+          .map((file) =>
+            readFileSync(file, "utf8")
+              .trim()
+              .replace(/^refs\/heads\//, ""),
+          )[0] ?? null)
+      : null;
+  const mains = declared();
+  if (!(mains instanceof Map)) return mains;
+  return {
+    top,
+    branch,
+    rebasing,
+    main: resolveMain({
+      declared: mains.get(folderKey(top)) ?? [],
+      rootDefault,
+      originHead,
+      heads,
+    }),
+    heads,
+    tags,
+    remoteBranches,
+    config,
+  };
+}
+
+/** The facts of each Git call that needs them, reading each folder once; null for the others. */
+export function gitCallFacts(
+  calls: readonly GitCall[],
+  cwd: string,
+  project: string,
+  manifest: Pick<Manifest, "repos" | "git">,
+  deadline = Date.now() + HOOK_GIT_BUDGET_MS,
+): CallFacts[] {
+  let declared: Map<string, string[]> | { error: string } | undefined;
+  const cache = new Map<string, RepoFacts | { error: string }>();
+  return calls.map((call) => {
+    if (!needsFacts(call)) return null;
+    const folder = call.dirs.reduce((dir, next) => resolve(dir, shellPath(next)), cwd);
+    const key = folderKey(folder);
+    if (!cache.has(key))
+      cache.set(
+        key,
+        repoFacts(
+          folder,
+          manifest.git?.default_branch,
+          () => (declared ??= declaredMains(project, manifest, deadline)),
+          deadline,
+        ),
+      );
+    return cache.get(key)!;
+  });
+}
 
 export interface GitView {
   clean: boolean;
@@ -35,6 +241,8 @@ export function gitView(project: string): GitView | null {
   // --untracked-files=normal: a new file must count as dirty even where status.showUntrackedFiles=no.
   const status = run([
     "--no-optional-locks",
+    "-c",
+    "core.fsmonitor=false",
     "status",
     "--porcelain",
     "--untracked-files=normal",
@@ -85,4 +293,224 @@ export function gitTree(
       Object.entries(views).map(([path, view]) => [path, view !== null]),
     ),
   };
+}
+
+/** One Git root of the project: the repo path it is known by, and its top folder. */
+export interface WorkRoot {
+  repo: string;
+  top: string;
+}
+
+/**
+ * Each Git repository the project's work lands in, once: the project folder and every listed repo
+ * in a monorepo (one repository however many paths it holds), or each child repo and `.verid` in a
+ * workspace, never the workspace folder itself. Folders outside Git are not roots; a repository
+ * Git cannot read is an error.
+ */
+export function workRoots(
+  project: string,
+  manifest: Pick<Manifest, "layout" | "repos">,
+): WorkRoot[] | { repo: string; error: string } {
+  const paths =
+    manifest.layout === "workspace"
+      ? [...manifest.repos.map((r) => r.path), ".verid"]
+      : [".", ...manifest.repos.map((r) => r.path)];
+  const roots: WorkRoot[] = [];
+  const seen = new Set<string>();
+  for (const path of paths) {
+    const folder = resolve(project, ...path.split("/"));
+    if (manifest.layout === "workspace" && !existsSync(join(folder, ".git"))) continue;
+    if (!existsSync(folder)) continue;
+    const top = gitTop(folder);
+    if (top === null) continue;
+    if (typeof top !== "string") return { repo: path, error: top.error };
+    if (seen.has(folderKey(top))) continue;
+    seen.add(folderKey(top));
+    roots.push({ repo: path, top });
+  }
+  return roots;
+}
+
+export type Work = Record<string, { main: string; base: string }>;
+
+/** Main's commit in each Git root now, where module work begins; a problem when one is unclear. */
+export function captureWork(
+  project: string,
+  manifest: Pick<Manifest, "layout" | "repos" | "git">,
+): Work | { repo: string; detail: string } {
+  const roots = workRoots(project, manifest);
+  if (!Array.isArray(roots)) return { repo: roots.repo, detail: roots.error };
+  let declared: Map<string, string[]> | { error: string } | undefined;
+  const work: Work = {};
+  for (const { repo, top } of roots) {
+    const facts = repoFacts(
+      top,
+      manifest.git?.default_branch,
+      () => (declared ??= declaredMains(project, manifest)),
+    );
+    if ("error" in facts) return { repo, detail: facts.error };
+    if (!facts.main.ok) return { repo, detail: `main: ${facts.main.detail}` };
+    const main = facts.main.main;
+    const tip = runGit(top, ["rev-parse", "--verify", "-q", `refs/heads/${main}^{commit}`]);
+    if (!ok(tip)) return { repo, detail: `main ${main} has no commit yet` };
+    work[repo] = { main, base: tip.stdout.trim() };
+  }
+  return work;
+}
+
+// Enough for any module; a longer range is refused rather than read in part.
+const MAX_COMMITS = 500;
+
+/** Each recorded root's commits since its base, read again in full every time. */
+export function readHistories(project: string, work: Work): RootHistory[] {
+  return Object.entries(work).map(([repo, { base }]): RootHistory => {
+    const folder = resolve(project, ...repo.split("/"));
+    const top = existsSync(folder) ? gitTop(folder) : null;
+    if (top === null) return { repo, error: "the repository is gone or no longer in Git" };
+    if (typeof top !== "string") return { repo, error: top.error };
+    const head = runGit(top, ["rev-parse", "--verify", "-q", "HEAD^{commit}"]);
+    if (!ok(head)) return { repo, error: "HEAD has no commit" };
+    const ancestor = runGit(top, ["merge-base", "--is-ancestor", base, "HEAD"]);
+    if (!ok(ancestor) && ancestor.status !== 1)
+      return { repo, error: `the recorded base ${base.slice(0, 12)} cannot be read` };
+    if (!ok(ancestor)) return { repo, ancestor: false, commits: [] };
+    const log = runGit(top, [
+      "log",
+      "-z",
+      `--max-count=${MAX_COMMITS + 1}`,
+      "--format=%H%n%B",
+      `${base}..HEAD`,
+    ]);
+    if (!ok(log)) return { repo, error: failure(log) };
+    const commits = log.stdout
+      .split("\0")
+      .filter((entry) => entry.trim() !== "")
+      .map((entry) => {
+        const cut = entry.indexOf("\n");
+        return { sha: entry.slice(0, cut).trim(), message: entry.slice(cut + 1) };
+      });
+    if (commits.length > MAX_COMMITS)
+      return { repo, error: `more than ${MAX_COMMITS} commits since the recorded base` };
+    return { repo, ancestor: true, commits };
+  });
+}
+
+/**
+ * What a review read, as one string: each Git root's HEAD and its uncommitted tracked changes.
+ * A new commit, an amended message or a changed file after the review gives another string. Null
+ * when the project has no Git root; a root Git cannot read gives a string nothing equals.
+ */
+export function workIdentity(
+  project: string,
+  manifest: Pick<Manifest, "layout" | "repos">,
+): string | null {
+  const roots = workRoots(project, manifest);
+  const unreadable = () => `unreadable ${randomUUID()}`;
+  if (!Array.isArray(roots)) return unreadable();
+  if (roots.length === 0) return null;
+  const parts: string[][] = [];
+  for (const { repo } of roots) {
+    const folder = resolve(project, ...repo.split("/"));
+    const head = runGit(folder, ["rev-parse", "--verify", "-q", "HEAD"]);
+    const diff = runGit(folder, [
+      "diff",
+      "HEAD",
+      "--binary",
+      "--no-ext-diff",
+      "--no-textconv",
+      "--",
+      ".",
+      ...MACHINE_SETTINGS,
+    ]);
+    if (!ok(head) || !ok(diff)) return unreadable();
+    parts.push([repo, head.stdout.trim(), createHash("sha256").update(diff.stdout).digest("hex")]);
+  }
+  return JSON.stringify(parts);
+}
+
+// What review evidence never shows: the files the secret rule protects, and verid's own state.
+const UNSHOWN = [
+  "**/.env",
+  "**/.env.*",
+  "**/.npmrc",
+  "**/.pypirc",
+  "**/.netrc",
+  "**/*.pem",
+  "**/*.key",
+  "**/*.p12",
+  "**/*.pfx",
+  "**/id_rsa*",
+  "**/id_ed25519*",
+  "**/*credentials*",
+  "**/*secret*",
+  "**/.ssh/**",
+  "**/.codex/auth.json",
+  "**/.state/**",
+].map((glob) => `:(exclude,glob,icase)${glob}`);
+const LOG_LIMIT = 400_000;
+
+/**
+ * A module's work for a reviewer that cannot run Git: for each recorded root, every commit since
+ * its base with its full message and its diff, then the uncommitted diff and the names of new
+ * files. Secret files and verid's state are left out; it writes nothing.
+ */
+export function workLog(project: string, work: Work): string[] {
+  const lines: string[] = [];
+  for (const [repo, { main, base }] of Object.entries(work)) {
+    const folder = resolve(project, ...repo.split("/"));
+    const head = runGit(folder, ["rev-parse", "--verify", "-q", "HEAD"]);
+    const branch = runGit(folder, ["symbolic-ref", "--quiet", "--short", "HEAD"]);
+    lines.push(
+      `== repo ${repo} · main ${main} · base ${base.slice(0, 12)} · HEAD ${ok(head) ? head.stdout.trim().slice(0, 12) : "?"} (${ok(branch) ? branch.stdout.trim() : "detached"})`,
+    );
+    const shas = runGit(folder, [
+      "rev-list",
+      "--reverse",
+      `--max-count=${MAX_COMMITS}`,
+      `${base}..HEAD`,
+    ]);
+    if (!ok(shas)) lines.push(`(history unreadable: ${failure(shas)})`);
+    for (const sha of ok(shas) ? shas.stdout.split("\n").filter(Boolean) : []) {
+      const message = runGit(folder, ["log", "-1", "--format=%B", sha]);
+      const diff = runGit(folder, [
+        "diff-tree",
+        "-p",
+        "-r",
+        "--root",
+        "--no-commit-id",
+        "--no-ext-diff",
+        "--no-textconv",
+        sha,
+        "--",
+        ".",
+        ...UNSHOWN,
+      ]);
+      lines.push(`--- commit ${sha}`, message.stdout.trimEnd(), "", diff.stdout.trimEnd());
+    }
+    const changed = runGit(folder, [
+      "diff",
+      "HEAD",
+      "--no-ext-diff",
+      "--no-textconv",
+      "--",
+      ".",
+      ...UNSHOWN,
+    ]);
+    const added = runGit(folder, [
+      "ls-files",
+      "--others",
+      "--exclude-standard",
+      "-z",
+      "--",
+      ".",
+      ...UNSHOWN,
+    ]);
+    lines.push("--- uncommitted", changed.stdout.trimEnd());
+    const names = added.stdout.split("\0").filter((name) => name !== "" && !isSecretPath(name));
+    if (names.length > 0) lines.push("--- new files", ...names);
+  }
+  const text = lines.join("\n");
+  return text.length > LOG_LIMIT
+    ? [`${text.slice(0, LOG_LIMIT)}`, "(cut: the work history is longer than verid prints)"]
+    : lines;
 }

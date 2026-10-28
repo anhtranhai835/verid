@@ -330,6 +330,10 @@ it("denies named plugin Bash aliases through the real hook", async () => {
 });
 
 it("allows workspace git commits and application plugins paths through the real hook", async () => {
+  // The Git rules judge `.verid` as a repository of its own: commits go on a work branch.
+  tempGit(join(project, ".verid"), ["init", "-q", "-b", "main"]);
+  tempGit(join(project, ".verid"), ["commit", "-q", "--allow-empty", "-m", "chore: start"]);
+  tempGit(join(project, ".verid"), ["switch", "-q", "-c", "docs/plan"]);
   const rows = [
     "git -C .verid add -A",
     "git -C .verid commit -m x",
@@ -656,6 +660,8 @@ const prepareTreeReplacement = async (kind: "git" | "workspace git" | "copy" | "
     tempGit(cwd, ["commit", "-qm", "evil"]);
     tempGit(cwd, ["branch", "evil"]);
     tempGit(cwd, ["reset", "--hard", approved]);
+    // On a work branch, so the Git rules let the reset through to the plugin integrity check.
+    tempGit(cwd, ["switch", "-q", "-c", "chore/plugins"]);
     mkdirSync(join(project, ".verid/x"), { recursive: true });
   } else {
     cpSync(join(project, ".verid/plugins"), join(project, "evil/plugins"), { recursive: true });

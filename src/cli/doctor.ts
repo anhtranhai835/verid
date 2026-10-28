@@ -17,10 +17,11 @@ import {
   reviewerContent,
 } from "../adapters/codex-settings.js";
 import { bilingual, inLanguage, t } from "../adapters/i18n.js";
-import { gitView } from "../adapters/git.js";
+import { declaredMains, gitView, readHistories, repoFacts, workRoots } from "../adapters/git.js";
+import { closeHistory, isWorkBranch } from "../core/git-convention.js";
 import { isDirectory, loadManifest } from "../adapters/manifest.js";
 import { checkedRepos, contentsOf, WORD } from "../adapters/architecture.js";
-import { architectureOf, moduleClosing } from "../adapters/plan-file.js";
+import { architectureOf, moduleClosing, openWork } from "../adapters/plan-file.js";
 import { errno, readState, statePaths, VeridError } from "../adapters/state-store.js";
 import { findRunners } from "../adapters/test-runner.js";
 import { repoFolder } from "../adapters/workspace.js";
@@ -270,23 +271,6 @@ export async function doctorCommand(project: string): Promise<CliResult> {
       if (!git.clean)
         problem("repo.dirty", "doctor.repo.dirty", "doctor.repo.dirty.fix", { repo: repo.path });
       else lines.push(say("doctor.repo.clean", { repo: repo.path }));
-      if (repo.default_branch) {
-        const branch = spawnSync("git", ["symbolic-ref", "--quiet", "--short", "HEAD"], {
-          cwd: folder,
-          encoding: "utf8",
-          windowsHide: true,
-          timeout: 5000,
-        });
-        const current = branch.status === 0 ? branch.stdout.trim() : null;
-        if (current !== repo.default_branch)
-          problem(
-            "repo.branch",
-            current === null ? "doctor.repo.branch.detached" : "doctor.repo.branch.mismatch",
-            "doctor.repo.branch.fix",
-            { repo: repo.path, branch: current ?? "HEAD", expected: repo.default_branch },
-          );
-        else lines.push(say("doctor.repo.branch.ok", { repo: repo.path, branch: current }));
-      }
     }
     if (manifest?.layout === "workspace" && repo.path === ".verid") continue;
     const runners = repo.test_cmd
@@ -304,6 +288,60 @@ export async function doctorCommand(project: string): Promise<CliResult> {
       });
     else if (repo.test_cmd) lines.push(say("doctor.repo.runner.custom", { repo: repo.path }));
     else lines.push(say("doctor.repo.runner.ok", { repo: repo.path, runners }));
+  }
+  // Git as the hook and the close read it, offline: main and the branch in each root, then the
+  // open module's history. A count of commits is only noted.
+  if (manifest) {
+    const roots = workRoots(project, manifest);
+    if (!Array.isArray(roots))
+      problem("repo.main", "doctor.repo.main", "doctor.repo.main.fix", {
+        repo: roots.repo,
+        detail: roots.error,
+      });
+    let declared: Map<string, string[]> | { error: string } | undefined;
+    for (const { repo, top } of Array.isArray(roots) ? roots : []) {
+      const facts = repoFacts(
+        top,
+        manifest.git?.default_branch,
+        () => (declared ??= declaredMains(project, manifest!)),
+      );
+      const detail = "error" in facts ? facts.error : facts.main.ok ? null : facts.main.detail;
+      if (detail !== null || "error" in facts || !facts.main.ok)
+        problem("repo.main", "doctor.repo.main", "doctor.repo.main.fix", {
+          repo,
+          detail: detail ?? "",
+        });
+      else if (facts.branch === null)
+        problem("repo.branch", "doctor.repo.branch.detached", "doctor.repo.branch.fix", { repo });
+      else if (facts.branch !== facts.main.main && !isWorkBranch(facts.branch))
+        problem("repo.branch", "doctor.repo.branch.mismatch", "doctor.repo.branch.fix", {
+          repo,
+          branch: facts.branch,
+          main: facts.main.main,
+        });
+      else lines.push(say("doctor.repo.branch.ok", { repo, branch: facts.branch }));
+    }
+    let open: ReturnType<typeof openWork> = null;
+    try {
+      open = openWork(project, manifest, readState(statePaths(project)));
+    } catch (e) {
+      if (!(e instanceof VeridError)) throw e; // no state yet, or state the hook reports itself
+    }
+    if (open?.work !== undefined) {
+      const history = closeHistory(readHistories(project, open.work));
+      if (history.problem)
+        problem("module.history", history.problem.code, "doctor.module.history.fix", {
+          module: open.module,
+          ...history.problem.params,
+        });
+      for (const { repo, commits } of history.counts)
+        lines.push(say("git.commits", { module: open.module, repo, count: String(commits) }));
+    } else if (open && manifest.drive !== "auto" && Array.isArray(roots) && roots.length > 0)
+      problem("module.history", "VERID_BURNT_GIT_WORK_BASE", "doctor.module.history.fix", {
+        module: open.module,
+        repo: roots[0]!.repo,
+        detail: "ordered before verid recorded where work begins",
+      });
   }
   // A configured architecture check is named, never run: its evidence comes from taste alone.
   if (manifest && checkedRepos(manifest).length > 0) {
