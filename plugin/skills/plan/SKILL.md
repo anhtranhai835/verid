@@ -80,7 +80,7 @@ Build the open module with the `verid:build` skill. `verid menu` always says wha
 
 When the first line of `verid menu` says `drive auto` (the session-start message says it too), verid
 opens and serves the modules itself, in the order of the file, and the developer signs only the
-research and the design. Do not read the manifest with Bash to find out: verid blocks it. Skip
+research and the design, then squash-merges each module's branch before the next opens. Do not read the manifest with Bash to find out: verid blocks it. Skip
 "Ordering": `verid order <module>` is refused (`VERID_BURNT_AUTO_ORDER_MODULE`).
 
 - Have the mapped planner draft the plan once the head line of `verid menu` says `signed`, or

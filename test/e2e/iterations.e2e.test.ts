@@ -53,6 +53,20 @@ function run(file: string, args: string[], input?: object, timezone = "UTC") {
   return { code: result.status, stdout: result.stdout, stderr: result.stderr };
 }
 const cli = (...args: string[]) => run(CLI, args);
+// The project on a Git main with everything committed: auto makes each module's branch from it.
+const gitMain = () => {
+  for (const args of [
+    ["init", "-q", "-b", "main"],
+    ["add", "-A"],
+    ["commit", "-q", "-m", "chore: start"],
+  ]) {
+    const r = spawnSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], {
+      cwd: project,
+      encoding: "utf8",
+    });
+    expect(r.status, r.stderr).toBe(0);
+  }
+};
 const manifest = () => readFileSync(join(project, ".verid", "manifest.yaml"), "utf8");
 const put = (name: string, text: string) => writeFileSync(join(project, ".verid", name), text);
 const productionWrite = () =>
@@ -298,6 +312,7 @@ describe("iterations through the real CLI and hook", () => {
     const base = parse(manifest());
     put("research.md", "research");
     put("design.md", "design");
+    gitMain();
     for (const row of rows) {
       put(
         "manifest.yaml",
@@ -336,6 +351,7 @@ describe("iterations through the real CLI and hook", () => {
       "plan.md",
       "## Module: auth\nIteration: 1\n- AC-1: signs in\n## Module: product\nIteration: 2\n- AC-9 (e2e): uses the product\n",
     );
+    gitMain();
     expect(cli("order").code).toBe(0);
     expect(reviewPlan().code).toBe(0);
     cooking();

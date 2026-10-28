@@ -93,23 +93,21 @@ export function readPlan(project: string, iterations = false): PlanRead | null {
 }
 
 /**
- * The open module and where its work began: the auto drive's recorded work, or the human order's.
- * Null when no module is open; work undefined when none was recorded for it.
+ * The open module and where its work began: the auto drive's recorded work and branch, or the
+ * human order's. Null when no module is open; work undefined when none was recorded for it.
  */
 export function openWork(
   project: string,
   manifest: Pick<Manifest, "drive" | "iterations">,
   state: State,
-): { module: string; work: Work | undefined } | null {
+): { module: string; work: Work | undefined; branch?: string } | null {
   const iterations = manifest.iterations !== undefined;
   if (manifest.drive === "auto") {
     const phase = autoPhase(autoFactsOf(project, state, iterations));
     if (phase.kind !== "module") return null;
     const { name } = phase.view;
-    return {
-      module: name,
-      work: state.auto.work?.module === name ? state.auto.work.roots : undefined,
-    };
+    const work = state.auto.work?.module === name ? state.auto.work : undefined;
+    return { module: name, work: work?.roots, ...(work?.branch && { branch: work.branch }) };
   }
   const plan = readPlan(project, iterations);
   const views = plan?.ok

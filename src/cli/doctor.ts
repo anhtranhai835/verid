@@ -328,7 +328,7 @@ export async function doctorCommand(project: string): Promise<CliResult> {
       if (!(e instanceof VeridError)) throw e; // no state yet, or state the hook reports itself
     }
     if (open?.work !== undefined) {
-      const history = closeHistory(readHistories(project, open.work));
+      const history = closeHistory(readHistories(project, open.work, open.branch));
       if (history.problem)
         problem("module.history", history.problem.code, "doctor.module.history.fix", {
           module: open.module,

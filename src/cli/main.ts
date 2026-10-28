@@ -469,7 +469,10 @@ async function approve(project: string, wanted: string | undefined): Promise<Cli
  * of the open module; the reviewed plan stands only if neither file changed since the last
  * signature. A served module whose section of the plan was edited since is reopened, and one the
  * plan no longer has is forgotten. Each file is read once, so the hashes signed and the next step
- * describe the same bytes.
+ * describe the same bytes. A closed module waiting for its merge is released when the drive is
+ * not stuck: the developer acknowledges an integration that exact matching cannot see, such as a
+ * squash with a resolved conflict. Where any other module's work began, and its branch, stay as
+ * recorded.
  */
 function signAuto(project: string, manifest: Manifest, wanted: string | undefined): CliResult {
   if (wanted !== undefined) throw new VeridError("VERID_BURNT_AUTO_ORDER_MODULE");
@@ -487,6 +490,10 @@ function signAuto(project: string, manifest: Manifest, wanted: string | undefine
     const unchanged =
       before?.research_sha256 === researchHash && before.design_sha256 === designHash;
     const edited = facts.plan?.ok ? changedServed(facts.plan.hashes, state.modules) : [];
+    // An order that resumes a stuck drive keeps a module's merge wait; one given while it is not
+    // stuck is the developer's acknowledgement that the module was integrated.
+    const stuck = autoPhase(facts).kind === "stuck";
+    const waiting = !stuck && state.auto.work?.stage === "waiting" ? state.auto.work.module : null;
     const next: State = {
       ...state,
       modules: Object.fromEntries(
@@ -504,8 +511,7 @@ function signAuto(project: string, manifest: Manifest, wanted: string | undefine
           git_repos: gitTree(project, manifest).presence,
         },
         plan_sha256: unchanged ? state.auto.plan_sha256 : null,
-        // Where the open module's work began stays as recorded.
-        work: state.auto.work,
+        work: waiting === null ? state.auto.work : null,
       },
     };
     // blocked.md is removed below, so it is not read as a reason to stop. Nothing is committed or
@@ -523,11 +529,14 @@ function signAuto(project: string, manifest: Manifest, wanted: string | undefine
       research_sha256: researchHash,
       design_sha256: designHash,
     });
+    if (waiting !== null)
+      appendAudit(paths.audit, { event: "integration_acknowledged", module: waiting });
     writeState(paths, next);
     rmSync(blockedFile(project), { force: true });
     const lines = [
       `verid: auto signed · research ${researchHash.slice(0, 8)} · design ${designHash.slice(0, 8)}`,
       bilingual("auto.signed", {}),
+      ...(waiting === null ? [] : [bilingual("auto.acknowledged", { module: waiting })]),
       bilingual(step.key, { ...mappedAgents(manifest.roles), ...step.params }),
     ];
     return { exit: 0, stdout: `${lines.join("\n")}\n`, stderr: "" };

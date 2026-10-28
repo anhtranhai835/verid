@@ -357,6 +357,8 @@ describe("writes in an auto drive", () => {
     await signed();
     rows["plan pending"] = await code();
     planPassed();
+    gitRepo();
+    await hook(fixture("session-start")); // the module opens on its own branch
     setTdd("COOKING");
     rows.open = await code();
     put(".verid/blocked.md", "need a key");
@@ -454,6 +456,7 @@ describe("subagents stopping in an auto drive", () => {
   it("records the module review's verdict and counts a failing one", async () => {
     await signed();
     planPassed();
+    gitRepo();
     await reviewerStop("Verdict: fail");
     const failed = state();
     await reviewerStop("Verdict: pass");
@@ -468,6 +471,7 @@ describe("subagents stopping in an auto drive", () => {
   it("counts a coder round that ends red against the ACs its red tests name", async () => {
     await signed();
     planPassed();
+    gitRepo();
     // c1 wrote code, so its first stop while red is held, as today
     seed({
       writers: ["c1"],
@@ -705,6 +709,7 @@ describe("Stop in an auto drive", () => {
     gitRepo();
     await cli("order"); // signed again, now inside the repository
     planPassed();
+    await stop(false); // the module opens on its own branch
     seed({ tdd: calcGreen });
     // git answers "not a git repository" from here on
     renameSync(join(project, ".git"), join(project, ".git-moved"));
@@ -747,14 +752,15 @@ describe("Stop in an auto drive", () => {
     await reviewerStop("Verdict: pass");
     seed({ tdd: calcGreen }); // the run shows it
     const r = await stop(false);
+    // Closed with a commit, it waits for the developer's merge: the agent may stop.
     expect([
       again.stderr.includes(
         enMessage("auto.review", { module: "calc", reviewer: "verid:reviewer" }),
       ),
       typeof state().modules.calc?.served_at,
-      r.code,
-      r.stderr.includes(enMessage("auto.closed", { module: "calc" })),
-    ]).toEqual([true, "string", 2, true]);
+      told(r, "auto.closed", { module: "calc" }),
+      told(r, "auto.waiting_merge", { module: "calc", repos: "." }),
+    ]).toEqual([true, "string", true, true]);
   });
 
   it("drops the module's passing review once an edited plan passes its review again", async () => {
@@ -859,6 +865,8 @@ describe("menu, peek and session start in an auto drive", () => {
     await signed();
     const pending = (await cli("menu")).stdout.split("\n");
     planPassed();
+    gitRepo();
+    await hook(fixture("session-start")); // the module opens on its own branch
     seed({ auto: { coder_rounds: { "AC-1": 2 }, module_reviews: 1 } });
     const open = (await cli("menu")).stdout.split("\n");
     appendFileSync(join(project, ".verid", "design.md"), "\nmore");
@@ -889,6 +897,8 @@ describe("menu, peek and session start in an auto drive", () => {
   it("gives peek and /verid:menu the same next step as the menu", async () => {
     await signed();
     planPassed();
+    gitRepo();
+    await hook(fixture("session-start")); // the module opens on its own branch
     const step = enMessage("menu.cook", {
       module: "calc",
       tester: "verid:tester",
@@ -908,4 +918,352 @@ describe("menu, peek and session start in an auto drive", () => {
     const out = (await hook(fixture("session-start"))).stdout;
     expect(out.includes(enMessage("drive.auto", {}))).toBe(true);
   });
+});
+
+describe("module branches and merge waits in an auto drive", () => {
+  // Every AC of calc passed in the last run, and nothing changed since.
+  const green = {
+    state: "PLATED",
+    last_run: "r1",
+    failing: [],
+    dirty: false,
+    passed_acs: ["AC-1"],
+  };
+  const out = (...args: string[]) =>
+    spawnSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], {
+      cwd: project,
+      encoding: "utf8",
+    }).stdout.trim();
+  const head = () => out("rev-parse", "HEAD");
+  const branch = () => out("branch", "--show-current");
+  // The project is a git repo on main with everything committed.
+  const gitMain = () => {
+    git("init", "-q", "-b", "main");
+    git("add", "-A");
+    git("commit", "-q", "-m", "chore: start");
+  };
+  const bash = (command: string) =>
+    hook(fixture("pre-tool-use-bash", (p) => (p.tool_input.command = command)));
+  // Module calc built, committed on its branch and passed by the reviewer, which closes it.
+  const closeCalc = async () => {
+    mkdirSync(join(project, "src"), { recursive: true });
+    put("src/a.ts", "export const add = (a: number, b: number) => a + b;\n");
+    git("add", "-A");
+    git("commit", "-q", "-m", "feat: add calc");
+    seed({ tdd: green });
+    await reviewerStop("Verdict: pass");
+  };
+  // What the developer does on GitHub, as the local main shows it once updated.
+  const squash = (message: string) => {
+    git("switch", "-q", "main");
+    git("merge", "--squash", "-q", "feat/calc");
+    git("commit", "-q", "-m", message);
+  };
+  const work = () => {
+    const w = state().auto.work;
+    return w === null ? null : `${w.module} ${w.branch} ${w.stage}`;
+  };
+  const anew = () => {
+    rmSync(project, { recursive: true, force: true });
+    fresh();
+  };
+
+  it("makes each module's branch from the local main, waits for its squash, then makes the next from main", async () => {
+    await signed();
+    planPassed();
+    gitMain();
+    const m1 = head();
+    await stop();
+    const opened = [branch(), work(), state().auto.work.roots["."].base === m1];
+    await closeCalc();
+    const closedHead = head();
+    const waiting = await stop();
+    const recorded = state().auto.work.roots["."];
+    const closed = [work(), recorded.closed === closedHead, recorded.delta.files];
+    squash("feat: calc (#1)");
+    const m2 = head();
+    const next = await stop();
+    expect({
+      opened,
+      closed,
+      "stop while waiting": told(waiting, "auto.waiting_merge", { module: "calc", repos: "." }),
+      next: [branch(), work(), state().auto.work.roots["."].base === m2, next.code],
+      audited: audit()
+        .filter((e) => e.event === "integration_detected")
+        .map((e) => [e.module, e.commits["."] === m2]),
+    }).toEqual({
+      opened: ["feat/calc", "calc feat/calc open", true],
+      closed: ["calc feat/calc waiting", true, 1],
+      "stop while waiting": true,
+      next: ["feat/product", "product feat/product open", true, 2],
+      audited: [["calc", true]],
+    });
+  }, 60_000); // many Git runs: slow on a busy machine
+
+  it("locks code, tests and the closed branch's history while the module waits, without counting stops", async () => {
+    await signed();
+    planPassed();
+    gitMain();
+    await stop();
+    await closeCalc();
+    const stops = [];
+    for (let i = 0; i < 10; i++) stops.push((await stop(i > 0)).code);
+    const started = await hook(fixture("session-start"));
+    const rows = {
+      stops: [...new Set(stops)],
+      holds: state().auto.stop_holds,
+      code: await code(),
+      test: await test(),
+      notes: await notes(),
+      commit: verdict(await bash('git commit -m "fix: x"')),
+      "switch to main": verdict(await bash("git switch main")),
+      "after a restart": [started.code, work()],
+    };
+    // The developer's squash is seen at the next stop or session start, never in a tool call.
+    squash("feat: calc (#1)");
+    expect({ ...rows, "squashed, before a stop": await code() }).toEqual({
+      stops: [0],
+      holds: 0,
+      code: "VERID_BURNT_AUTO_WAITING_MERGE",
+      test: "VERID_BURNT_AUTO_WAITING_MERGE",
+      notes: "exit 0",
+      commit: "VERID_BURNT_AUTO_WAITING_MERGE",
+      "switch to main": "exit 0",
+      "after a restart": [0, "calc feat/calc waiting"],
+      "squashed, before a stop": "VERID_BURNT_AUTO_WAITING_MERGE",
+    });
+  }, 60_000); // many Git runs: slow on a busy machine
+
+  it("waits on anything but the exact squash, until the developer's order acknowledges it", async () => {
+    await signed();
+    planPassed();
+    gitMain();
+    const m1 = head();
+    await stop();
+    await closeCalc();
+    const after = async (integrate: () => void) => {
+      integrate();
+      await stop();
+      const seen = work();
+      git("switch", "-q", "main");
+      git("reset", "-q", "--hard", m1);
+      return seen;
+    };
+    const rows = {
+      "merge commit": await after(() => {
+        git("switch", "-q", "main");
+        git("merge", "-q", "--no-ff", "-m", "feat: merge calc", "feat/calc");
+      }),
+      "message only": await after(() => {
+        git("switch", "-q", "main");
+        put("other.md", "x\n");
+        git("add", "other.md");
+        git("commit", "-q", "-m", "feat: add calc");
+      }),
+      "squash edited": await after(() => {
+        git("switch", "-q", "main");
+        git("merge", "--squash", "-q", "feat/calc");
+        put("src/a.ts", "export const add = (a: number, b: number) => b + a;\n");
+        git("add", "-A");
+        git("commit", "-q", "-m", "feat: calc (#1)");
+      }),
+      "not conventional": await after(() => squash("calc")),
+      "branch deleted": await after(() => {
+        git("switch", "-q", "main");
+        git("branch", "-q", "-D", "feat/calc");
+      }),
+    };
+    const ordered = await cli("order");
+    const acknowledged = [
+      work(),
+      audit().some((e) => e.event === "integration_acknowledged" && e.module === "calc"),
+      ordered.stdout.includes(enMessage("auto.acknowledged", { module: "calc" })),
+    ];
+    await stop();
+    expect({ ...rows, acknowledged, next: [branch(), work()] }).toEqual({
+      "merge commit": "calc feat/calc waiting",
+      "message only": "calc feat/calc waiting",
+      "squash edited": "calc feat/calc waiting",
+      "not conventional": "calc feat/calc waiting",
+      "branch deleted": "calc feat/calc waiting",
+      acknowledged: [null, true, true],
+      next: ["feat/product", "product feat/product open"],
+    });
+  }, 120_000); // many Git runs: slow on a busy machine
+
+  it("resumes a stuck drive without releasing the module that waits, and acknowledges on the next order", async () => {
+    await signed();
+    planPassed();
+    gitMain();
+    await stop();
+    await closeCalc();
+    put(".verid/blocked.md", "need a key\n");
+    const stuck = (await stop()).code;
+    await cli("order");
+    const resumed = [work(), existsSync(join(project, ".verid", "blocked.md"))];
+    await cli("order");
+    expect({ stuck, resumed, acknowledged: work() }).toEqual({
+      stuck: 0,
+      resumed: ["calc feat/calc waiting", false],
+      acknowledged: null,
+    });
+  }, 60_000); // many Git runs: slow on a busy machine
+
+  it("closes a module only from its own branch", async () => {
+    await signed();
+    planPassed();
+    gitMain();
+    await stop();
+    git("switch", "-q", "-c", "feat/elsewhere");
+    mkdirSync(join(project, "src"), { recursive: true });
+    put("src/a.ts", "export const add = (a: number, b: number) => a + b;\n");
+    git("add", "-A");
+    git("commit", "-q", "-m", "feat: add calc");
+    seed({ tdd: green });
+    await reviewerStop("Verdict: pass");
+    const held = await stop();
+    expect([
+      state().modules.calc,
+      held.code,
+      held.stderr.includes("HEAD is on feat/elsewhere, not on feat/calc"),
+    ]).toEqual([undefined, 2, true]);
+  }, 60_000); // many Git runs: slow on a busy machine
+
+  it("releases the wait of a module that changed nothing, and opens the next", async () => {
+    await signed();
+    planPassed();
+    gitMain();
+    await stop();
+    seed({ tdd: green });
+    await reviewerStop("Verdict: pass");
+    expect([
+      branch(),
+      work(),
+      audit().some((e) => e.event === "integration_released" && e.module === "calc"),
+    ]).toEqual(["feat/product", "product feat/product open", true]);
+  }, 60_000); // many Git runs: slow on a busy machine
+
+  it("refuses to prepare a branch it cannot make safely, and never discards work", async () => {
+    const tried = async (setup: () => void) => {
+      anew();
+      await signed();
+      planPassed();
+      setup();
+      const stopped = await stop();
+      const problem = String(JSON.parse(stopped.stdout || "{}").systemMessage ?? "");
+      return [await code(), stopped.code, problem.includes("feat/calc")];
+    };
+    const rows = {
+      "branch exists elsewhere": await tried(() => {
+        gitMain();
+        git("switch", "-q", "-c", "feat/calc");
+        put("x.md", "x\n");
+        git("add", "x.md");
+        git("commit", "-q", "-m", "docs: x");
+        git("switch", "-q", "main");
+      }),
+      "main has no commit": await tried(() => git("init", "-q", "-b", "main")),
+      "outside Git": await tried(() => {}),
+    };
+    expect(rows).toEqual({
+      "branch exists elsewhere": ["VERID_BURNT_AUTO_BRANCH", 0, true],
+      "main has no commit": ["VERID_BURNT_AUTO_BRANCH", 0, true],
+      "outside Git": ["VERID_BURNT_AUTO_BRANCH", 0, true],
+    });
+  }, 60_000); // many Git runs: slow on a busy machine
+
+  it("waits for the squash of every repo the module changed, and none for a repo it left alone", async () => {
+    const listed = (path: string) =>
+      [
+        `  - path: ${path}`,
+        `    test_cmd: ${JSON.stringify(`"${process.execPath}" "${RUNNER}" {junit}`)}`,
+        '    source_globs: ["src/**"]',
+        '    test_globs: ["test/**"]',
+      ].join("\n");
+    const gitIn = (dir: string, ...args: string[]) => {
+      const r = spawnSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], {
+        cwd: join(project, dir),
+        encoding: "utf8",
+      });
+      expect(r.status, r.stderr).toBe(0);
+      return r.stdout.trim();
+    };
+    for (const dir of ["api", "web"]) {
+      mkdirSync(join(project, dir));
+      put(`${dir}/readme.md`, "x\n");
+      gitIn(dir, "init", "-q", "-b", "main");
+      gitIn(dir, "add", "-A");
+      gitIn(dir, "commit", "-q", "-m", "chore: start");
+    }
+    // Repo roots may not overlap: the project folder is a Git root of its own, unlisted.
+    writeFileSync(
+      manifestFile,
+      manifest().replace(/repos:\n[\s\S]*$/, `repos:\n${listed("api")}\n${listed("web")}\n`),
+    );
+    await signed();
+    planPassed();
+    put(".gitignore", "api/\nweb/\n");
+    gitMain();
+    await stop();
+    const opened = ["api", "web"].map((dir) => gitIn(dir, "branch", "--show-current"));
+    mkdirSync(join(project, "api", "src"));
+    put("api/src/b.ts", "export const b = 1;\n");
+    gitIn("api", "add", "-A");
+    gitIn("api", "commit", "-q", "-m", "feat: add b");
+    await closeCalc();
+    const deltas = Object.entries(state().auto.work.roots).map(
+      ([repo, r]: [string, any]) => `${repo} ${r.delta.files}`,
+    );
+    gitIn("api", "switch", "-q", "main");
+    gitIn("api", "merge", "--squash", "-q", "feat/calc");
+    gitIn("api", "commit", "-q", "-m", "feat: calc api (#2)");
+    const half = await stop();
+    const halfway = [
+      work(),
+      typeof state().auto.work.roots.api.integrated,
+      told(half, "auto.waiting_merge", { module: "calc", repos: "." }),
+    ];
+    squash("feat: calc (#1)");
+    await stop();
+    expect({
+      opened,
+      deltas: deltas.sort(),
+      halfway,
+      next: [work(), ...["api", "web"].map((dir) => gitIn(dir, "branch", "--show-current"))],
+    }).toEqual({
+      opened: ["feat/calc", "feat/calc"],
+      deltas: [". 1", "api 1", "web 0"],
+      halfway: ["calc feat/calc waiting", "string", true],
+      next: ["product feat/product open", "feat/product", "feat/product"],
+    });
+  }, 120_000); // three repositories of Git runs: slow on a busy machine
+
+  it("resumes a preparation an interruption left halfway, on the base it recorded", async () => {
+    await signed();
+    planPassed();
+    gitMain();
+    const m1 = head();
+    // Interrupted after the intent was saved and the branch made, before the switch.
+    seed({
+      auto: {
+        work: {
+          module: "calc",
+          branch: "feat/calc",
+          stage: "preparing",
+          roots: { ".": { main: "main", base: m1 } },
+        },
+      },
+    });
+    git("branch", "feat/calc", m1);
+    put("later.md", "x\n");
+    git("add", "later.md");
+    git("commit", "-q", "-m", "docs: later"); // main moved on meanwhile
+    await stop();
+    expect([branch(), head() === m1, work(), state().auto.work.roots["."].base === m1]).toEqual([
+      "feat/calc",
+      true,
+      "calc feat/calc open",
+      true,
+    ]);
+  }, 60_000); // many Git runs: slow on a busy machine
 });

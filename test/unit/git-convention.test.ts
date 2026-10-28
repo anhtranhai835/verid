@@ -266,6 +266,82 @@ describe("decideGit: the Git rules on what a shell line does", () => {
     });
   });
 
+  it("freezes the branch of a module that waits for its merge, as it freezes main", () => {
+    const frozen = (command: string, facts: RepoFacts, lifted: RuleCode[] = []) => {
+      const parsed = gitCalls(command);
+      return (
+        decideGit(
+          parsed,
+          parsed.map(() => facts),
+          { protectedRefs: [], frozen: "feat/a" },
+          new Set(lifted),
+        )
+          .map((d) => (d.kind === "deny" ? d.code : d.kind))
+          .join(" ") || "allow"
+      );
+    };
+    const onB = repo({ branch: "feat/b", heads: ["main", "feat/a", "feat/b"] });
+    expect({
+      commit: frozen("git commit -m x", repo()),
+      amend: frozen("git commit --amend --no-edit", repo()),
+      merge: frozen("git merge main", repo()),
+      rebase: frozen("git rebase main", repo()),
+      "rebase it from main": frozen("git rebase main feat/a", ON_MAIN),
+      pull: frozen("git pull", repo()),
+      "cherry-pick": frozen("git cherry-pick abc", repo()),
+      "reset to a commit": frozen("git reset --hard HEAD~1", repo()),
+      "reset the tree": frozen("git reset --hard", repo()),
+      status: frozen("git status", repo()),
+      "switch to main": frozen("git switch main", repo()),
+      "switch then commit": frozen("git switch feat/a && git commit -m x", onB),
+      "another branch": frozen("git commit -m x", onB),
+      "force it": frozen("git branch -f feat/a main", onB),
+      "switch -C": frozen("git switch -C feat/a", onB),
+      "checkout -B": frozen("git checkout -B feat/a main", onB),
+      "update-ref": frozen("git update-ref refs/heads/feat/a HEAD", onB),
+      "fetch into it": frozen("git fetch origin main:feat/a", onB),
+      "push . into it": frozen("git push . main:feat/a", onB),
+      "rename it": frozen("git branch -m feat/a feat/z", onB),
+      "delete it": frozen("git branch -D feat/a", onB),
+      "push it to origin": frozen("git push origin feat/a", onB),
+      "push ./ into it": frozen("git push ./ feat/b:feat/a", onB),
+      "push another branch over it": frozen("git push origin feat/b:feat/a", onB),
+      "delete it on origin": frozen("git push origin :feat/a", onB),
+      "push it from itself": frozen("git push", repo()),
+      "main still": frozen("git pull", ON_MAIN),
+      tipped: frozen("git commit -m x", repo(), ["VERID_BURNT_AUTO_WAITING_MERGE"]),
+    }).toEqual({
+      commit: "VERID_BURNT_AUTO_WAITING_MERGE",
+      amend: "VERID_BURNT_AUTO_WAITING_MERGE",
+      merge: "VERID_BURNT_AUTO_WAITING_MERGE",
+      rebase: "VERID_BURNT_AUTO_WAITING_MERGE",
+      "rebase it from main": "VERID_BURNT_AUTO_WAITING_MERGE",
+      pull: "VERID_BURNT_AUTO_WAITING_MERGE",
+      "cherry-pick": "VERID_BURNT_AUTO_WAITING_MERGE",
+      "reset to a commit": "VERID_BURNT_AUTO_WAITING_MERGE",
+      "reset the tree": "allow",
+      status: "allow",
+      "switch to main": "allow",
+      "switch then commit": "VERID_BURNT_AUTO_WAITING_MERGE",
+      "another branch": "allow",
+      "force it": "VERID_BURNT_AUTO_WAITING_MERGE",
+      "switch -C": "VERID_BURNT_AUTO_WAITING_MERGE",
+      "checkout -B": "VERID_BURNT_AUTO_WAITING_MERGE",
+      "update-ref": "VERID_BURNT_AUTO_WAITING_MERGE",
+      "fetch into it": "VERID_BURNT_AUTO_WAITING_MERGE",
+      "push . into it": "VERID_BURNT_AUTO_WAITING_MERGE",
+      "rename it": "VERID_BURNT_AUTO_WAITING_MERGE",
+      "delete it": "VERID_BURNT_AUTO_WAITING_MERGE",
+      "push it to origin": "VERID_BURNT_AUTO_WAITING_MERGE",
+      "push ./ into it": "VERID_BURNT_AUTO_WAITING_MERGE",
+      "push another branch over it": "VERID_BURNT_AUTO_WAITING_MERGE",
+      "delete it on origin": "VERID_BURNT_AUTO_WAITING_MERGE",
+      "push it from itself": "VERID_BURNT_AUTO_WAITING_MERGE",
+      "main still": "VERID_BURNT_GIT_MAIN_COMMIT",
+      tipped: "allow",
+    });
+  });
+
   it("denies writes to main's ref and badly named new branches from any branch", () => {
     expect(
       judged([

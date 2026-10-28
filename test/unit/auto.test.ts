@@ -153,6 +153,7 @@ describe("autoPhase: where an auto drive stands", () => {
       ...FRESH_AUTO,
       signed: { research_sha256: "r", design_sha256: "d", at: "t", git: false },
       plan_sha256: "p",
+      work: { module: "calc", branch: "feat/calc", stage: "open", roots: {} },
     },
     researchHash: "r",
     designHash: "d",
@@ -422,6 +423,106 @@ describe("the coder's rounds, closing a module, progress, and the next step", ()
       "history problem": "VERID_BURNT_GIT_COMMIT_MESSAGE . abc wip calc",
       "review of other work": "auto.review calc",
       "security of other work": "auto.security calc",
+    });
+  });
+
+  it("prepares each module's branch before it opens, and waits for its integration after it closes", () => {
+    const plan = modules(`## Module: calc\n- AC-1: adds\n${PRODUCT_MODULE}`);
+    const hashes = { calc: "h1", product: "h2" };
+    const signed = { research_sha256: "r", design_sha256: "d", at: "t", git: true };
+    const base = {
+      auto: { ...FRESH_AUTO, signed, plan_sha256: "p" },
+      researchHash: "r",
+      designHash: "d",
+      planHash: "p",
+      plan: { ok: true as const, modules: plan, hashes },
+      approvals: {},
+      evidence: { passedAcs: [], passedE2eAcs: [] },
+      blockedFile: null,
+    };
+    const root = { main: "main", base: "b1" };
+    const work = (
+      stage: "preparing" | "open" | "waiting",
+      module = "calc",
+      roots: NonNullable<AutoFacts["auto"]["work"]>["roots"] = { ".": root },
+    ) => ({
+      module,
+      branch: `feat/${module}`,
+      stage,
+      roots,
+    });
+    const served = {
+      calc: { sha256: "h1", acs: ["AC-1"], at: "t", served_at: "t", design_sha256: "d" },
+    };
+    const kind = (f: Partial<AutoFacts>) => {
+      const ph = autoPhase({ ...base, ...f });
+      return ph.kind === "module" || ph.kind === "preparing_branch"
+        ? `${ph.kind} ${ph.view.name}`
+        : ph.kind === "waiting_merge"
+          ? `${ph.kind} ${ph.module} ${ph.pending.join(",")}`
+          : ph.kind;
+    };
+    expect({
+      "no work yet": kind({}),
+      preparing: kind({ auto: { ...base.auto, work: work("preparing") } }),
+      open: kind({ auto: { ...base.auto, work: work("open") } }),
+      "phase-2 record": kind({
+        auto: { ...base.auto, work: { module: "calc", roots: { ".": root } } },
+      }),
+      waiting: kind({
+        approvals: served,
+        auto: {
+          ...base.auto,
+          work: work("waiting", "calc", {
+            ".": { ...root, closed: "c1", delta: { files: 2, key: "k" } },
+            api: { ...root, closed: "c2", delta: { files: 1, key: "k2" }, integrated: "s1" },
+            web: { ...root, closed: "b1", delta: { files: 0, key: "[]" } },
+          }),
+        },
+      }),
+      "next module after integration": kind({
+        approvals: served,
+        auto: { ...base.auto, work: null },
+      }),
+      "stuck wins over waiting": kind({
+        blockedFile: "need a key",
+        approvals: served,
+        auto: { ...base.auto, work: work("waiting") },
+      }),
+      "plan edited while waiting": kind({
+        planHash: "p2",
+        approvals: served,
+        auto: { ...base.auto, work: work("waiting") },
+      }),
+      "plan gone while waiting": kind({
+        plan: null,
+        planHash: null,
+        auto: { ...base.auto, work: work("waiting") },
+      }),
+    }).toEqual({
+      "no work yet": "preparing_branch calc",
+      preparing: "preparing_branch calc",
+      open: "module calc",
+      "phase-2 record": "preparing_branch calc",
+      waiting: "waiting_merge calc .",
+      "next module after integration": "preparing_branch product",
+      "stuck wins over waiting": "stuck",
+      "plan edited while waiting": "waiting_merge calc ",
+      "plan gone while waiting": "waiting_merge calc ",
+    });
+  });
+
+  it("tells the agent to stop for the developer's merge, and why a branch cannot be prepared", () => {
+    const step = (phase: AutoPhase) => {
+      const s = autoNextStep(phase, true, true, null, true);
+      return `${s.key} ${Object.values(s.params).join(" ")}`;
+    };
+    expect({
+      waiting: step({ kind: "waiting_merge", module: "calc", pending: [".", "api"] }),
+      preparing: step({ kind: "preparing_branch", view }),
+    }).toEqual({
+      waiting: "auto.waiting_merge calc ., api",
+      preparing: "auto.preparing calc",
     });
   });
 

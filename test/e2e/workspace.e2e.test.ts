@@ -683,6 +683,7 @@ describe("workspace auto and doctor", () => {
 
   it("treats a repo that loses git after signing as dirty", async () => {
     await ready();
+    expect(stop().code).toBe(2); // the module opens on its branch in every repo
     renameSync(join(project, "web/.git"), join(temp, "web-git"));
     const held = stop();
     expect(held.code, held.err).toBe(2);

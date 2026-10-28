@@ -54,6 +54,7 @@ import {
   decideTdd,
   keyId,
   TDD_STRICTNESS,
+  type AutoLock,
   type Cycle,
   type TddDecision,
 } from "./core/tdd.js";
@@ -75,8 +76,11 @@ import {
 } from "./adapters/claude-code.js";
 import {
   captureWork,
+  closeRoots,
   gitCallFacts,
   gitTree,
+  prepareBranch,
+  squashOn,
   HOOK_GIT_BUDGET_MS,
   readHistories,
   workIdentity,
@@ -300,7 +304,14 @@ async function preToolUse(p: z.infer<typeof preToolUseSchema>): Promise<Result> 
       calls,
       facts: gitCallFacts(calls, p.cwd, project, manifest, deadline),
     }));
-    const rules = { protectedRefs: manifest.git?.protected_refs ?? [] };
+    const { work } = readState(paths).auto;
+    const rules = {
+      protectedRefs: manifest.git?.protected_refs ?? [],
+      // The closed auto module's branch keeps its history until the developer has merged it.
+      ...(manifest.drive === "auto" &&
+        work?.stage === "waiting" &&
+        work.branch !== undefined && { frozen: work.branch }),
+    };
     return (lifted: ReadonlySet<RuleCode>) =>
       judged.flatMap(({ calls, facts }) => decideGit(calls, facts, rules, lifted));
   })().catch((err: unknown) => (): never => {
@@ -438,10 +449,19 @@ async function tddGate(
     withLock(paths, () =>
       writeState(paths, latchBlocked(paths, readState(paths), facts.blockedFile, p.session_id)),
     );
+  // A branch or a merge is looked for at Stop, SubagentStop and SessionStart only: never in a
+  // tool call, whose hook the host lets through once it runs out of time.
   const auto = facts === null ? null : autoPhase(facts);
   const planApproved =
     manifest.mode === "remix" || (auto ? auto.kind === "module" : hasOpenModule(project, state));
-  const stuck = auto?.kind === "stuck";
+  const lock: AutoLock | null =
+    auto?.kind === "stuck"
+      ? "VERID_BURNT_AUTO_STUCK"
+      : auto?.kind === "waiting_merge"
+        ? "VERID_BURNT_AUTO_WAITING_MERGE"
+        : auto?.kind === "preparing_branch"
+          ? "VERID_BURNT_AUTO_BRANCH"
+          : null;
   const who = {
     writer: writerFor(p.agent_id, p.agent_type, manifest.roles),
     split: splitFor(manifest.roles),
@@ -449,11 +469,11 @@ async function tddGate(
   const judge = (
     approved: boolean,
     by: (w: FileAction) => Who = () => who,
-    locked = stuck,
+    locked = lock,
   ): Judged[] =>
     writes.flatMap((w) => {
       const asWritten = { ...w, path: writtenPath(resolve(p.cwd, w.display)) };
-      const drive = auto ? { stuck: locked } : undefined;
+      const drive = auto ? { lock: locked } : undefined;
       return [
         { write: w, tdd: decideTdd(w, state.tdd, real, approved, by(w), drive) },
         { write: w, tdd: decideTdd(asWritten, state.tdd, written, approved, by(w), drive) },
@@ -473,15 +493,15 @@ async function tddGate(
         );
       const planLifted =
         lifted.has("VERID_BURNT_PLAN_NOT_APPROVED") || lifted.has("VERID_BURNT_AUTO_NO_MODULE");
-      // Judged again with the lock off, not passed(): a test the stuck lock denied still meets the
+      // Judged again with the lock off, not passed(): a test the auto lock denied still meets the
       // frozen cycle, and one that reopens it still does.
-      const unlocked = stuck && lifted.has("VERID_BURNT_AUTO_STUCK");
+      const unlocked = lock !== null && lifted.has(lock);
       const again = planLifted || unlocked || writes.some(roleLifted);
       const base = again
         ? judge(
             planLifted || planApproved,
             (w) => (roleLifted(w) ? ANYONE : who),
-            stuck && !unlocked,
+            unlocked ? null : lock,
           )
         : judged;
       const harsh = harshest(base.map((j) => passed(j, lifted)));
@@ -681,6 +701,7 @@ async function lifecycle(p: z.infer<typeof lifecycleSchema>): Promise<Result> {
       return { exit: 2, stderr: `${line(tdd)}\n${why}\n` };
     });
   }
+  const observed = manifest.drive === "auto" ? observe(project, paths, manifest) : [];
   // A new conversation is a new task, and new behaviour needs a failing test first: a finished
   // cycle starts over in RAW. Resuming or compacting goes on with the same work.
   let cycle: Cycle = tdd;
@@ -718,6 +739,7 @@ async function lifecycle(p: z.infer<typeof lifecycleSchema>): Promise<Result> {
       bilingual(`mode.${mode}`, {}),
       ...(CODEX ? [bilingual("session.single_writer", { reviewer: agents.reviewer })] : []),
       ...(manifest.drive === "auto" ? [bilingual("drive.auto", {})] : []),
+      ...observed.map((s) => bilingual(s.key, s.params)),
       bilingual(cycleHint(cycle), {}),
       // Where the project stands and the next step, as `verid menu` shows them.
       ...menuLines(
@@ -741,8 +763,10 @@ const statusLine = (mode: string, cycle: Cycle, lastRun: string | null) =>
 /**
  * Stop in an auto drive the developer signed; null before that, for the human holds. The open
  * module is served if it is ready, then every stop is held with the next step until the drive is
- * done or stuck. stop_hook_active does not matter here: a hold that finds the outcome unchanged
- * counts as no progress, and the LIMIT-th in a row leaves the drive stuck and lets the agent go.
+ * done or stuck, or waits on the developer: for a module's merge, or for Git to allow its branch.
+ * stop_hook_active does not matter here: a hold that finds the outcome unchanged counts as no
+ * progress, and the LIMIT-th in a row leaves the drive stuck and lets the agent go. A wait is not
+ * a hold and never counts.
  */
 function autoStop(
   p: z.infer<typeof lifecycleSchema>,
@@ -757,13 +781,20 @@ function autoStop(
     let facts = autoFactsOf(project, state, manifest.iterations !== undefined);
     const session = p.session_id;
     state = latchBlocked(paths, state, facts.blockedFile, session);
-    state = withWork(project, paths, state, facts, manifest);
+    const first = advance(project, paths, state, { ...facts, auto: state.auto }, manifest);
+    state = first.state;
     facts = { ...facts, auto: state.auto };
     const before = autoPhase(facts);
     const tried = tryClose(project, paths, state, facts, manifest, contents);
     const closed = tried.state !== state && before.kind === "module" ? before.view.name : null;
     state = tried.state;
     facts = { ...facts, auto: state.auto, approvals: state.modules };
+    // A module that changed nothing has no merge to wait for: the next one opens now.
+    const told = [...first.said, ...tried.said];
+    const then = closed === null ? null : advance(project, paths, state, facts, manifest, told);
+    if (then) state = then.state;
+    facts = { ...facts, auto: state.auto };
+    const said = then?.said ?? told;
     let phase = autoPhase(facts);
     let git: ReturnType<typeof gitTree> | null = null;
     if (!over(phase)) {
@@ -804,6 +835,7 @@ function autoStop(
       ...tried.counts.map(({ repo, commits }) =>
         bilingual("git.commits", { module: closed ?? "", repo, count: String(commits) }),
       ),
+      ...said.map((s) => bilingual(s.key, s.params)),
       bilingual(step.key, { ...mappedNames(manifest.roles), ...step.params }),
     ].join("\n");
     // The agent may stop, and the developer sees why.
@@ -831,8 +863,12 @@ function contentsBefore(project: string, paths: StatePaths, manifest: Manifest):
     : {};
 }
 
-/** Stuck or done: the drive has nothing left for the agent, so Stop lets it go. */
-const over = (phase: AutoPhase): boolean => phase.kind === "stuck" || phase.kind === "done";
+/**
+ * Stuck, done, or waiting on the developer (a merge, or a branch Git does not allow, since Stop
+ * prepares one first): the drive has nothing left for the agent, so Stop lets it go.
+ */
+const over = (phase: AutoPhase): boolean =>
+  ["stuck", "done", "waiting_merge", "preparing_branch"].includes(phase.kind);
 
 /** Whether there is a blocked.md to latch: the drive is signed and not blocked already. */
 const toLatch = (state: State, blocked: string | null): blocked is string =>
@@ -854,34 +890,119 @@ function latchBlocked(
   return { ...state, auto: { ...state.auto, blocked } };
 }
 
+interface Said {
+  key: MessageKey;
+  params: Record<string, string>;
+}
+
 /**
- * The open auto module's record of where its work began, taken when the drive has opened a module
- * it has none for: main's commit in each Git root then, so every commit of the module is checked
- * at close. The state as given otherwise, or when main cannot be told, which the close then names.
- * Audits the record; the caller writes the state, under the lock.
+ * The auto drive's branch lifecycle at an observation. A closed module waiting for its merge
+ * looks for its squash on each changed root's local main, keeping what it found, and once every
+ * root has one the wait ends with fresh no-progress tracking. A module whose branch is not ready
+ * gets `feat/<module>` in every Git root, from each main's tip then: the intent is saved before
+ * any branch is made, so an interrupted preparation resumes on the same bases. The state, what to
+ * tell, and why the branch could not be made. Audits each step; the caller writes the state, under
+ * the lock.
  */
-function withWork(
+function advance(
   project: string,
   paths: StatePaths,
-  state: State,
+  given: State,
   facts: AutoFacts,
   manifest: Manifest,
-): State {
-  const phase = autoPhase({ ...facts, auto: state.auto, approvals: state.modules });
-  if (phase.kind !== "module" || state.auto.work?.module === phase.view.name) return state;
-  // A repository signed inside Git that has lost it is not a project outside Git.
-  const presence = gitTree(project, manifest, state.auto.signed).presence;
-  const signed = state.auto.signed?.git_repos ?? { ".": state.auto.signed?.git ?? false };
-  if (Object.entries(signed).some(([repo, inGit]) => inGit && presence[repo] === false))
-    return state;
-  const roots = captureWork(project, manifest);
-  if ("detail" in roots) return state;
-  appendAudit(paths.audit, {
-    event: "work_started",
-    module: phase.view.name,
-    roots: Object.fromEntries(Object.entries(roots).map(([repo, r]) => [repo, r.base])),
+  told: Said[] = [],
+): { state: State; said: Said[]; problem: string | null } {
+  let state = given;
+  const said = [...told];
+  const deadline = Date.now() + HOOK_GIT_BUDGET_MS;
+  const phaseOf = () => autoPhase({ ...facts, auto: state.auto, approvals: state.modules });
+  const waiting = phaseOf();
+  if (waiting.kind === "waiting_merge") {
+    const { module, roots } = state.auto.work!;
+    const found: NonNullable<State["auto"]["work"]>["roots"] = {};
+    for (const [repo, root] of Object.entries(roots)) {
+      const { integrated, ...rest } = root;
+      if ((root.delta?.files ?? 0) === 0) {
+        found[repo] = root;
+        continue;
+      }
+      const squash = squashOn(project, repo, root, deadline);
+      if ("error" in squash)
+        said.push({
+          key: "auto.integration_unclear",
+          params: { module, repo, detail: squash.error },
+        });
+      found[repo] =
+        "sha" in squash && squash.sha !== null ? { ...rest, integrated: squash.sha } : rest;
+    }
+    const work = { ...state.auto.work!, roots: found };
+    const commits = Object.fromEntries(
+      Object.entries(found).flatMap(([repo, r]) => (r.integrated ? [[repo, r.integrated]] : [])),
+    );
+    if (Object.values(found).some((r) => (r.delta?.files ?? 0) > 0 && !r.integrated)) {
+      state = { ...state, auto: { ...state.auto, work } };
+      return { state, said, problem: null };
+    }
+    appendAudit(paths.audit, { event: "integration_detected", module, commits });
+    said.push({
+      key: "auto.integrated",
+      params: {
+        module,
+        commits: Object.entries(commits)
+          .map(([repo, sha]) => `${repo} ${sha.slice(0, 12)}`)
+          .join(", "),
+      },
+    });
+    state = { ...state, auto: { ...state.auto, work: null, stop_holds: 0, progress: null } };
+  }
+  const phase = phaseOf();
+  if (phase.kind !== "preparing_branch") return { state, said, problem: null };
+  const module = phase.view.name;
+  const fail = (repo: string, detail: string) => {
+    said.push({
+      key: "auto.branch_problem",
+      params: { module, branch: `feat/${module}`, repo, detail },
+    });
+    return { state, said, problem: detail };
+  };
+  let work = state.auto.work;
+  if (work?.module !== module) {
+    // A repository signed inside Git that has lost it is not a project outside Git.
+    const presence = gitTree(project, manifest, state.auto.signed).presence;
+    const signed = state.auto.signed?.git_repos ?? { ".": state.auto.signed?.git ?? false };
+    const lost = Object.entries(signed).find(([repo, inGit]) => inGit && presence[repo] === false);
+    if (lost) return fail(lost[0], "signed inside Git, the repository is no longer in Git");
+    const roots = captureWork(project, manifest);
+    if ("detail" in roots) return fail(String(roots.repo), String(roots.detail));
+    if (Object.keys(roots).length === 0) return fail(".", "auto needs Git with a main branch");
+    work = { module, branch: `feat/${module}`, stage: "preparing", roots };
+    appendAudit(paths.audit, {
+      event: "work_started",
+      module,
+      branch: work.branch,
+      roots: Object.fromEntries(Object.entries(roots).map(([repo, r]) => [repo, r.base])),
+    });
+    state = { ...state, auto: { ...state.auto, work } };
+    writeState(paths, state);
+  }
+  const branch = work.branch ?? `feat/${module}`;
+  const failed = prepareBranch(project, work.roots, branch);
+  if (failed) return fail(failed.repo, failed.detail);
+  appendAudit(paths.audit, { event: "branch_prepared", module, branch });
+  state = { ...state, auto: { ...state.auto, work: { ...work, branch, stage: "open" } } };
+  return { state, said, problem: null };
+}
+
+/** One observation of the auto drive at SubagentStop or SessionStart, under the lock: what it found. */
+function observe(project: string, paths: StatePaths, manifest: Manifest): Said[] {
+  return withLock(paths, () => {
+    const state = readState(paths);
+    if (state.auto.signed === null) return [];
+    const facts = autoFactsOf(project, state, manifest.iterations !== undefined);
+    const moved = advance(project, paths, state, facts, manifest);
+    if (JSON.stringify(moved.state) !== JSON.stringify(state)) writeState(paths, moved.state);
+    return moved.said;
   });
-  return { ...state, auto: { ...state.auto, work: { module: phase.view.name, roots } } };
 }
 
 /** The open module's work as Git shows it now: what a review must have read, and its history. */
@@ -916,15 +1037,18 @@ function workNow(
       },
       counts: [],
     };
-  return { identity, ...closeHistory(readHistories(project, work)) };
+  const branch = state.auto.work.branch;
+  return { identity, ...closeHistory(readHistories(project, work, branch)) };
 }
 
 /**
  * An auto drive serves its open module itself once closeReady holds, recorded as `verid serve`
- * records it, and the next module starts its review and coder loops from zero, with its own record
- * of where its work begins. The state as given when the module is not ready, and the repos the
- * closed module made more than one commit in. Audits the close; the caller writes the state, under
- * the lock.
+ * records it, with each root's closed HEAD and net change. The module then waits for the
+ * developer's squash-merge of every root it changed; one that changed nothing has nothing to merge
+ * and is released at once. The next module starts its review and coder loops from zero, once its
+ * own branch is made. The state as given when the module is not ready, the repos the closed module
+ * made more than one commit in, and what to tell. Audits the close; the caller writes the state,
+ * under the lock.
  */
 function tryClose(
   project: string,
@@ -933,8 +1057,8 @@ function tryClose(
   facts: AutoFacts,
   manifest: Manifest,
   contents: Contents,
-): { state: State; counts: { repo: string; commits: number }[] } {
-  const unchanged = { state, counts: [] };
+): { state: State; counts: { repo: string; commits: number }[]; said: Said[] } {
+  const unchanged = { state, counts: [], said: [] };
   const phase = autoPhase(facts);
   if (phase.kind !== "module" || !facts.plan?.ok) return unchanged;
   const { view } = phase;
@@ -949,6 +1073,13 @@ function tryClose(
   const work = workNow(project, manifest, state, view.name);
   if (!closeReady(view, state.tdd, state.review, clean, security, architecture, work))
     return unchanged;
+  const recorded = state.auto.work!;
+  const roots = closeRoots(project, recorded.roots);
+  if ("detail" in roots) return unchanged;
+  // A commit between the review's identity and this read is not the reviewed work.
+  const heads = new Map((JSON.parse(work.identity ?? "[]") as string[][]).map(([r, h]) => [r, h]));
+  if (Object.entries(roots).some(([repo, r]) => heads.get(repo) !== r.closed)) return unchanged;
+  const changed = Object.values(roots).some((r) => (r.delta?.files ?? 0) > 0);
   const now = new Date().toISOString();
   appendAudit(paths.audit, {
     event: "module_served",
@@ -963,15 +1094,22 @@ function tryClose(
     served_at: now,
     design_sha256: facts.designHash,
   };
+  if (!changed) appendAudit(paths.audit, { event: "integration_released", module: view.name });
   const served: State = {
     ...state,
     modules: { ...state.modules, [view.name]: approval },
     review: null,
     security: null,
-    auto: { ...state.auto, module_reviews: 0, security_reviews: 0, coder_rounds: {} },
+    auto: {
+      ...state.auto,
+      module_reviews: 0,
+      security_reviews: 0,
+      coder_rounds: {},
+      work: changed ? { ...recorded, stage: "waiting", roots } : null,
+    },
   };
-  const opened = { ...facts, auto: served.auto, approvals: served.modules };
-  return { state: withWork(project, paths, served, opened, manifest), counts: work.counts };
+  const said: Said[] = changed ? [] : [{ key: "auto.released", params: { module: view.name } }];
+  return { state: served, counts: work.counts, said };
 }
 
 /**
@@ -992,6 +1130,7 @@ async function subagentStop(p: z.infer<typeof lifecycleSchema>): Promise<Result>
   }
   const agentId = p.agent_id;
   if (agentId === undefined) return { exit: 0 };
+  if (auto) observe(project, paths, manifest);
   return withLock(paths, () => {
     const state = readState(paths);
     // An agent that wrote nothing is never held, but its stop still ends the coder's round.
@@ -1070,8 +1209,16 @@ function recordReview(
   // The work the report read, so a commit or change after it needs another review.
   const identity = workIdentity(project, manifest);
   withLock(paths, () => {
-    const state = readState(paths);
-    const facts = auto ? autoFactsOf(project, state, manifest.iterations !== undefined) : null;
+    const read = readState(paths);
+    const known = auto ? autoFactsOf(project, read, manifest.iterations !== undefined) : null;
+    // A module whose branch is not made yet gets it before its report is placed. A report that
+    // arrives while a module waits for its merge is for no module, even if the merge is found now.
+    const advanced =
+      known && autoPhase(known).kind === "preparing_branch"
+        ? advance(project, paths, read, known, manifest).state
+        : null;
+    const state = advanced ?? read;
+    const facts = known && { ...known, auto: state.auto };
     const phase = facts === null ? null : autoPhase(facts);
     const module =
       phase === null
@@ -1105,12 +1252,18 @@ function recordReview(
               security: null,
             }),
       };
-      // A passing plan opens its first module, whose work begins here.
+      // A passing plan opens its first module, on its own branch from main.
       const opened = { ...facts!, auto: reviewed.auto };
-      writeState(paths, withWork(project, paths, reviewed, opened, manifest));
+      writeState(paths, advance(project, paths, reviewed, opened, manifest).state);
       return;
     }
-    if (!module) return;
+    // With no module to review, the drive still makes a branch or looks for a merge.
+    if (!module) {
+      const moved =
+        facts && !advanced ? advance(project, paths, state, facts, manifest).state : state;
+      if (JSON.stringify(moved) !== JSON.stringify(read)) writeState(paths, moved);
+      return;
+    }
     const security = kind === "security";
     const { name, file } = saved(security ? `security-${module}` : module);
     const event = security ? "security_recorded" : "review_recorded";
@@ -1126,21 +1279,29 @@ function recordReview(
       identity,
     };
     const failures = security ? "security_reviews" : "module_reviews";
-    const opened = facts ? withWork(project, paths, state, facts, manifest) : state;
     const next: State = {
-      ...opened,
+      ...state,
       ...(security ? { security: recorded } : { review: recorded }),
       ...(auto &&
         verdict !== "pass" && {
-          auto: { ...opened.auto, [failures]: opened.auto[failures] + 1 },
+          auto: { ...state.auto, [failures]: state.auto[failures] + 1 },
         }),
     };
-    // A pass on a committed tree serves the module now, not at the agent's next stop.
+    if (!facts) return writeState(paths, next);
+    // A pass on a committed tree serves the module now, not at the agent's next stop, and a
+    // module that changed nothing opens the next.
+    const closed = tryClose(
+      project,
+      paths,
+      next,
+      { ...facts, auto: next.auto },
+      manifest,
+      contents,
+    );
+    const after = { ...facts, auto: closed.state.auto, approvals: closed.state.modules };
     writeState(
       paths,
-      facts
-        ? tryClose(project, paths, next, { ...facts, auto: next.auto }, manifest, contents).state
-        : next,
+      closed.state === next ? next : advance(project, paths, closed.state, after, manifest).state,
     );
   });
 }

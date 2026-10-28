@@ -43,12 +43,14 @@ start with `feat/`, `fix/`, `chore/`, `docs/`, `refactor/` or `test/` and a name
 - One branch, one pull request. Do not push to main or merge: hand the branch to the developer
   with superpowers:finishing-a-development-branch. The developer squash-merges it and deletes it.
 
-In auto drive, create or switch to that module's branch from the completed work so far, and commit
-that module on it during `verid:review`. Keep prior modules' commits; never discard changes to
-switch branches. Without git, skip this.
+In auto drive, verid makes `feat/<module>` from the local main and checks it out itself when it
+opens the module, in every Git root; commit the module on it during `verid:review` and do not
+switch away. Auto needs Git with a main branch that has a commit: when verid cannot make the branch
+(`VERID_BURNT_AUTO_BRANCH`), stop and tell the developer what Stop names. Never discard changes to
+switch branches.
 
-For a workspace, apply the branch suggestion to each repo involved in the module and commit
-its changes there. Commit shared planning changes in the `.verid` repo too; auto waits for
+For a workspace, apply the branch suggestion to each repo involved in the module (in auto drive
+verid makes it in each repo and `.verid`) and commit its changes there. Commit shared planning changes in the `.verid` repo too; auto waits for
 every listed repo and `.verid` to be clean. The workspace root has no git repository.
 
 ## One AC at a time
@@ -99,7 +101,7 @@ exception is truly needed, explain why to the developer; only they can type `/ve
 ## Auto drive
 
 When the first line of `verid menu` says `drive auto` (the session-start message says it too), verid
-opens the first module not yet served, so you wait for no order. Do not read the manifest with Bash
+opens the first module not yet served on its own branch, so you wait for no order. Do not read the manifest with Bash
 to find out: verid blocks it. The roles are split, so dispatch the mapped tester (qa for an
 `(e2e)` AC when mapped) and coder as above. Commit each module on its `feat/<module>` branch, with
 Conventional Commit messages.
@@ -108,8 +110,8 @@ Conventional Commit messages.
   whose name carries that AC code is still red. The third such round leaves the drive stuck. Give the
   coder the failing test and the AC, and make sure the test is right before you dispatch it; a test
   without the AC code in its name cannot be counted.
-- **Stop holds you** at every stop until the drive is done or stuck, and three holds in a row with
-  nothing changed leave it stuck. Take the next step `verid menu` names instead of stopping or
+- **Stop holds you** at every stop until the drive is done or stuck, or a closed module waits for
+  the developer's merge, and three holds in a row with nothing changed leave it stuck. Take the next step `verid menu` names instead of stopping or
   repeating a step.
 - **When the rounds run out**, the drive is stuck and production code and tests are locked
   (`VERID_BURNT_AUTO_STUCK`). Do not look for a way around it, neither by writing code or tests

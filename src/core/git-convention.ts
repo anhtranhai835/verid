@@ -539,12 +539,15 @@ interface Repo {
 const PRIORITY: RuleCode[] = [
   "VERID_BURNT_GIT_UNRESOLVED",
   "VERID_BURNT_GIT_MAIN_COMMIT",
+  "VERID_BURNT_AUTO_WAITING_MERGE",
   "VERID_BURNT_GIT_PROTECTED_PUSH",
   "VERID_BURNT_GIT_BRANCH_NAME",
 ];
 const REASONS: Partial<Record<RuleCode, string>> = {
   VERID_BURNT_GIT_UNRESOLVED: "Git command verid cannot resolve",
   VERID_BURNT_GIT_MAIN_COMMIT: "changes main's history",
+  VERID_BURNT_AUTO_WAITING_MERGE:
+    "changes or pushes the branch of the module waiting for its merge",
   VERID_BURNT_GIT_PROTECTED_PUSH: "pushes to a protected ref",
   VERID_BURNT_GIT_BRANCH_NAME: "work branch without an agreed prefix",
 };
@@ -554,12 +557,14 @@ const REASONS: Partial<Record<RuleCode, string>> = {
  * branches carry an agreed prefix, pushes never reach a protected ref, and what verid cannot
  * resolve is refused. Each call is judged on the branches the line may have left it on: after
  * `&&` the earlier call succeeded, after `;` or a newline it may have failed, and after any other
- * operator verid cannot tell. One decision per denied call; a rule in `lifted` gives way.
+ * operator verid cannot tell. One decision per denied call; a rule in `lifted` gives way. A
+ * `frozen` branch, the auto module's while it waits for the developer's merge, keeps its history
+ * as main does.
  */
 export function decideGit(
   calls: readonly GitCall[],
   facts: readonly CallFacts[],
-  rules: { protectedRefs: readonly string[] },
+  rules: { protectedRefs: readonly string[]; frozen?: string },
   lifted: ReadonlySet<RuleCode>,
 ): PolicyDecision[] {
   const repos = new Map<string, Repo>();
@@ -577,7 +582,7 @@ export function decideGit(
     else if (f === null || "error" in f) denials = [unresolved(f?.error ?? "no repository facts")];
     else {
       const repo = repos.get(f.top) ?? { facts: f, branches: [f.branch], unknown: false };
-      const judged = judgeCall(call, repo, rules.protectedRefs, configChanged);
+      const judged = judgeCall(call, repo, rules, configChanged);
       denials = judged.denials;
       const { effect } = judged;
       if (effect.config) configChanged = true;
@@ -1110,7 +1115,7 @@ const SEQUENCE_VALUED = [
 function judgeCall(
   call: GitCall,
   repo: Repo,
-  protectedRefs: readonly string[],
+  { protectedRefs, frozen }: { protectedRefs: readonly string[]; frozen?: string },
   configChanged: boolean,
 ): { denials: Denial[]; effect: Effect } {
   const f = repo.facts;
@@ -1137,10 +1142,16 @@ function judgeCall(
       if (b === null) denials.push(unresolved("detached HEAD"));
       else if (isMain(b, m))
         denials.push({ code: "VERID_BURNT_GIT_MAIN_COMMIT", target: `${sub} on ${b}` });
+      else if (isFrozen(b))
+        denials.push({ code: "VERID_BURNT_AUTO_WAITING_MERGE", target: `${sub} on ${b}` });
       else if (!isWorkBranch(b))
         denials.push({ code: "VERID_BURNT_GIT_BRANCH_NAME", target: `${sub} on ${b}` });
     }
   };
+  // The branch waiting for its merge, kept as main is kept.
+  const isFrozen = (name: string) => frozen !== undefined && isMain(name, frozen);
+  const freeze = () =>
+    denials.push({ code: "VERID_BURNT_AUTO_WAITING_MERGE", target: `${sub} writes ${frozen}` });
   // A branch the command creates, resets or renames to.
   const newBranch = (name: Word | undefined) => {
     if (name === undefined || name.dynamic) return void denials.push(unresolved("branch name"));
@@ -1148,6 +1159,7 @@ function judgeCall(
     if (m === null) return;
     if (isMain(name.text, m))
       denials.push({ code: "VERID_BURNT_GIT_MAIN_COMMIT", target: `${sub} writes ${m}` });
+    else if (isFrozen(name.text)) freeze();
     else if (!isWorkBranch(name.text))
       denials.push({ code: "VERID_BURNT_GIT_BRANCH_NAME", target: name.text });
   };
@@ -1155,6 +1167,7 @@ function judgeCall(
     const m = needMain();
     if (m !== null && isMain(name, m))
       denials.push({ code: "VERID_BURNT_GIT_MAIN_COMMIT", target: `${sub} writes ${m}` });
+    else if (isFrozen(name)) freeze();
   };
   // Checking out a branch that does not exist creates it from the remote branch of that name.
   const checkout = (name: Word) => {
@@ -1205,6 +1218,8 @@ function judgeCall(
       if (repo.unknown) denials.push(unresolved("branch changed earlier in the line"));
       else if (repo.branches.some((b) => b !== null && isMain(b, needMain() ?? "\0")))
         denials.push({ code: "VERID_BURNT_GIT_MAIN_COMMIT", target: "reset on main" });
+      else if (repo.branches.some((b) => b !== null && isFrozen(b)))
+        denials.push({ code: "VERID_BURNT_AUTO_WAITING_MERGE", target: `reset on ${frozen}` });
     }
   } else if (sub === "branch") {
     const s = scan(words, BRANCH_FLAGS, BRANCH_VALUED);
@@ -1356,10 +1371,12 @@ function judgeCall(
       const m = dsts.length > 0 ? needMain() : main;
       if (m !== null && dsts.some((d) => matches(d, `refs/heads/${m}`)))
         denials.push({ code: "VERID_BURNT_GIT_MAIN_COMMIT", target: `${sub} into ${m}` });
+      else if (frozen !== undefined && dsts.some((d) => matches(d, `refs/heads/${frozen}`)))
+        freeze();
       if (sub === "pull") onBranch();
     }
   } else if (sub === "push") {
-    denials.push(...push(words, repo, protectedRefs, configChanged, needMain));
+    denials.push(...push(words, repo, protectedRefs, configChanged, needMain, frozen));
     if (words.some((w) => w.text === "-u" || w.text === "--set-upstream"))
       effect = { config: true };
   } else if (sub === "worktree") {
@@ -1445,6 +1462,7 @@ function push(
   protectedRefs: readonly string[],
   configChanged: boolean,
   needMain: () => string | null,
+  frozen?: string,
 ): Denial[] {
   const f = repo.facts;
   const s = scan(words, PUSH_FLAGS, ["-o", "--push-option", "--recurse-submodules"]);
@@ -1544,6 +1562,9 @@ function push(
   for (const dst of new Set(dsts)) {
     const hit = guarded.find((ref) => matches(dst, ref));
     if (hit) out.push({ code: "VERID_BURNT_GIT_PROTECTED_PUSH", target: hit });
+    // The branch waiting for its merge is the developer's to push, here or to any remote.
+    else if (frozen !== undefined && matches(dst, `refs/heads/${frozen}`))
+      out.push({ code: "VERID_BURNT_AUTO_WAITING_MERGE", target: dst });
     else if (dst.startsWith("refs/heads/")) {
       const name = dst.slice("refs/heads/".length);
       const ok = dst.includes("*")

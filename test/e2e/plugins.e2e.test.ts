@@ -471,6 +471,11 @@ const autoProject = async () => {
       'mode: prep\ndrive: auto\nroles:\n  reviewer: ["verid:reviewer"]\n  tester: ["verid:tester"]\n  coder: ["verid:coder"]',
     ),
   );
+  // A Git main for each module's branch; with everything ignored the tree stays clean and a module
+  // changes nothing, so it waits for no merge.
+  put(".gitignore", "*\n");
+  tempGit(project, ["init", "-q", "-b", "main"]);
+  tempGit(project, ["commit", "-q", "--allow-empty", "-m", "chore: start"]);
   expect((await cli(["order"])).code).toBe(0);
 };
 const review = async () =>
@@ -622,19 +627,19 @@ it("refuses script and nested dependency content changes in CLI and hook events 
   const rows = ["script content", "nested dependency"] as const;
   const state = await prepareIntegrityChanges();
   for (const change of rows) await checkIntegrityChange(change, state);
-});
+}, 60_000); // a Git repository and a hook per row: slow on a busy machine
 
 it("refuses added, removed and renamed plugin files in CLI and hook events until developer restore", async () => {
   const rows = ["added file", "removed file", "renamed file"] as const;
   const state = await prepareIntegrityChanges();
   for (const change of rows) await checkIntegrityChange(change, state);
-});
+}, 60_000); // a Git repository and a hook per row: slow on a busy machine
 
 it("refuses registry byte and source changes in CLI and hook events until developer restore", async () => {
   const rows = ["registry bytes", "registry source"] as const;
   const state = await prepareIntegrityChanges();
   for (const change of rows) await checkIntegrityChange(change, state);
-});
+}, 60_000); // a Git repository and a hook per row: slow on a busy machine
 
 it("refuses missing and corrupt approvals in CLI and hook events until developer restore", async () => {
   const rows = ["missing approval", "corrupt approval"] as const;
@@ -812,6 +817,39 @@ it("delivers auto open, close and done from the real hook once per transition", 
   expect(events()).toHaveLength(5);
 });
 
+it("delivers no next module, stuck or done event while a closed module waits for its merge", async () => {
+  await autoProject();
+  expect((await cli(["plugin", "add", "./fixture", "--yes"])).code).toBe(0);
+  expect((await review()).code).toBe(0); // the plan passes: calc opens on its branch
+  put("src/a.ts", "export const a = 1;\n");
+  tempGit(project, ["add", "-f", "src/a.ts"]);
+  tempGit(project, ["commit", "-q", "-m", "feat: add a"]);
+  const state = json(".verid/.state/state.json");
+  state.tdd = {
+    ...state.tdd,
+    state: "PLATED",
+    last_run: "run1",
+    dirty: false,
+    passed_acs: ["AC-1"],
+  };
+  put(".verid/.state/state.json", JSON.stringify(state));
+  expect((await review()).code).toBe(0); // calc closes with a change: it waits for its merge
+  const stops = [];
+  for (let i = 0; i < 4; i++) stops.push((await hook("", {}, "Stop")).code);
+  expect({
+    stops,
+    stage: json(".verid/.state/state.json").auto.work.stage,
+    events: events().map((e) => [e.payload.event, e.payload.module ?? null]),
+  }).toEqual({
+    stops: [0, 0, 0, 0],
+    stage: "waiting",
+    events: [
+      ["module-opened", "calc"],
+      ["module-served", "calc"],
+    ],
+  });
+}, 60_000); // a Git repository and several hooks: slow on a busy machine
+
 it("times out hook events within a shared budget and keeps the auto Stop denial", async () => {
   await autoProject();
   writeFileSync(join(fixture, "record.mjs"), "setInterval(() => {}, 1000)");
@@ -980,10 +1018,13 @@ it("delivers taste outcomes and counts without changing passing or failing evide
 it("delivers an auto close on Stop while preserving the hold for the next module", async () => {
   await autoProject();
   expect((await cli(["plugin", "add", "./fixture", "--yes"])).code).toBe(0);
-  const state = json(".verid/.state/state.json");
-  state.auto.plan_sha256 = createHash("sha256")
+  const planned = json(".verid/.state/state.json");
+  planned.auto.plan_sha256 = createHash("sha256")
     .update(readFileSync(join(project, ".verid/plan.md")))
     .digest("hex");
+  put(".verid/.state/state.json", JSON.stringify(planned));
+  expect((await review()).code).toBe(0); // calc opens on its branch; its review waits for green
+  const state = json(".verid/.state/state.json");
   state.tdd = {
     ...state.tdd,
     state: "PLATED",
@@ -991,20 +1032,13 @@ it("delivers an auto close on Stop while preserving the hold for the next module
     dirty: false,
     passed_acs: ["AC-1"],
   };
-  state.review = {
-    module: "calc",
-    agent_type: "verid:reviewer",
-    file: "review.md",
-    sha256: "hash",
-    at: "2026-10-24T10:00:00Z",
-    verdict: "pass",
-  };
   put(".verid/.state/state.json", JSON.stringify(state));
   const r = await hook("", {}, "Stop");
   expect(r.code).toBe(2);
   expect(r.stderr).toContain("product");
   expect(r.stdout).not.toContain("decision");
   expect(events().map((e) => [e.payload.event, e.payload.module])).toEqual([
+    ["module-opened", "calc"],
     ["module-served", "calc"],
     ["module-opened", "product"],
   ]);

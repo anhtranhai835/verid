@@ -92,6 +92,7 @@ Your final message, and nothing after it:
 verid reads the last `Verdict:` line of your report. Write `Verdict: pass` only when every AC is
 covered, no finding is Critical or Important, and the code (or the plan) follows the design. Minor
 findings alone do not fail a review. Otherwise write `Verdict: fail`, and let Findings say what
-must change. In an auto drive verid serves the module on `pass` once its work is committed, accepts
+must change. In an auto drive verid serves the module on `pass` once its work is committed (the developer
+then merges it), accepts
 the plan on `pass`, and counts anything else as a fail, a report with no such line included. Three
 fails leave the drive stuck, so name what is wrong exactly.

@@ -79,8 +79,8 @@ serves the module itself, so never ask the developer to run `verid serve` (it re
 to 3 become:
 
 1. **Verify** as above: `verid taste` for the whole suite, passing, with no change after it.
-2. **Commit** every change of the module, new files included, on its `feat/<module>` branch
-   suggested by `verid:build`; do not push:
+2. **Commit** every change of the module, new files included, on the `feat/<module>` branch
+   verid made for it; do not push:
    `git add -A`, then `git commit` with a Conventional Commit message that names the module, such as
    `feat(<module>): <what it adds>`. verid serves a
    module only when the project's tree is clean, untracked files included; only
@@ -90,13 +90,18 @@ to 3 become:
    commit after the review needs another one. Its final report ends with
    `Verdict: pass` or `Verdict: fail`. When `roles.security` is mapped, dispatch the security reviewer
    once the reviewer passes, as in step 2b. On the passes verid needs, it serves the module once they
-   follow the last change and the tree is clean, and the next module opens; `verid menu` says so, or
-   says what is still missing, such as a commit.
+   follow the last change and the tree is clean; `verid menu` says so, or says what is still
+   missing, such as a commit. The module then waits for the developer to push its branch,
+   squash-merge it and update the local main (a module that changed nothing opens the next at once).
+   Stop lets you stop with that handoff; production code, tests and the branch's history stay
+   locked (`VERID_BURNT_AUTO_WAITING_MERGE`) until verid finds the squash on the local main and
+   opens the next module on its own branch. Never push or merge yourself.
 4. **On a fail**, or a report with no `Verdict:` line, fix the module through the `verid:build` loop
    (a failing test first), run `verid taste`, commit and dispatch the reviewer again. The third fail
    leaves the drive stuck. A failed security review is fixed the same way and has its own count:
    the third leaves the drive stuck too.
 
-For `product`, a pass that closes the module ends the drive: `verid menu` says the product is done.
+For `product`, a pass that closes the module waits for its merge like any other; the drive is done
+once the developer has merged it, and `verid menu` says so.
 Leave the branch as it is, tell the developer, and let them integrate the work with
 superpowers:finishing-a-development-branch.

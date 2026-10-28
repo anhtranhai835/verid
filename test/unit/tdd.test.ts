@@ -476,7 +476,7 @@ describe("decideTdd", () => {
       ["RAW", "browser/login.spec.ts", false, "VERID_BURNT_ROLE_QA_E2E_ONLY"],
       ["COOKING", "browser/login.spec.ts", false, "VERID_BURNT_ROLE_QA_E2E_ONLY"],
       ["RAW", "browser/unit.spec.ts", false, "VERID_BURNT_ROLE_QA_E2E_ONLY"],
-      ["RAW", "journeys/login.py", true, "VERID_BURNT_AUTO_STUCK"],
+      ["RAW", "journeys/login.py", "VERID_BURNT_AUTO_STUCK", "VERID_BURNT_AUTO_STUCK"],
     ] as const;
     for (const [state, rel, stuck, want] of rows) {
       const path = `c:/proj/${rel}`;
@@ -486,7 +486,7 @@ describe("decideTdd", () => {
         layout,
         true,
         { writer: "qa", split: true },
-        { stuck },
+        { lock: stuck || null },
       );
       expect(d.kind === "deny" ? d.code : d.kind, `${state} ${rel}`).toBe(want);
     }
@@ -615,10 +615,11 @@ describe("decideTdd", () => {
     decisions("PLATED", false, [["write src", src, "VERID_BURNT_PLAN_NOT_APPROVED"]]);
   });
 
-  // An auto drive adds two locks the human drive does not have: nothing but docs while it is stuck,
-  // and no production code while no module is open (tests stay writable, as with the plan gate).
-  it("in auto, locks code and tests while stuck, and code with no open module", () => {
-    const at = (file: string, approved: boolean, auto?: { stuck: boolean }) => {
+  // An auto drive adds locks the human drive does not have: nothing but docs while it is stuck, while
+  // a closed module waits for its merge or while its branch cannot be prepared, and no production
+  // code while no module is open (tests stay writable, as with the plan gate).
+  it("in auto, locks code and tests while stuck, waiting or unprepared, and code with no open module", () => {
+    const at = (file: string, approved: boolean, auto?: Parameters<typeof decideTdd>[5]) => {
       const d = decideTdd(
         write(`c:\\proj\\${file}`),
         { state: "COOKING", stub: false },
@@ -630,17 +631,27 @@ describe("decideTdd", () => {
       return d.kind === "deny" ? d.code : d.kind;
     };
     expect({
-      "stuck code": at("src/a.ts", true, { stuck: true }),
-      "stuck test": at("test/a.test.ts", true, { stuck: true }),
-      "stuck free": at("README.md", true, { stuck: true }),
-      "no module code": at("src/a.ts", false, { stuck: false }),
-      "no module test": at("test/a.test.ts", false, { stuck: false }),
-      "open code": at("src/a.ts", true, { stuck: false }),
+      "stuck code": at("src/a.ts", true, { lock: "VERID_BURNT_AUTO_STUCK" }),
+      "stuck test": at("test/a.test.ts", true, { lock: "VERID_BURNT_AUTO_STUCK" }),
+      "stuck free": at("README.md", true, { lock: "VERID_BURNT_AUTO_STUCK" }),
+      "waiting code": at("src/a.ts", false, { lock: "VERID_BURNT_AUTO_WAITING_MERGE" }),
+      "waiting test": at("test/a.test.ts", false, { lock: "VERID_BURNT_AUTO_WAITING_MERGE" }),
+      "waiting free": at("README.md", false, { lock: "VERID_BURNT_AUTO_WAITING_MERGE" }),
+      "unprepared code": at("src/a.ts", false, { lock: "VERID_BURNT_AUTO_BRANCH" }),
+      "unprepared test": at("test/a.test.ts", false, { lock: "VERID_BURNT_AUTO_BRANCH" }),
+      "no module code": at("src/a.ts", false, { lock: null }),
+      "no module test": at("test/a.test.ts", false, { lock: null }),
+      "open code": at("src/a.ts", true, { lock: null }),
       human: at("src/a.ts", false),
     }).toEqual({
       "stuck code": "VERID_BURNT_AUTO_STUCK",
       "stuck test": "VERID_BURNT_AUTO_STUCK",
       "stuck free": "allow",
+      "waiting code": "VERID_BURNT_AUTO_WAITING_MERGE",
+      "waiting test": "VERID_BURNT_AUTO_WAITING_MERGE",
+      "waiting free": "allow",
+      "unprepared code": "VERID_BURNT_AUTO_BRANCH",
+      "unprepared test": "VERID_BURNT_AUTO_BRANCH",
       "no module code": "VERID_BURNT_AUTO_NO_MODULE",
       "no module test": "VERID_BURNT_TDD_TEST_FROZEN",
       "open code": "code",
@@ -649,7 +660,9 @@ describe("decideTdd", () => {
     expect([
       isOverridable("VERID_BURNT_AUTO_STUCK"),
       isOverridable("VERID_BURNT_AUTO_NO_MODULE"),
-    ]).toEqual([true, true]);
+      isOverridable("VERID_BURNT_AUTO_WAITING_MERGE"),
+      isOverridable("VERID_BURNT_AUTO_BRANCH"),
+    ]).toEqual([true, true, true, false]);
   });
 
   // The stub step opens production code only for the stub; the plan gate still comes first.

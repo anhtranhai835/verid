@@ -139,6 +139,10 @@ export type AutoPhase =
   | { kind: "stuck"; reason: StuckReason; detail: string }
   | { kind: "plan"; missing: boolean; problem: string | null }
   | { kind: "module"; view: ModuleView }
+  /** The open module's branch is not ready yet: verid makes it from main at the next observation. */
+  | { kind: "preparing_branch"; view: ModuleView }
+  /** A closed module waits for the developer to squash-merge it in each changed root. */
+  | { kind: "waiting_merge"; module: string; pending: string[] }
   | { kind: "done" };
 
 type Stuck = Extract<AutoPhase, { kind: "stuck" }>;
@@ -181,13 +185,27 @@ export function autoPhase(f: AutoFacts): AutoPhase {
   if (auto.signed === null) return { kind: "unsigned" };
   const halt = stuck(f, auto.signed);
   if (halt !== null) return halt;
+  // A closed module's integration comes before anything else opens, product's included, and an
+  // edited plan does not lift it.
+  const work = auto.work;
+  if (work?.stage === "waiting")
+    return {
+      kind: "waiting_merge",
+      module: work.module,
+      pending: Object.entries(work.roots)
+        .filter(([, r]) => (r.delta?.files ?? 0) > 0 && !r.integrated)
+        .map(([repo]) => repo),
+    };
   if (plan === null) return { kind: "plan", missing: true, problem: null };
   if (!plan.ok) return { kind: "plan", missing: false, problem: plan.detail };
   const problem = autoPlanProblem(plan.modules);
   if (problem !== null || auto.plan_sha256 === null || auto.plan_sha256 !== f.planHash)
     return { kind: "plan", missing: false, problem };
   const view = openModule(autoModules(plan.modules, plan.hashes, f.approvals, f.evidence));
-  return view === undefined ? { kind: "done" } : { kind: "module", view };
+  if (view === undefined) return { kind: "done" };
+  return work?.module === view.name && work.stage === "open"
+    ? { kind: "module", view }
+    : { kind: "preparing_branch", view };
 }
 
 /**
@@ -371,6 +389,13 @@ export function autoNextStep(
         return { key: "auto.security", params: { module: name } };
       return { key: "auto.review", params: { module: name } };
     }
+    case "preparing_branch":
+      return { key: "auto.preparing", params: { module: phase.view.name } };
+    case "waiting_merge":
+      return {
+        key: "auto.waiting_merge",
+        params: { module: phase.module, repos: phase.pending.join(", ") },
+      };
     case "done":
       return { key: "auto.done", params: {} };
   }

@@ -71,7 +71,7 @@ manifest, which only the developer edits; its rules encode only what the table a
 ## Auto drive
 
 When the first line of `verid menu` says `drive auto` (the session-start message says it too), the
-developer signs once and the agents run the rest. Do not read the manifest with Bash to find out:
+developer signs once, merges each module's pull request, and the agents run the rest. Do not read the manifest with Bash to find out:
 verid blocks it.
 
 Once `.verid/research.md` and `.verid/design.md` are written and the developer agrees with both, ask

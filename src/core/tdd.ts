@@ -216,6 +216,14 @@ export function fileRole(
 const isE2eFile = (rel: string, layout: Omit<TddLayout, "repoRoot">): boolean =>
   (layout.e2eGlobs ?? []).some((g) => matchesGlob(rel, g));
 
+/** What locks production code and tests in an auto drive, and why. */
+export type AutoLock = keyof typeof LOCKS;
+const LOCKS = {
+  VERID_BURNT_AUTO_STUCK: "the auto drive is stuck",
+  VERID_BURNT_AUTO_WAITING_MERGE: "the closed module waits for the developer's merge",
+  VERID_BURNT_AUTO_BRANCH: "the module's branch is not prepared",
+} as const;
+
 /**
  * Gate for file writes. `code` allows a write to production code, which no run shows yet.
  * `reopen` allows a test write and sends the cycle back to RAW (or keeps it there): the changed
@@ -225,9 +233,10 @@ const isE2eFile = (rel: string, layout: Omit<TddLayout, "repoRoot">): boolean =>
  * can work while the developer reads the plan.
  * With the stub step open, RAW allows production code too, and a test write keeps the stub open.
  * Who writes is judged first, outside the repo too: the role says who, the cycle says when.
- * In an auto drive, a stuck drive locks production code and tests alike (the developer clears it),
- * and production code with no open module is denied as the drive's own wait rather than as a plan
- * the developer has yet to approve.
+ * In an auto drive, a lock stops production code and tests alike: a stuck drive (the developer
+ * clears it), a closed module waiting for the developer's merge, or a module branch verid cannot
+ * prepare. Production code with no open module is denied as the drive's own wait rather than as a
+ * plan the developer has yet to approve.
  */
 export function decideTdd(
   action: Action,
@@ -235,7 +244,7 @@ export function decideTdd(
   layout: TddLayout | readonly TddLayout[],
   planApproved: boolean,
   who: { writer: Writer; split: boolean } = { writer: "main", split: false },
-  auto?: { stuck: boolean },
+  auto?: { lock: AutoLock | null },
 ): TddDecision {
   if (Array.isArray(layout)) {
     const matching = layout.filter(
@@ -259,7 +268,7 @@ function decideRepoTdd(
   layout: TddLayout,
   planApproved: boolean,
   who: { writer: Writer; split: boolean },
-  auto?: { stuck: boolean },
+  auto?: { lock: AutoLock | null },
 ): TddDecision {
   if (action.kind !== "file" || action.access !== "write")
     return { kind: "allow", reason: "not a file write" };
@@ -274,13 +283,8 @@ function decideRepoTdd(
   );
   if (byRole.kind === "deny") return byRole;
   if (role === "outside") return { kind: "allow", reason: "outside the repo" };
-  if (auto?.stuck && role !== "free")
-    return {
-      kind: "deny",
-      code: "VERID_BURNT_AUTO_STUCK",
-      target: action.display,
-      reason: "the auto drive is stuck",
-    };
+  if (auto?.lock && role !== "free")
+    return { kind: "deny", code: auto.lock, target: action.display, reason: LOCKS[auto.lock] };
   if (role === "test")
     return state === "COOKING"
       ? {

@@ -4,6 +4,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { gitCleanAcross } from "../core/auto.js";
 import {
+  isConventionalCommit,
   needsFacts,
   resolveMain,
   type CallFacts,
@@ -11,6 +12,7 @@ import {
   type RepoFacts,
   type RootHistory,
 } from "../core/git-convention.js";
+import { netChange, squashOf, type MainCommit } from "../core/integration.js";
 import { repoPathKey, type Manifest } from "../core/manifest.js";
 import { isSecretPath } from "../core/policy.js";
 import type { AutoState } from "../core/state.js";
@@ -18,8 +20,9 @@ import { errno } from "./state-store.js";
 
 /**
  * Git as verid reads it: an argument array, never a shell; untranslated, so messages read the
- * same on every machine; without the optional locks the agent's own Git needs; bounded in time
- * and output, where running out counts as a failure.
+ * same on every machine; without the optional locks the agent's own Git needs; with the objects
+ * as they are, not as `refs/replace` would show them; bounded in time and output, where running
+ * out counts as a failure.
  */
 export function runGit(
   cwd: string,
@@ -31,7 +34,7 @@ export function runGit(
     cwd,
     encoding: "utf8",
     windowsHide: true,
-    env: { ...process.env, LC_ALL: "C" },
+    env: { ...process.env, LC_ALL: "C", GIT_NO_REPLACE_OBJECTS: "1" },
     timeout,
     maxBuffer,
   });
@@ -234,8 +237,9 @@ export function gitView(project: string): GitView | null {
       cwd: project,
       encoding: "utf8",
       windowsHide: true,
-      // Untranslated, so "not a git repository" reads the same whatever the machine's language.
-      env: { ...process.env, LC_ALL: "C" },
+      // Untranslated, so "not a git repository" reads the same whatever the machine's language;
+      // the objects as they are, not as refs/replace would show them.
+      env: { ...process.env, LC_ALL: "C", GIT_NO_REPLACE_OBJECTS: "1" },
     });
   // --no-optional-locks: a hook's status must not take the index lock the agent's git needs.
   // --untracked-files=normal: a new file must count as dirty even where status.showUntrackedFiles=no.
@@ -331,7 +335,7 @@ export function workRoots(
   return roots;
 }
 
-export type Work = Record<string, { main: string; base: string }>;
+export type Work = NonNullable<AutoState["work"]>["roots"];
 
 /** Main's commit in each Git root now, where module work begins; a problem when one is unclear. */
 export function captureWork(
@@ -361,8 +365,11 @@ export function captureWork(
 // Enough for any module; a longer range is refused rather than read in part.
 const MAX_COMMITS = 500;
 
-/** Each recorded root's commits since its base, read again in full every time. */
-export function readHistories(project: string, work: Work): RootHistory[] {
+/**
+ * Each recorded root's commits since its base, read again in full every time. With a `branch`,
+ * the auto module's, a root whose HEAD is elsewhere has no history to trust.
+ */
+export function readHistories(project: string, work: Work, branch?: string): RootHistory[] {
   return Object.entries(work).map(([repo, { base }]): RootHistory => {
     const folder = resolve(project, ...repo.split("/"));
     const top = existsSync(folder) ? gitTop(folder) : null;
@@ -370,6 +377,11 @@ export function readHistories(project: string, work: Work): RootHistory[] {
     if (typeof top !== "string") return { repo, error: top.error };
     const head = runGit(top, ["rev-parse", "--verify", "-q", "HEAD^{commit}"]);
     if (!ok(head)) return { repo, error: "HEAD has no commit" };
+    if (branch !== undefined) {
+      const on = runGit(top, ["symbolic-ref", "-q", "--short", "HEAD"]);
+      const name = ok(on) ? on.stdout.trim() : "a detached HEAD";
+      if (name !== branch) return { repo, error: `HEAD is on ${name}, not on ${branch}` };
+    }
     const ancestor = runGit(top, ["merge-base", "--is-ancestor", base, "HEAD"]);
     if (!ok(ancestor) && ancestor.status !== 1)
       return { repo, error: `the recorded base ${base.slice(0, 12)} cannot be read` };
@@ -393,6 +405,135 @@ export function readHistories(project: string, work: Work): RootHistory[] {
       return { repo, error: `more than ${MAX_COMMITS} commits since the recorded base` };
     return { repo, ancestor: true, commits };
   });
+}
+
+/**
+ * The auto module's `branch` checked out in each recorded root, at the base recorded for it: made
+ * there when it does not exist yet, and checked out when an earlier, interrupted preparation made
+ * it. A branch of that name at another commit is not the module's. Never forced: Git refuses a
+ * switch that would lose work in the tree. The first root it cannot prepare, or null.
+ */
+export function prepareBranch(
+  project: string,
+  work: Work,
+  branch: string,
+): { repo: string; detail: string } | null {
+  for (const [repo, { base }] of Object.entries(work)) {
+    const folder = resolve(project, ...repo.split("/"));
+    const tip = runGit(folder, ["rev-parse", "--verify", "-q", `refs/heads/${branch}^{commit}`]);
+    let made: ReturnType<typeof runGit>;
+    if (ok(tip)) {
+      if (tip.stdout.trim() !== base)
+        return { repo, detail: `branch ${branch} already exists at another commit` };
+      const on = runGit(folder, ["symbolic-ref", "-q", "--short", "HEAD"]);
+      if (ok(on) && on.stdout.trim() === branch) continue;
+      made = runGit(folder, ["switch", "-q", branch]);
+    } else made = runGit(folder, ["switch", "-q", "--no-track", "-c", branch, base]);
+    if (!ok(made)) return { repo, detail: failure(made) };
+  }
+  return null;
+}
+
+// Tree entries, not rendered text: no renames, full object ids, no external diff or conversion.
+const RAW_DIFF = [
+  "diff",
+  "--raw",
+  "--no-renames",
+  "--no-abbrev",
+  "-z",
+  "--no-ext-diff",
+  "--no-textconv",
+  "--ignore-submodules=none",
+];
+
+/** What a range changes in one root, as tree entries; an error when Git cannot tell. */
+function rangeChange(
+  folder: string,
+  from: string,
+  to: string,
+  deadline = Infinity,
+): { files: number; key: string } | { error: string } {
+  const r = runBy(deadline, folder, [...RAW_DIFF, from, to, "--"]);
+  if (!ok(r)) return { error: failure(r) };
+  return netChange(r.stdout) ?? { error: "git diff --raw printed what verid cannot read" };
+}
+
+/**
+ * Each recorded root as the module closes: its HEAD and its net change since the recorded base,
+ * which a squash-merge must bring to main as it is. The first root Git cannot read, otherwise.
+ */
+export function closeRoots(project: string, work: Work): Work | { repo: string; detail: string } {
+  const closed: Work = {};
+  for (const [repo, root] of Object.entries(work)) {
+    const folder = resolve(project, ...repo.split("/"));
+    const head = runGit(folder, ["rev-parse", "--verify", "-q", "HEAD^{commit}"]);
+    if (!ok(head)) return { repo, detail: "HEAD has no commit" };
+    const delta = rangeChange(folder, root.base, head.stdout.trim());
+    if ("error" in delta) return { repo, detail: delta.error };
+    closed[repo] = { ...root, closed: head.stdout.trim(), delta };
+  }
+  return closed;
+}
+
+// Enough of main's history to find a module's squash; a longer search keeps the wait.
+const MAX_MAIN_COMMITS = 200;
+
+/**
+ * Where a closed root's change landed on its local main: a single-parent commit on main's
+ * first-parent history since the recorded base whose own change is exactly the recorded one,
+ * under a Conventional Commit message, still reachable from main. Null while there is none; an
+ * error when Git cannot tell, or by `deadline`, which keeps the wait too. Unrelated commits
+ * around it do not matter.
+ */
+export function squashOn(
+  project: string,
+  repo: string,
+  root: Work[string],
+  deadline = Infinity,
+): { sha: string | null } | { error: string } {
+  const folder = resolve(project, ...repo.split("/"));
+  const git = (args: readonly string[]) => runBy(deadline, folder, args);
+  const tip = git(["rev-parse", "--verify", "-q", `refs/heads/${root.main}^{commit}`]);
+  if (!ok(tip)) return { error: `main ${root.main} cannot be read: ${failure(tip)}` };
+  const main = tip.stdout.trim();
+  if (main === root.base || root.delta === undefined) return { sha: null };
+  const kept = git(["merge-base", "--is-ancestor", root.base, main]);
+  if (!ok(kept))
+    return {
+      error:
+        kept.status === 1
+          ? "main no longer holds the commit the module started from"
+          : failure(kept),
+    };
+  const log = git([
+    "log",
+    "--first-parent",
+    "-z",
+    `--max-count=${MAX_MAIN_COMMITS + 1}`,
+    "--format=%H %P%n%B",
+    `${root.base}..${main}`,
+  ]);
+  if (!ok(log)) return { error: failure(log) };
+  const commits: MainCommit[] = log.stdout
+    .split("\0")
+    .filter((entry) => entry.trim() !== "")
+    .map((entry) => {
+      const cut = entry.indexOf("\n");
+      const [sha = "", ...parents] = entry.slice(0, cut).trim().split(" ");
+      return { sha, parents: parents.length, key: "", message: entry.slice(cut + 1) };
+    });
+  if (commits.length > MAX_MAIN_COMMITS)
+    return { error: `more than ${MAX_MAIN_COMMITS} commits on main since the module started` };
+  // Only a candidate's own change is read, one Git run per squash-shaped commit, newest first; a
+  // match found before the time runs out stands.
+  for (const c of commits) {
+    if (c.parents !== 1 || !isConventionalCommit(c.message)) continue;
+    const change = rangeChange(folder, `${c.sha}^`, c.sha, deadline);
+    if ("error" in change) return change;
+    const found = squashOf(root.delta.key, [{ ...c, key: change.key }]);
+    if (found !== null) return { sha: found };
+  }
+  return { sha: null };
 }
 
 /**

@@ -80,7 +80,16 @@ const tdd = z.strictObject({
 });
 
 /** Where one Git root stood when a module's work began: its main and main's commit then. */
-const workRoot = z.strictObject({ main: z.string(), base: z.string() });
+const workRoot = z.strictObject({
+  main: z.string(),
+  base: z.string(),
+  /** Auto: the root's HEAD when the module closed. */
+  closed: z.optional(z.string()),
+  /** Auto: the module's net change base..closed, as tree entries (core/integration.ts). */
+  delta: z.optional(z.strictObject({ files: z.int().check(z.nonnegative()), key: z.string() })),
+  /** Auto: the squash commit on main that brought that change in. */
+  integrated: z.optional(z.string()),
+});
 /** A module's work roots by repo path; {} when the project was not in Git. */
 const work = z.record(z.string(), workRoot);
 
@@ -135,7 +144,19 @@ const autoState = z.strictObject({
   /** Why the run is stuck, copied from `.verid/blocked.md`; null while it is not. */
   blocked: z._default(z.nullable(z.string()), null),
   /** Where the open module's work began, recorded when the drive opened it. */
-  work: z._default(z.nullable(z.strictObject({ module: z.string(), roots: work })), null),
+  work: z._default(
+    z.nullable(
+      z.strictObject({
+        module: z.string(),
+        roots: work,
+        /** The module's own branch, made from main when the drive opened it. */
+        branch: z.optional(z.string()),
+        /** Preparing its branch, open for work, or closed and waiting for the developer's merge. */
+        stage: z.optional(z.enum(["preparing", "open", "waiting"])),
+      }),
+    ),
+    null,
+  ),
 });
 
 /** A read-only reviewer's recorded report on the open module. */

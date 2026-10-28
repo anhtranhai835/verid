@@ -671,9 +671,9 @@ describe("the auto drive's close reads the same history", () => {
     );
     repoAt(".", "main");
     expect((await runCli(["order"], project, env())).code).toBe(0);
-    await reviewed(); // the plan passes: calc opens, and its work begins at main
+    await reviewed(); // the plan passes: calc opens on its own branch, made from main
     const base = state().auto.work;
-    git(project, "switch", "-q", "-c", "feat/calc");
+    const branch = git(project, "branch", "--show-current");
     commit("wip");
     commit("feat(calc): add sums");
     const s = state();
@@ -692,21 +692,21 @@ describe("the auto drive's close reads the same history", () => {
     await reviewed();
     const served = audit().find((e) => e.event === "module_served");
     expect({
-      "work begins at main": base.roots["."].base === git(project, "rev-parse", "main"),
+      "work begins at main": [branch, base.roots["."].base === git(project, "rev-parse", "main")],
       "not served on wip": refused.stderr.includes("is not a Conventional Commit"),
       served: served?.module,
       commits: served?.commits,
-      "next module's work": state().auto.work?.module,
+      "waits for its merge": [state().auto.work?.module, state().auto.work?.stage],
     }).toEqual({
-      "work begins at main": true,
+      "work begins at main": ["feat/calc", true],
       "not served on wip": true,
       served: "calc",
       commits: [{ repo: ".", commits: 2 }],
-      "next module's work": "product",
+      "waits for its merge": ["calc", "waiting"],
     });
   }, 60_000); // a signed auto drive in a real repository: slow on a busy machine
 
-  it("keeps an auto module open when Git appeared after its work began outside Git", async () => {
+  it("opens an auto module only on its own branch, so outside Git it waits for Git", async () => {
     manifest(ROLES);
     put(".verid/research.md", "# Research\n");
     put(".verid/design.md", "# Design\n");
@@ -715,19 +715,14 @@ describe("the auto drive's close reads the same history", () => {
       "## Module: calc\n- AC-1: sums\n## Module: product\n- AC-9 (e2e): works\n",
     );
     expect((await runCli(["order"], project, env())).code).toBe(0);
-    await reviewed(); // the plan passes outside Git: calc's work begins with no root
+    await reviewed(); // the plan passes outside Git: there is no branch to make
+    const outside = [state().auto.work, (await lifecycle("Stop")).code];
     repoAt(".", "main");
-    git(project, "switch", "-q", "-c", "feat/calc");
-    const s = state();
-    put(
-      ".verid/.state/state.json",
-      JSON.stringify({
-        ...s,
-        tdd: { ...s.tdd, state: "PLATED", last_run: "r1", dirty: false, passed_acs: ["AC-1"] },
-      }),
-    );
-    await reviewed();
-    expect(state().modules.calc).toBeUndefined();
+    await lifecycle("Stop");
+    expect({
+      outside,
+      inside: [git(project, "branch", "--show-current"), state().auto.work?.stage],
+    }).toEqual({ outside: [null, 0], inside: ["feat/calc", "open"] });
   });
 
   it("judges a Codex shell command with the same Git rules", async () => {
