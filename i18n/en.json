@@ -33,7 +33,7 @@
   "VERID_BURNT_STATE_PROTECTED": "Reading or writing verid state is not allowed ({target}). Only verid writes state, and it holds the override confirmation code.",
   "VERID_BURNT_SECRET_PROTECTED": "Reading or writing secret files is not allowed ({target}).",
   "VERID_BURNT_TRANSCRIPT_PROTECTED": "Accessing Claude Code transcripts is not allowed ({target}).",
-  "VERID_BURNT_HOOK_PROTECTED": "The agent may not change Claude Code settings, agent definitions, skills, command definitions or plugins, or verid's installed code ({target}): they register and run hooks and commands, agent definitions determine roles, and skills or commands could claim an allowed namespace.",
+  "VERID_BURNT_HOOK_PROTECTED": "The agent may not change Claude Code settings, MCP server lists (.claude.json, .mcp.json), agent definitions, skills, command definitions or plugins, or verid's installed code ({target}): they register and run hooks, commands and MCP servers, agent definitions determine roles, and skills or commands could claim an allowed namespace.",
   "VERID_BURNT_MANIFEST_PROTECTED": "The agent may not change the verid manifest ({target}). Only the developer edits this file.",
   "VERID_BURNT_INSTRUCTIONS_PROTECTED": "Keep the verid block in {target} unchanged. Use Write/Edit/MultiEdit to edit other content; only the developer opens an exception.",
   "VERID_BURNT_SKILL_NOT_ALLOWED": "Skill is outside the allowlist ({target}). The developer can extend allowed_skills in .verid/manifest.yaml or allow this exact call once.",

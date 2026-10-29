@@ -107,13 +107,15 @@ function decideFile(
     // disableAllHooks), and the bundle is the code those hooks run. verid's commands in Claude
     // Code's menu could grant tools or run shell lines when the developer picks one. An agent
     // definition names the agent_type its subagent gets, so writing one would claim a role.
-    // Skill and command definitions could likewise claim a name in an allowed namespace.
+    // Skill and command definitions could likewise claim a name in an allowed namespace. An MCP
+    // server list starts its servers' commands outside every rule here.
     [
       "VERID_BURNT_HOOK_PROTECTED",
-      "Claude Code settings, agents, skills, commands or plugins, or verid's bundle",
+      "Claude Code settings, MCP server lists, agents, skills, commands or plugins, or verid's bundle",
       write &&
         (isClaudeSettings(a.path) ||
           isClaudeSettings(a.display) ||
+          [a.path, a.written ?? a.path, a.display].some(isMcpServerList) ||
           isUnder(a.path, ctx.distDir) ||
           isVeridCommand(a.path) ||
           isClaudeDefinition(a.path) ||
@@ -474,6 +476,18 @@ function isClaudeSettings(path: string): boolean {
   const segments = path.toLowerCase().split(/[\\/]+/);
   const base = segments.at(-1) ?? "";
   return segments.at(-2) === ".claude" && base.startsWith("settings") && base.endsWith(".json");
+}
+
+/**
+ * Claude Code's MCP server lists anywhere: `.claude.json` (the user's, in the home or config
+ * folder) and `.mcp.json` (a project's). A stdio server there runs a command at the next start.
+ */
+function isMcpServerList(path: string): boolean {
+  const base = path
+    .toLowerCase()
+    .split(/[\\/]+/)
+    .at(-1);
+  return base === ".claude.json" || base === ".mcp.json";
 }
 
 const ENV_TEMPLATES = new Set([".env.example", ".env.sample", ".env.template"]);

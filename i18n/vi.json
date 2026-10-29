@@ -33,7 +33,7 @@
   "VERID_BURNT_STATE_PROTECTED": "Không được đọc hoặc ghi state của verid ({target}). Chỉ verid được ghi state, và state chứa mã xác nhận override.",
   "VERID_BURNT_SECRET_PROTECTED": "Không được đọc hoặc ghi file bí mật ({target}).",
   "VERID_BURNT_TRANSCRIPT_PROTECTED": "Không được truy cập transcript của Claude Code ({target}).",
-  "VERID_BURNT_HOOK_PROTECTED": "Agent không được sửa settings của Claude Code, định nghĩa agent, skill, định nghĩa lệnh hay plugin, hoặc code đã cài của verid ({target}): chúng đăng ký và chạy hook cùng lệnh, định nghĩa agent quyết định vai trò, và skill hay lệnh có thể tự nhận namespace được phép.",
+  "VERID_BURNT_HOOK_PROTECTED": "Agent không được sửa settings của Claude Code, danh sách MCP server (.claude.json, .mcp.json), định nghĩa agent, skill, định nghĩa lệnh hay plugin, hoặc code đã cài của verid ({target}): chúng đăng ký và chạy hook, lệnh cùng MCP server, định nghĩa agent quyết định vai trò, và skill hay lệnh có thể tự nhận namespace được phép.",
   "VERID_BURNT_MANIFEST_PROTECTED": "Agent không được sửa manifest của verid ({target}). Chỉ developer sửa file này.",
   "VERID_BURNT_INSTRUCTIONS_PROTECTED": "Giữ nguyên block verid trong {target}. Dùng Write/Edit/MultiEdit để sửa nội dung khác; chỉ developer mở ngoại lệ.",
   "VERID_BURNT_SKILL_NOT_ALLOWED": "Skill nằm ngoài allowlist ({target}). Developer có thể thêm allowed_skills trong .verid/manifest.yaml hoặc cho đúng lần gọi này qua một lần.",

@@ -246,6 +246,7 @@ describe("Claude relocated user configuration protection", () => {
       "plugins/custom/agent.md",
       "settings.json",
       "settings.local.json",
+      ".claude.json",
     ];
     for (const relative of rows) {
       const path = join(configDir, relative);

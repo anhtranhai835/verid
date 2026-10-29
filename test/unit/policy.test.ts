@@ -15,6 +15,7 @@ import {
   toAction,
   writtenPath,
 } from "../../src/adapters/claude-code.js";
+import { codexAction } from "../../src/adapters/codex.js";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { vi } from "vitest";
@@ -138,6 +139,64 @@ describe("decide: file tools", () => {
       ["read verid's hook bundle", read("c:\\tools\\verid\\dist\\hook.js"), ALLOW],
       ["write verid's own source (dogfooding)", write("c:\\tools\\verid\\src\\hook.ts"), ALLOW],
     ]);
+  });
+
+  // A stdio server listed in either file runs its command when Claude Code next starts: the
+  // user's list without asking, the project's without asking under `claude -p` or the SDK.
+  it("denies writing Claude Code's MCP server lists by any tool, but lets them be read", () => {
+    const edit = (path: string) => ({ ...write(path), tool: "Edit" });
+    const payload = (tool_name: string, tool_input: Record<string, unknown>) => ({
+      hook_event_name: "PreToolUse" as const,
+      session_id: "s",
+      cwd: "c:/proj",
+      tool_name,
+      tool_input,
+    });
+    // The action and the files it writes, as the hook passes them to the rules.
+    const bash = (command: string): Action[] => [
+      { kind: "bash", command },
+      ...bashWrites(command, "c:/proj"),
+    ];
+    const codex = (tool_name: string, tool_input: Record<string, unknown>): Action[] => {
+      const adapted = codexAction(payload(tool_name, tool_input));
+      return [adapted.action, ...adapted.files];
+    };
+    const patch = (target: string) =>
+      `*** Begin Patch\n*** Add File: ${target}\n+{}\n*** End Patch`;
+    const rows: [string, Action[], string][] = [
+      ["write user list", [write("c:\\users\\u\\.claude.json")], HOOK],
+      ["edit user list", [edit("c:\\users\\u\\.claude.json")], HOOK],
+      ["write relocated user list", [write("c:\\users\\u\\custom-config\\.claude.json")], HOOK],
+      ["write project list", [write("c:\\proj\\.mcp.json")], HOOK],
+      ["edit a workspace repo's list", [edit("c:\\proj\\api\\.mcp.json")], HOOK],
+      ["mixed case", [write("c:\\proj\\sub\\.MCP.json")], HOOK],
+      [
+        "link to the user list",
+        [{ ...write("c:\\dotfiles\\claude.json"), display: "c:\\users\\u\\.claude.json" }],
+        HOOK,
+      ],
+      [
+        "MCP writer",
+        mcpFiles(payload("mcp__filesystem__write_file", { path: "c:/proj/.mcp.json" })),
+        HOOK,
+      ],
+      ["Bash redirect", bash("echo x > ~/.claude.json"), HOOK],
+      ["Bash copy", bash("cp evil.json .mcp.json"), HOOK],
+      ["Codex apply_patch", codex("apply_patch", { command: patch(".mcp.json") }), HOOK],
+      ["Codex PowerShell", codex("Bash", { command: "Set-Content ~/.claude.json x" }), HOOK],
+      ["read user list", [read("c:\\users\\u\\.claude.json")], ALLOW],
+      ["read project list", [read("c:\\proj\\.mcp.json")], ALLOW],
+      ["Bash read", bash("cat ~/.claude.json .mcp.json"), ALLOW],
+      ["look-alike", [write("c:\\proj\\claude.json")], ALLOW],
+      ["similar name", [write("c:\\proj\\.mcp.json.example")], ALLOW],
+    ];
+    const verdict = (actions: Action[]) => {
+      const denied = actions.map((a) => decide(a, ctx)).find((d) => d.kind === "deny");
+      return denied?.kind === "deny" ? denied.code : ALLOW;
+    };
+    expect(Object.fromEntries(rows.map(([name, actions]) => [name, verdict(actions)]))).toEqual(
+      Object.fromEntries(rows.map(([name, , want]) => [name, want])),
+    );
   });
 
   // A command file can grant tools (allowed-tools) and run shell lines when the developer runs it.
