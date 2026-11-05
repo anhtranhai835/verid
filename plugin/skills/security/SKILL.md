@@ -44,6 +44,9 @@ safe" claim is not evidence; evidence is code you read and artifacts with a name
 
    `references/personas.md` gives an attacker's questions per surface. Mark a surface that
    does not apply `not applicable` with the reason; a pure CLI needs no web checks.
+   For a deeper pass, `references/stride-owasp-checklist.md` and
+   `references/red-team-personas.md` hold the full original lists; their fix and loop steps
+   do not apply here, since you only read.
 
 3. **Trace** each candidate across files: source → transform → guard → sink.
 4. **Challenge** each candidate before reporting it:

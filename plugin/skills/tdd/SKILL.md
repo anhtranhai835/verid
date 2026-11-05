@@ -39,6 +39,8 @@ For an `(e2e)` AC, drive the real product through Playwright or a path matching 
 5. Keep doubles specific and complete; move test-only helpers out of production classes.
 6. Prefer real components to elaborate mocks; mentally mutate branches, values and effects to check coverage.
 
+For the full rules with examples, read `writing-good-tests.md`.
+
 ## When shortcuts sound reasonable
 
 - **Too simple to test:** cover the break it could cause; skip tests that repeat trivial code.
