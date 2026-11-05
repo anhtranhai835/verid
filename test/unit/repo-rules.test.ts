@@ -94,32 +94,15 @@ describe("repo rules", () => {
     expect(build).toContain("verid:tdd");
   });
 
-  it("counts each Limitations group's bullets correctly in both READMEs", () => {
-    const wrong = ["README.md", "README.vi.md"].flatMap((file) =>
-      [
-        ...readFileSync(join(root, file), "utf8").matchAll(
-          /<summary>(.*?) \((\d+)\)<\/summary>([\s\S]*?)<\/details>/g,
-        ),
-      ]
-        .map(([, name, said, body]) => [name, said, (body ?? "").match(/^- /gm)?.length ?? 0])
-        .filter(([, said, has]) => Number(said) !== has)
-        .map(([name, said, has]) => `${file}: ${name} says ${said}, has ${has}`),
-    );
-    expect(wrong).toEqual([]);
-  });
-
-  it("both READMEs explain other instruction sources outside the protected block", () => {
-    const rows = [
+  it("keeps the READMEs free of the retired limitations section", () => {
+    for (const [file, heading] of [
       ["README.md", "## Limitations"],
       ["README.vi.md", "## Giới hạn"],
-    ] as const;
-    for (const [file, limitationsHeading] of rows) {
+    ] as const) {
       const text = readFileSync(join(root, file), "utf8");
-      const limitations = text.split(limitationsHeading)[1] ?? "";
-      const instructionLine =
-        limitations.split(/\r?\n/).find((line) => line.includes("CLAUDE.local.md")) ?? "";
-      expect(instructionLine, file).toContain(".claude/CLAUDE.md");
-      expect(instructionLine, file).toContain(".claude/rules/");
+      expect(text, file).not.toContain(heading);
+      expect(text, file).not.toContain("LIMITATIONS.md");
+      expect(text, file).not.toContain("LIMITATIONS.vi.md");
     }
   });
 
@@ -198,91 +181,6 @@ describe("repo rules", () => {
         const protection = blocks.split(/\r?\n/).find((line) => line.includes(code)) ?? "";
         expect(protection, `${file}: ${code}`).toContain("CLAUDE_CONFIG_DIR");
       }
-    }
-  });
-
-  it("both READMEs disclose allowed namespace skills already on disk", () => {
-    const rows = [
-      ["README.md", "## Limitations", "already on disk", "allowed namespace"],
-      ["README.vi.md", "## Giới hạn", "đã có trên đĩa", "namespace được phép"],
-    ] as const;
-    for (const [file, heading, installed, namespace] of rows) {
-      const limitations = readFileSync(join(root, file), "utf8").split(heading)[1] ?? "";
-      const skill =
-        limitations
-          .split(/\r?\n/)
-          .find((line) => line.includes(".claude/skills/") && line.includes("`name`")) ?? "";
-      expect(skill, file).toContain(installed);
-      expect(skill, file).toContain(namespace);
-    }
-  });
-
-  it("both READMEs explain any-host drive shares and the remaining path aliases", () => {
-    const rows = [
-      [
-        "README.md",
-        "## Limitations",
-        [
-          "administrative drive shares",
-          "any host",
-          "local drive",
-          "Other shares",
-          "mapped network drives to other shares",
-          "`subst`",
-          "bypass",
-          "prefixes",
-        ],
-      ],
-      [
-        "README.vi.md",
-        "## Giới hạn",
-        [
-          "Share quản trị ổ đĩa",
-          "mọi host",
-          "ổ đĩa cục bộ",
-          "share khác",
-          "ổ mạng ánh xạ tới share khác",
-          "`subst`",
-          "vượt",
-          "tiền tố",
-        ],
-      ],
-    ] as const;
-    for (const [file, heading, phrases] of rows) {
-      const limitations = readFileSync(join(root, file), "utf8").split(heading)[1] ?? "";
-      const unc = limitations.split(/\r?\n/).find((line) => line.includes("UNC")) ?? "";
-      for (const phrase of phrases) expect.soft(unc, file).toContain(phrase);
-    }
-  });
-
-  it("both READMEs disclose parsed Bash skill and command targets and unparsed writes", () => {
-    const rows = [
-      ["README.md", "## Limitations", "parsed write targets", "read or run", "unparsed"],
-      [
-        "README.vi.md",
-        "## Giới hạn",
-        "đích ghi phân tích được",
-        "đọc hay chạy",
-        "không phân tích được",
-      ],
-    ] as const;
-    for (const [file, heading, targets, readers, gaps] of rows) {
-      const limitations = readFileSync(join(root, file), "utf8").split(heading)[1] ?? "";
-      const bash =
-        limitations
-          .split(/\r?\n/)
-          .find((line) => line.includes("Bash") && line.includes(".claude/skills/")) ?? "";
-      expect(bash, file).toContain(".claude/commands/");
-      expect(bash, file).toContain(targets);
-      expect(bash, file).toContain(readers);
-      expect(bash, file).toContain(gaps);
-      expect(bash, file).toContain("cd");
-      const mentions =
-        limitations
-          .split(/\r?\n/)
-          .find((line) => line.startsWith("- Bash") && line.includes(".claude/agents")) ?? "";
-      expect(mentions, file).not.toContain(".claude/skills");
-      expect(mentions, file).toContain(".claude/commands/verid");
     }
   });
 
