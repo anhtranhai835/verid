@@ -174,13 +174,14 @@ describe("Claude relocated user configuration protection", () => {
       ["printf x > ROOT/skills/y/SKILL.md", "VERID_BURNT_HOOK_PROTECTED"],
       ['cat "ROOT/projects/a.jsonl"', "VERID_BURNT_TRANSCRIPT_PROTECTED"],
     ] as const;
-    for (const root of roots) {
-      for (const [template, code] of rows) {
-        const command = template.replace("ROOT", root);
-        const r = await hook(call("Bash", { command }), false, configDir);
-        expect.soft(r.code, command).toBe(2);
-        expect.soft(r.stderr, command).toContain(code);
-      }
+    // policy.test judges every root with every command; through the hook, one command per root
+    // shows each spelling reaches the relocated config, and each command is used once.
+    for (const [i, root] of roots.entries()) {
+      const [template, code] = rows[i]!;
+      const command = template.replace("ROOT", root);
+      const r = await hook(call("Bash", { command }), false, configDir);
+      expect.soft(r.code, command).toBe(2);
+      expect.soft(r.stderr, command).toContain(code);
     }
   });
 
