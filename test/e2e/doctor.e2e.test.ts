@@ -176,14 +176,13 @@ describe("verid doctor", () => {
       const before = snapshot();
       const r = await cli(["doctor"]);
       expect(r.code, r.err + r.out).toBe(1);
-      expect(r.out).toContain("! instructions.claude-code:");
-      expect(r.out).toContain("CLAUDE.md");
+      expect(r.out).toContain("! instructions.CLAUDE.md:");
       expect(r.out).toContain("upgrade");
       expect(snapshot()).toEqual(before);
     }
   });
 
-  it("checks each selected provider and accepts user edits outside the block", async () => {
+  it("checks the AGENTS.md block and CLAUDE.md's import, and accepts user edits outside them", async () => {
     healthy();
     manifest((m) => {
       m.providers = ["claude-code", "codex"];
@@ -191,8 +190,8 @@ describe("verid doctor", () => {
     expect((await cli(["upgrade", "--yes"])).code).toBe(0);
     trustCodex();
     const rows = [
-      { file: "CLAUDE.md", finding: "! instructions.claude-code:" },
-      { file: "AGENTS.md", finding: "! instructions.codex:" },
+      { file: "CLAUDE.md", finding: "! instructions.CLAUDE.md:" },
+      { file: "AGENTS.md", finding: "! instructions.AGENTS.md:" },
     ];
     for (const { file } of rows) {
       const path = join(project, file);
@@ -205,7 +204,7 @@ describe("verid doctor", () => {
       const text = readFileSync(path, "utf8");
       const cases = [
         { content: null },
-        { content: text.replace("## verid", "## changed") },
+        { content: text.replace(/## verid|@AGENTS\.md/, "## changed") },
         { content: "<!-- verid:begin -->\nbroken" },
       ];
       for (const { content } of cases) {

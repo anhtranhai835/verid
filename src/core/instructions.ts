@@ -39,8 +39,53 @@ export function mergeInstructions(
   return { ok: true, content: `${text}${separator}${rendered}${eol}` };
 }
 
-export function instructionFile(provider: Provider): "CLAUDE.md" | "AGENTS.md" {
-  return provider === "claude-code" ? "CLAUDE.md" : "AGENTS.md";
+/** CLAUDE.md's whole verid block: Claude Code reads the shared block through this import. */
+const CLAUDE_IMPORT = [BEGIN, "@AGENTS.md", END].join("\n");
+
+/**
+ * What cook writes between the markers of each instruction file. AGENTS.md is the one source,
+ * read by Codex and imported by CLAUDE.md. With both providers its block holds each line once;
+ * a line only one provider needs is labelled with it.
+ */
+export function instructionBlocks(
+  manifest: Manifest,
+  skillsRoot = "plugin/skills",
+): { file: "AGENTS.md" | "CLAUDE.md"; block: string }[] {
+  const providers = manifest.providers ?? ["claude-code"];
+  const claude = providers.includes("claude-code");
+  const shared =
+    providers.length === 1
+      ? renderInstructions(manifest, providers[0]!, skillsRoot)
+      : mergeProviders(
+          renderInstructions(manifest, "claude-code", skillsRoot),
+          renderInstructions(manifest, "codex", skillsRoot),
+        );
+  return [
+    { file: "AGENTS.md", block: shared },
+    ...(claude ? [{ file: "CLAUDE.md" as const, block: CLAUDE_IMPORT }] : []),
+  ];
+}
+
+/** Section by section: common lines once, then each provider's own bullets under its label. */
+function mergeProviders(claude: string, codex: string): string {
+  const sections = (text: string) =>
+    text.split("\n").reduce<string[][]>((all, line) => {
+      if (line.startsWith("#") || line === BEGIN || line === END || all.length === 0) all.push([]);
+      all.at(-1)!.push(line);
+      return all;
+    }, []);
+  const label = (line: string, name: string) => line.replace(/^- /, `- (${name}) `);
+  const a = sections(claude);
+  const b = sections(codex);
+  return a
+    .flatMap((lines, i) => {
+      const other = b[i] ?? [];
+      const own = lines.map((line) => (other.includes(line) ? line : label(line, "Claude Code")));
+      const extra = other.filter((line) => !lines.includes(line)).map((l) => label(l, "Codex"));
+      const blank = own.at(-1) === "" ? own.length - 1 : own.length;
+      return [...own.slice(0, blank), ...extra, ...own.slice(blank)];
+    })
+    .join("\n");
 }
 
 /** A compact index of installed skills, never a copy of their instructions. */

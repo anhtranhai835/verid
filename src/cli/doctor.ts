@@ -4,7 +4,7 @@ import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { node22OrLater } from "../core/doctor.js";
-import { instructionBlock, instructionFile, renderInstructions } from "../core/instructions.js";
+import { instructionBlock, instructionBlocks } from "../core/instructions.js";
 import { hasCurrentVeridHooks } from "../adapters/claude-settings.js";
 import {
   codexHome,
@@ -149,8 +149,8 @@ export async function doctorCommand(project: string): Promise<CliResult> {
             });
         }
   }
-  for (const provider of manifest?.providers ?? []) {
-    const file = instructionFile(provider);
+  const blocks = manifest ? instructionBlocks(manifest, installedSkills()) : [];
+  for (const { file, block: expected } of blocks) {
     let text: string | undefined;
     try {
       text = readFileSync(join(project, file), "utf8").replaceAll("\r\n", "\n");
@@ -159,20 +159,16 @@ export async function doctorCommand(project: string): Promise<CliResult> {
     }
     const block = text === undefined ? { ok: true as const, block: null } : instructionBlock(text);
     if (block.ok && block.block === null)
-      problem(
-        `instructions.${provider}`,
-        "doctor.instructions.missing",
-        "doctor.instructions.fix",
-        { file },
-      );
-    else if (
-      !block.ok ||
-      block.block !== renderInstructions(manifest!, provider, installedSkills())
-    )
-      problem(`instructions.${provider}`, "doctor.instructions.edited", "doctor.instructions.fix", {
+      problem(`instructions.${file}`, "doctor.instructions.missing", "doctor.instructions.fix", {
+        file,
+      });
+    else if (!block.ok || block.block !== expected)
+      problem(`instructions.${file}`, "doctor.instructions.edited", "doctor.instructions.fix", {
         file,
       });
     else lines.push(say("doctor.instructions.ok", { file }));
+  }
+  for (const provider of manifest?.providers ?? []) {
     if (provider === "codex") {
       const hook = fileURLToPath(new URL("./hook.js", import.meta.url));
       const hookFile = join(project, ".codex", "hooks.json");

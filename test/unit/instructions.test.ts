@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   instructionBlock,
-  instructionFile,
+  instructionBlocks,
   mergeInstructions,
   renderInstructions,
 } from "../../src/core/instructions.js";
@@ -71,7 +71,7 @@ describe("provider instruction blocks", () => {
       expect(instructionBlock(text)).toEqual({ ok: true, block: want });
   });
 
-  it("names each provider file and keeps workflow references short with the effective allowlists", () => {
+  it("keeps workflow references short with the effective allowlists", () => {
     const parsed = parseManifest({
       schemaVersion: 1,
       mode: "prep",
@@ -88,15 +88,10 @@ describe("provider instruction blocks", () => {
     });
     if (!parsed.ok) throw new Error(parsed.detail);
     const rows = [
-      { provider: "claude-code", file: "CLAUDE.md", notice: "Claude Code hooks enforce" },
-      {
-        provider: "codex",
-        file: "AGENTS.md",
-        notice: "Codex hooks enforce",
-      },
+      { provider: "claude-code", notice: "Claude Code hooks enforce" },
+      { provider: "codex", notice: "Codex hooks enforce" },
     ] as const;
-    for (const { provider, file, notice } of rows) {
-      expect(instructionFile(provider)).toBe(file);
+    for (const { provider, notice } of rows) {
       const text = renderInstructions(parsed.manifest, provider, "C:/install/plugin/skills");
       expect(text).toContain(notice);
       expect(text).toContain("verid:design");
@@ -218,6 +213,43 @@ describe("provider instruction blocks", () => {
           `${provider} ${JSON.stringify(extra)}`,
         ).toBe(want);
     }
+  });
+
+  it("keeps the block in AGENTS.md for every provider, and has CLAUDE.md import it", () => {
+    const manifestFor = (providers: string[]) => {
+      const parsed = parseManifest({
+        schemaVersion: 1,
+        mode: "prep",
+        providers,
+        repos: [{ path: ".", source_globs: ["src/**"], test_globs: ["test/**"] }],
+      });
+      if (!parsed.ok) throw new Error(parsed.detail);
+      return parsed.manifest;
+    };
+    const imported = "<!-- verid:begin -->\n@AGENTS.md\n<!-- verid:end -->";
+    const claude = manifestFor(["claude-code"]);
+    const codex = manifestFor(["codex"]);
+    expect(instructionBlocks(claude, "S")).toEqual([
+      { file: "AGENTS.md", block: renderInstructions(claude, "claude-code", "S") },
+      { file: "CLAUDE.md", block: imported },
+    ]);
+    expect(instructionBlocks(codex, "S")).toEqual([
+      { file: "AGENTS.md", block: renderInstructions(codex, "codex", "S") },
+    ]);
+    const both = instructionBlocks(manifestFor(["claude-code", "codex"]), "S");
+    expect(both.map((b) => b.file)).toEqual(["AGENTS.md", "CLAUDE.md"]);
+    expect(both[1]!.block).toBe(imported);
+    const lines = both[0]!.block.split("\n");
+    for (const line of [
+      "- Never bypass or work around a denial: read its reason and follow it.",
+      "- (Claude Code) Research, then spec: verid:ba in the main conversation.",
+      "- (Codex) Research, then spec: verid:ba → S/ba/SKILL.md (main agent).",
+    ])
+      expect(
+        lines.filter((l) => l === line),
+        line,
+      ).toHaveLength(1);
+    expect(lines.filter((l) => l === "### Workflow")).toHaveLength(1);
   });
 
   it("tells Codex that Claude Code plugin agents cannot be spawned there", () => {

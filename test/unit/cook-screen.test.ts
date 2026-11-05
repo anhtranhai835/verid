@@ -112,7 +112,7 @@ describe("interactiveCook: verid cook in the developer's terminal", () => {
       expect(terminal.screen()).toContain("Choose providers");
       expect(parse(manifest()).providers).toEqual(row.providers);
       expect(existsSync(join(project, "CLAUDE.md"))).toBe(row.claude);
-      expect(existsSync(join(project, "AGENTS.md"))).toBe(row.codex);
+      expect(existsSync(join(project, "AGENTS.md"))).toBe(true); // the block, for every provider
       rmSync(project, { recursive: true, force: true });
       mkdirSync(project);
     }

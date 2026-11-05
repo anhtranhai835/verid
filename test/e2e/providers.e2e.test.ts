@@ -59,7 +59,7 @@ describe("provider setup through the CLI", () => {
     expect(gated.stderr).toContain("VERID_BURNT_TDD_NO_FAILING_TEST");
   });
 
-  it("selects providers with repeatable flags and writes only their instruction files and wiring", () => {
+  it("selects providers with repeatable flags, keeps the block in AGENTS.md and writes only their wiring", () => {
     const rows = [
       { args: [], providers: ["claude-code"], claude: true, codex: false },
       { args: ["--provider", "codex"], providers: ["codex"], claude: false, codex: true },
@@ -82,7 +82,10 @@ describe("provider setup through the CLI", () => {
       expect(existsSync(join(project, "CLAUDE.md"))).toBe(row.claude);
       expect(existsSync(join(project, ".claude/settings.local.json"))).toBe(row.claude);
       expect(existsSync(join(project, ".claude/commands/verid/tip.md"))).toBe(row.claude);
-      expect(existsSync(join(project, "AGENTS.md"))).toBe(row.codex);
+      // AGENTS.md holds the block for every provider; CLAUDE.md only imports it.
+      expect(read("AGENTS.md")).toContain("<!-- verid:begin -->\n## verid");
+      if (row.claude)
+        expect(read("CLAUDE.md")).toBe("<!-- verid:begin -->\n@AGENTS.md\n<!-- verid:end -->\n");
       expect(existsSync(join(project, ".codex/hooks.json"))).toBe(row.codex);
       if (row.codex) {
         expect(read(".codex/hooks.json")).toContain("--provider codex");
@@ -91,7 +94,7 @@ describe("provider setup through the CLI", () => {
       }
       const commit = result.stdout.split("\n").find((line) => line.includes("Commit"));
       if (row.claude) expect(commit).toContain("CLAUDE.md");
-      if (row.codex) expect(commit).toContain("AGENTS.md");
+      expect(commit).toContain("AGENTS.md");
       if (!row.claude) {
         expect(result.stdout).not.toContain(".claude/commands/verid/");
         expect(result.stdout).not.toContain(".claude/settings.local.json");
@@ -129,13 +132,14 @@ describe("provider setup through the CLI", () => {
     expect(manifest.providers).toEqual(["claude-code"]);
     expect(manifest.allowed_skills).toEqual([]);
     expect(manifest.allowed_agents).toEqual([]);
-    expect(read("CLAUDE.md")).not.toContain("general-purpose");
+    expect(read("AGENTS.md")).not.toContain("general-purpose");
     expect(read(".verid/manifest.yaml")).toContain("# keep");
     const ignored = cli(["cook", "--yes", "--provider", "codex"]);
     expect(ignored.status, ignored.stderr).toBe(0);
     expect(ignored.stdout).toContain("--provider");
     expect(parse(read(".verid/manifest.yaml")).providers).toEqual(["claude-code"]);
-    expect(existsSync(join(project, "AGENTS.md"))).toBe(false);
+    expect(existsSync(join(project, ".codex/hooks.json"))).toBe(false);
+    expect(read("AGENTS.md")).not.toContain("Codex hooks enforce");
     expect(cli(["upgrade", "--yes"]).stdout).toContain("= manifest.yaml");
   });
 

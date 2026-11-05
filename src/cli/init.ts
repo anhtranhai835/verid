@@ -25,7 +25,7 @@ import {
   type Manifest,
   type Provider,
 } from "../core/manifest.js";
-import { instructionFile, mergeInstructions, renderInstructions } from "../core/instructions.js";
+import { instructionBlocks, mergeInstructions } from "../core/instructions.js";
 import { goneRunners, runnerKey, runnerLabel, type Runner } from "../core/runners.js";
 import { hasVeridHooks, withVeridHooks } from "../adapters/claude-settings.js";
 import {
@@ -165,7 +165,7 @@ export function setupDoneLine(layout: Layout, providers: readonly Provider[]): s
       : layout === "workspace"
         ? "workspace.codex_done"
         : "init.codex_done",
-    { instructions: providers.map(instructionFile).join("  ") },
+    { instructions: providers.includes("claude-code") ? "AGENTS.md  CLAUDE.md" : "AGENTS.md" },
   );
 }
 
@@ -189,7 +189,7 @@ export async function planCook(
       checkSetupPath(project, rel);
     } catch (error) {
       if (
-        providers.some((provider) => instructionFile(provider) === rel) &&
+        ["AGENTS.md", "CLAUDE.md"].includes(rel) &&
         error instanceof VeridError &&
         error.code === "VERID_BURNT_MANIFEST_INVALID"
       )
@@ -497,15 +497,14 @@ export async function planCook(
     );
   }
 
-  for (const provider of providers) {
-    const rel = instructionFile(provider);
+  for (const { file: rel, block } of instructionBlocks(
+    { ...effective!, providers },
+    installedSkills(),
+  )) {
     checkWritePath(rel);
     const file = join(project, rel);
     const before = readText(file);
-    const result = mergeInstructions(
-      before ?? undefined,
-      renderInstructions(effective!, provider, installedSkills()),
-    );
+    const result = mergeInstructions(before ?? undefined, block);
     if (!result.ok) throw invalid(file, result.detail);
     if (before === result.content) step("kept", rel);
     else

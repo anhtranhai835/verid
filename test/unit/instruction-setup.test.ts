@@ -90,9 +90,9 @@ it("keeps intact CRLF instruction files byte-for-byte in cook and upgrade previe
 
 it("lists the selected instruction files to commit and their per-machine workspace location", () => {
   const rows = [
-    { providers: ["claude-code"], files: "CLAUDE.md" },
+    { providers: ["claude-code"], files: "AGENTS.md  CLAUDE.md" },
     { providers: ["codex"], files: "AGENTS.md" },
-    { providers: ["claude-code", "codex"], files: "CLAUDE.md  AGENTS.md" },
+    { providers: ["claude-code", "codex"], files: "AGENTS.md  CLAUDE.md" },
   ] as const;
   for (const row of rows) {
     const done = setupDoneLine("monorepo", row.providers);
