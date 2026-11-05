@@ -1,5 +1,4 @@
 import { existsSync, readFileSync, openSync, closeSync, fstatSync, readSync } from "node:fs";
-import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { closeHistory, isWorkBranch, isConventionalCommit } from "../core/git-convention.js";
 import type { Manifest } from "../core/manifest.js";
@@ -7,6 +6,7 @@ import { dependencyProblems, parsePlan } from "../core/plan.js";
 import { specTrace } from "../core/spec.js";
 import type { State } from "../core/state.js";
 import { declaredMains, runGit, readHistories, repoFacts, workRoots } from "./git.js";
+import { readFileHash } from "./state-store.js";
 
 /** Convention diagnostics never feed a gate. Failure to read them is itself a warning. */
 export function auditWarnings(project: string, manifest: Manifest, state: State): string[] {
@@ -87,10 +87,9 @@ export function auditWarnings(project: string, manifest: Manifest, state: State)
         );
     }
     // Design signatures remain useful for detection, but never revoke a module approval.
-    const design = join(project, ".verid/design.md");
-    if (!existsSync(design) && manifest.mode !== "remix") warn("WORKFLOW", "design missing");
-    else if (existsSync(design)) {
-      const hash = createHash("sha256").update(readFileSync(design)).digest("hex");
+    const hash = readFileHash(join(project, ".verid/design.md"));
+    if (hash === null && manifest.mode !== "remix") warn("WORKFLOW", "design missing");
+    else if (hash !== null) {
       const signed =
         manifest.drive === "auto"
           ? state.auto.signed?.design_sha256
@@ -113,21 +112,12 @@ export function auditWarnings(project: string, manifest: Manifest, state: State)
         warn("SPEC_UNKNOWN", `${id}: cited in .verid/plan.md but not in .verid/spec.md`);
     }
     const signedSpec = state.auto.signed?.spec_sha256;
-    if (manifest.drive === "auto" && signedSpec) {
-      const hash = existsSync(spec)
-        ? createHash("sha256").update(readFileSync(spec)).digest("hex")
-        : null;
-      if (signedSpec !== hash) warn("SPEC_CHANGED", ".verid/spec.md changed since approval");
-    }
-    const research = join(project, ".verid/research.md");
+    if (manifest.drive === "auto" && signedSpec && signedSpec !== readFileHash(spec))
+      warn("SPEC_CHANGED", ".verid/spec.md changed since approval");
     const signedResearch = state.auto.signed?.research_sha256;
-    if (manifest.drive === "auto" && signedResearch) {
-      const hash = existsSync(research)
-        ? createHash("sha256").update(readFileSync(research)).digest("hex")
-        : null;
-      if (signedResearch !== hash)
-        warn("RESEARCH_CHANGED", ".verid/research.md changed since approval");
-    }
+    const research = join(project, ".verid/research.md");
+    if (manifest.drive === "auto" && signedResearch && signedResearch !== readFileHash(research))
+      warn("RESEARCH_CHANGED", ".verid/research.md changed since approval");
   } catch (err) {
     warn("AUDIT_UNAVAILABLE", err instanceof Error ? err.message : String(err));
   }

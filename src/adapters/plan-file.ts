@@ -29,7 +29,7 @@ import { checkedRepos } from "./architecture.js";
 import { type Work } from "./git.js";
 import { bilingual } from "./i18n.js";
 import { auditLines } from "./rule-audit.js";
-import { errno } from "./state-store.js";
+import { errno, readFileHash } from "./state-store.js";
 
 export const planFile = (project: string): string => join(project, ".verid", "plan.md");
 export const researchFile = (project: string): string => join(project, ".verid", "research.md");
@@ -50,16 +50,6 @@ export const specMissing = (project: string, mode: Mode): boolean =>
 export const designMissing = (project: string, mode: Mode): boolean =>
   mode !== "remix" && !existsSync(designFile(project));
 
-/** sha256 of a file as saved, BOM and line endings included; null when it is missing. */
-export function readFileHash(file: string): string | null {
-  try {
-    return createHash("sha256").update(readFileSync(file)).digest("hex");
-  } catch (e) {
-    if (errno(e) === "ENOENT") return null;
-    throw e;
-  }
-}
-
 /** sha256 of `.verid/design.md` as saved; null when missing. */
 export const readDesignHash = (project: string): string | null => readFileHash(designFile(project));
 
@@ -69,6 +59,14 @@ export const evidenceOf = (project: string, state: State): Evidence => ({
   passedE2eAcs: state.tdd.passed_e2e_acs,
   designHash: readDesignHash(project),
 });
+
+/** Where each module stands: the plan's sections against the approvals and the last run. */
+export const planViews = (
+  project: string,
+  plan: { modules: readonly PlanModule[]; hashes: Readonly<Record<string, string>> },
+  state: State,
+  approvals: State["modules"] = state.modules,
+): ModuleView[] => modulePhases(plan.modules, plan.hashes, approvals, evidenceOf(project, state));
 
 export type PlanRead =
   | { ok: true; modules: PlanModule[]; hashes: Record<string, string> }
@@ -115,9 +113,7 @@ export function openWork(
     return { module: name, work: work?.roots, ...(work?.branch && { branch: work.branch }) };
   }
   const plan = readPlan(project, iterations);
-  const views = plan?.ok
-    ? modulePhases(plan.modules, plan.hashes, state.modules, evidenceOf(project, state))
-    : [];
+  const views = plan?.ok ? planViews(project, plan, state) : [];
   const name = openModule(views)?.name;
   return name === undefined ? null : { module: name, work: state.modules[name]?.work };
 }
@@ -237,7 +233,7 @@ function planStanding(project: string, state: State, iterations = false) {
   const hasResearch = existsSync(researchFile(project));
   const hasSpec = existsSync(specFile(project));
   const hasDesign = existsSync(designFile(project));
-  const views = modulePhases(plan.modules, plan.hashes, state.modules, evidenceOf(project, state));
+  const views = planViews(project, plan, state);
   const step = nextStep(hasResearch, hasDesign, views, questions.length > 0, hasSpec);
   return {
     ok: true as const,

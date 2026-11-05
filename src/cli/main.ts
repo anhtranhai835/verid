@@ -7,7 +7,6 @@ import { parseArgs } from "node:util";
 import { autoNextStep, autoPhase, changedServed, securityOf } from "../core/auto.js";
 import type { Manifest } from "../core/manifest.js";
 import {
-  modulePhases,
   moduleProblem,
   PRODUCT,
   nextStep,
@@ -29,11 +28,11 @@ import {
   autoFactsOf,
   blockedFile,
   designFile,
-  evidenceOf,
   menuLines,
   openWork,
   peekLines,
   planFile,
+  planViews,
   questionLines,
   readDesignHash,
   readPlan,
@@ -445,12 +444,7 @@ async function approve(project: string, wanted: string | undefined): Promise<Cli
   const captured = captureWork(project, manifest!);
   const result = withLock(paths, () => {
     const state = readState(paths);
-    const views = modulePhases(
-      plan.modules,
-      plan.hashes,
-      state.modules,
-      evidenceOf(project, state),
-    );
+    const views = planViews(project, plan, state);
     const open = openModule(views);
     // The product module says the whole product works, so every other module is done first.
     const waiting = views.filter((v) => v.name !== PRODUCT && v.phase !== "done");
@@ -618,12 +612,7 @@ async function serve(project: string, wanted: string): Promise<CliResult> {
   const paths = statePaths(project);
   const result = withLock(paths, () => {
     const state = readState(paths);
-    const views = modulePhases(
-      plan.modules,
-      plan.hashes,
-      state.modules,
-      evidenceOf(project, state),
-    );
+    const views = planViews(project, plan, state);
     const view = views.find((v) => v.name === name) as ModuleView;
     // The reason is a message of its own, so it comes in the developer's language.
     const reviewers = (manifest.roles?.reviewer ?? []).join(", ");
@@ -657,7 +646,7 @@ async function serve(project: string, wanted: string): Promise<CliResult> {
     const next = { ...state, modules: { ...state.modules, [name]: served } };
     // The next step is worked out before anything is written, so a file that cannot be read
     // fails the command without serving half of it.
-    const after = modulePhases(plan.modules, plan.hashes, next.modules, evidenceOf(project, state));
+    const after = planViews(project, plan, state, next.modules);
     const questions = questionLines(project);
     const step = nextStep(
       existsSync(researchFile(project)),

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ErrorCode } from "../core/errors.js";
@@ -187,6 +188,16 @@ function retryBusy<T>(op: () => T): T {
 
 function sleep(ms: number): void {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+/** sha256 of a file as saved, BOM and line endings included; null when it is missing. */
+export function readFileHash(file: string): string | null {
+  try {
+    return createHash("sha256").update(readFileSync(file)).digest("hex");
+  } catch (e) {
+    if (errno(e) === "ENOENT") return null;
+    throw e;
+  }
 }
 
 export function errno(e: unknown): string | undefined {

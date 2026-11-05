@@ -26,7 +26,7 @@ import {
 import type { State } from "./core/state.js";
 import type { Manifest, Roles } from "./core/manifest.js";
 import { consumeOverride, handlePrompt, parseVeridPrompt, recordDenial } from "./core/override.js";
-import { modulePhases, openModule } from "./core/plan.js";
+import { openModule } from "./core/plan.js";
 import { decide, isUnder } from "./core/policy.js";
 import { matchesGlob } from "./core/glob.js";
 import { decideAgentContext, decideDispatch, decideKnownTool } from "./core/dispatch.js";
@@ -80,9 +80,9 @@ import { loadManifest, tddLayouts } from "./adapters/manifest.js";
 import {
   autoFactsOf,
   designMissing,
-  evidenceOf,
   menuLines,
   peekLines,
+  planViews,
   readPlan,
   researchMissing,
   specMissing,
@@ -706,9 +706,7 @@ async function lifecycle(p: z.infer<typeof lifecycleSchema>): Promise<Result> {
     return withLock(paths, () => {
       const state = readState(paths);
       const plan = readPlan(project);
-      const views = plan?.ok
-        ? modulePhases(plan.modules, plan.hashes, state.modules, evidenceOf(project, state))
-        : [];
+      const views = plan?.ok ? planViews(project, plan, state) : [];
       const open = openModule(views);
       if (!open || state.ac_stop_session === p.session_id) return { exit: 0 };
       const cooking = open.phase === "cooking";
@@ -1167,7 +1165,7 @@ function hasOpenModule(project: string, state: State): boolean {
 function openModuleName(project: string, state: State): string | undefined {
   const plan = readPlan(project);
   if (!plan?.ok) return undefined;
-  const views = modulePhases(plan.modules, plan.hashes, state.modules, evidenceOf(project, state));
+  const views = planViews(project, plan, state);
   return openModule(views)?.name;
 }
 
