@@ -1,7 +1,7 @@
 Source: https://github.com/obra/superpowers
 Version: 7.0.0 (bb92a77741419a4ab5f06e711a283343f1ada0c3)
 Upstream paths: skills/systematic-debugging/
-Verbatim files; only SKILL.md frontmatter name changed from systematic-debugging to debugging.
+Verbatim files; SKILL.md changes only its frontmatter name (systematic-debugging to debugging) and two superpowers skill calls, now verid:tdd and verid taste.
 
 MIT License
 

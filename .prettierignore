@@ -1,4 +1,4 @@
-# Pinned upstream text: only SKILL.md's discovery name may change.
+# Pinned upstream text: SKILL.md changes only its name and two unresolvable skill calls.
 plugin/skills/debugging/
 # ClaudeKit reference trees are kept as distributed; their verid wrappers are formatted separately.
 plugin/skills/problem-solving/references/
@@ -14,6 +14,9 @@ plugin/skills/context-engineering/
 plugin/skills/ui-ux-pro-max/
 plugin/skills/security-scan/
 plugin/skills/docs-seeker/
+plugin/skills/security/references/red-team-personas.md
+plugin/skills/security/references/stride-owasp-checklist.md
+plugin/skills/tdd/writing-good-tests.md
 # Recorded host payloads and reviewer notes stay as they were written.
 test/fixtures/codex/
 .claude/agent-memory/

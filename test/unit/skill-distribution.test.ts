@@ -25,7 +25,8 @@ describe("self-contained verid skills", () => {
   });
 
   it("ships the complete pinned debugging techniques without upstream creation tooling", () => {
-    // SHA-256 of the upstream 7.0.0 files; only SKILL.md's discovery name may change.
+    // SHA-256 of the upstream 7.0.0 files; SKILL.md changes only its discovery name and the two
+    // skill calls that would not resolve on a machine without superpowers.
     const rows = [
       ["SKILL.md", "51c6435d98c83c42c96ba7c35725a0b2c376cd487fb1a4e6bd0ddbe7e33ef202"],
       ["root-cause-tracing.md", "75b933b6a8c40bdb2031b10f21654395b56ec6ab6bc7b018c18d3fe57aeb7fb8"],
@@ -44,10 +45,17 @@ describe("self-contained verid skills", () => {
       const text = read(`plugin/skills/debugging/${name}`).replaceAll("\r\n", "\n");
       const original =
         name === "SKILL.md"
-          ? text.replace("name: debugging\n", "name: systematic-debugging\n")
+          ? text
+              .replace("name: debugging\n", "name: systematic-debugging\n")
+              .replace("`verid:tdd` skill", "`superpowers:test-driven-development` skill")
+              .replace(
+                "Run `verid taste` before claiming success",
+                "Use the `superpowers:verification-before-completion` skill before claiming success",
+              )
           : text;
       expect(createHash("sha256").update(original).digest("hex"), name).toBe(hash);
     }
+    expect(read("plugin/skills/debugging/SKILL.md")).not.toContain("superpowers:");
     for (const name of ["CREATION-LOG.md", "test-academic.md", "test-pressure-1.md"])
       expect(existsSync(join(root, "plugin/skills/debugging", name)), name).toBe(false);
   });
