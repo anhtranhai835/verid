@@ -58,6 +58,27 @@ const NESTED = "VERID_BURNT_BASH_NESTED_CLAUDE";
 const DEVELOPER = "VERID_BURNT_BASH_DEVELOPER_ONLY";
 const DANGEROUS = "VERID_BURNT_BASH_DANGEROUS";
 
+// A PreToolUse payload, the actions and files the hook judges for it, and the first denial.
+const payload = (tool_name: string, tool_input: Record<string, unknown>) => ({
+  hook_event_name: "PreToolUse" as const,
+  session_id: "s",
+  cwd: "c:/proj",
+  tool_name,
+  tool_input,
+});
+const bash = (command: string): Action[] => [
+  { kind: "bash", command },
+  ...bashWrites(command, "c:/proj"),
+];
+const codex = (tool_name: string, tool_input: Record<string, unknown>): Action[] => {
+  const adapted = codexAction(payload(tool_name, tool_input));
+  return [adapted.action, ...adapted.files];
+};
+const verdict = (actions: Action[]) => {
+  const denied = actions.map((a) => decide(a, ctx)).find((d) => d.kind === "deny");
+  return denied?.kind === "deny" ? denied.code : ALLOW;
+};
+
 // Each behaviour holds its cases as a literal table; on a failure the diff names the case.
 function expectFiles(rows: [string, Action, string][]): void {
   const verdict = (a: Action) => {
@@ -96,21 +117,6 @@ describe("decide: file tools", () => {
 
   // The developer's own requirement documents: agents read them, only the developer edits them.
   it("lets the developer's documents in .verid/docs be read by any tool but not written", () => {
-    const payload = (tool_name: string, tool_input: Record<string, unknown>) => ({
-      hook_event_name: "PreToolUse" as const,
-      session_id: "s",
-      cwd: "c:/proj",
-      tool_name,
-      tool_input,
-    });
-    const bash = (command: string): Action[] => [
-      { kind: "bash", command },
-      ...bashWrites(command, "c:/proj"),
-    ];
-    const codex = (tool_name: string, tool_input: Record<string, unknown>): Action[] => {
-      const adapted = codexAction(payload(tool_name, tool_input));
-      return [adapted.action, ...adapted.files];
-    };
     const patch = (target: string) =>
       `*** Update File: ${target}\n@@\n-a\n+b\n`.replace(/^/, "*** Begin Patch\n") +
       "*** End Patch";
@@ -140,10 +146,6 @@ describe("decide: file tools", () => {
       ["look-alike folder", [write("c:\\proj\\.verid\\docs-old\\brd.md")], ALLOW],
       ["the project's own docs", [write("c:\\proj\\docs\\guide.md")], ALLOW],
     ];
-    const verdict = (actions: Action[]) => {
-      const denied = actions.map((a) => decide(a, ctx)).find((d) => d.kind === "deny");
-      return denied?.kind === "deny" ? denied.code : ALLOW;
-    };
     expect(Object.fromEntries(rows.map(([name, actions]) => [name, verdict(actions)]))).toEqual(
       Object.fromEntries(rows.map(([name, , want]) => [name, want])),
     );
@@ -203,22 +205,6 @@ describe("decide: file tools", () => {
   // user's list without asking, the project's without asking under `claude -p` or the SDK.
   it("denies writing Claude Code's MCP server lists by any tool, but lets them be read", () => {
     const edit = (path: string) => ({ ...write(path), tool: "Edit" });
-    const payload = (tool_name: string, tool_input: Record<string, unknown>) => ({
-      hook_event_name: "PreToolUse" as const,
-      session_id: "s",
-      cwd: "c:/proj",
-      tool_name,
-      tool_input,
-    });
-    // The action and the files it writes, as the hook passes them to the rules.
-    const bash = (command: string): Action[] => [
-      { kind: "bash", command },
-      ...bashWrites(command, "c:/proj"),
-    ];
-    const codex = (tool_name: string, tool_input: Record<string, unknown>): Action[] => {
-      const adapted = codexAction(payload(tool_name, tool_input));
-      return [adapted.action, ...adapted.files];
-    };
     const patch = (target: string) =>
       `*** Begin Patch\n*** Add File: ${target}\n+{}\n*** End Patch`;
     const rows: [string, Action[], string][] = [
@@ -248,10 +234,6 @@ describe("decide: file tools", () => {
       ["look-alike", [write("c:\\proj\\claude.json")], ALLOW],
       ["similar name", [write("c:\\proj\\.mcp.json.example")], ALLOW],
     ];
-    const verdict = (actions: Action[]) => {
-      const denied = actions.map((a) => decide(a, ctx)).find((d) => d.kind === "deny");
-      return denied?.kind === "deny" ? denied.code : ALLOW;
-    };
     expect(Object.fromEntries(rows.map(([name, actions]) => [name, verdict(actions)]))).toEqual(
       Object.fromEntries(rows.map(([name, , want]) => [name, want])),
     );

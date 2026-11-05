@@ -6,7 +6,7 @@ import {
   recordDenial,
   type PromptContext,
 } from "../../src/core/override.js";
-import { FRESH_AUTO, type State } from "../../src/core/state.js";
+import { parseState, type State } from "../../src/core/state.js";
 
 describe("parseVeridPrompt", () => {
   // One table of prompts; on a failure the diff names the prompt.
@@ -65,34 +65,13 @@ const denied = {
   rule: "VERID_BURNT_MANIFEST_PROTECTED",
   at: "t0",
 } as const;
+// A fresh state, as parseState fills it, with the denial this file's prompts answer.
+const fresh = parseState('{"schemaVersion":1}');
+if (!fresh.ok) throw new Error(fresh.code);
 const base: State = {
-  schemaVersion: 1,
+  ...fresh.state,
   counters: { blocked_actions: 1 },
   last_denied: { ...denied },
-  pending_override: null,
-  overrides: [],
-  tdd: {
-    state: "RAW",
-    last_run: null,
-    failing: [],
-    rev: 0,
-    dirty: false,
-    passed_acs: [],
-    passed_e2e_acs: [],
-    stub: false,
-    crashed: [],
-  },
-  baseline: null,
-  modules: {},
-  ac_stop_session: null,
-  language: null,
-  runners: [],
-  review: null,
-  security: null,
-  writers: [],
-  auto: FRESH_AUTO,
-  architecture: {},
-  halted: null,
 };
 const ctx: PromptContext = {
   session: "s1",
