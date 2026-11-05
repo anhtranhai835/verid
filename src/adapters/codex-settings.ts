@@ -21,12 +21,12 @@ export const installedSkills = (): string => join(installationRoot(), "plugin", 
 export const reviewerOverlay = (): string =>
   join(installationRoot(), "dist", "codex-reviewer.toml");
 
-export function reviewerContent(): string {
+export function reviewerContent(skillsRoot = installedSkills()): string {
   const template = readFileSync(
     join(installationRoot(), "plugin", "codex", "verid-reviewer.toml"),
     "utf8",
   );
-  const skill = (name: string) => join(installedSkills(), name, "SKILL.md").replaceAll("\\", "/");
+  const skill = (name: string) => join(skillsRoot, name, "SKILL.md").replaceAll("\\", "/");
   return template
     .replace("{{REVIEW_SKILL}}", () => skill("review"))
     .replace("{{SECURITY_SKILL}}", () => skill("security"));

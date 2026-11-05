@@ -1,0 +1,126 @@
+import { spawnSync } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { afterEach, beforeEach, expect, it } from "vitest";
+import { developerEnv } from "./helpers.js";
+import { MODULE_INPUTS } from "../../src/adapters/plan-file.js";
+
+const CLI = join(import.meta.dirname, "../../dist/cli.js");
+const RUNNER = join(import.meta.dirname, "fake-runner.mjs");
+let project: string;
+beforeEach(() => {
+  project = mkdtempSync(join(tmpdir(), "verid modular codex-"));
+});
+afterEach(() => rmSync(project, { recursive: true, force: true }));
+const env = () => ({ ...developerEnv("CODEX"), CODEX_HOME: join(project, "user-codex") });
+const cli = (...args: string[]) =>
+  spawnSync(process.execPath, [CLI, ...args], { cwd: project, env: env(), encoding: "utf8" });
+const put = (rel: string, content: string) => {
+  mkdirSync(dirname(join(project, rel)), { recursive: true });
+  writeFileSync(join(project, rel), content);
+};
+const state = () => JSON.parse(readFileSync(join(project, ".verid/.state/state.json"), "utf8"));
+const hook = (event: string, extra = {}) =>
+  spawnSync(process.execPath, [join(project, ".verid/hooks/hook.js"), "--provider", "codex"], {
+    cwd: project,
+    env: env(),
+    encoding: "utf8",
+    input: JSON.stringify({
+      hook_event_name: event,
+      session_id: "repo-codex-session",
+      cwd: project,
+      model: "gpt-6.1-sol",
+      transcript_path: null,
+      permission_mode: "default",
+      turn_id: "repo-turn",
+      tool_use_id: "repo-call",
+      agent_transcript_path: null,
+      ...extra,
+    }),
+  });
+const patch = (path: string) =>
+  hook("PreToolUse", {
+    tool_name: "apply_patch",
+    tool_input: { command: `*** Begin Patch\n*** Add File: ${path}\n+content\n*** End Patch` },
+  });
+const reason = (result: ReturnType<typeof hook>) => {
+  expect(result.status, result.stderr).toBe(0);
+  return JSON.parse(result.stdout).hookSpecificOutput.permissionDecisionReason as string;
+};
+
+it("runs the built repo hook on Codex through module order, RED/GREEN and a read-only review", () => {
+  const cooked = cli(
+    "cook",
+    "--yes",
+    "--mode",
+    "prep",
+    "--provider",
+    "codex",
+    "--workflow",
+    "modular",
+    "--resources",
+    "repo",
+    "--test-cmd",
+    `"${process.execPath}" "${RUNNER}" {junit}`,
+  );
+  expect(cooked.status, cooked.stderr).toBe(0);
+  expect(existsSync(join(project, "user-codex/config.toml"))).toBe(false);
+  const session = hook("SessionStart", { source: "startup" });
+  expect(session.status, session.stderr).toBe(0);
+  expect(session.stdout).toContain("Codex");
+  expect(session.stdout).not.toContain("hooks/cli.js");
+  expect(reason(patch(".verid/skills/ba/SKILL.md"))).toContain("VERID_BURNT_HOOK_PROTECTED");
+  expect(reason(patch("src/add.ts"))).toContain("VERID_BURNT_PLAN");
+  expect(cli("module", "calculator").status).toBe(0);
+  put(".verid/research.md", "# Research\nAgreed calculator module\n");
+  put(".verid/spec.md", "- REQ-1: The calculator shall add two numbers. (source: developer)\n");
+  put(".verid/design.md", "# Design\nA pure add function.\n");
+  put(
+    ".verid/plan.md",
+    "## Module: calculator\nArtifacts: .verid/artifacts/03-modules/calculator\n- AC-1: adds two numbers (REQ-1)\n",
+  );
+  expect(cli("order", "calculator").stderr).toContain("resolve the module draft");
+  for (const input of MODULE_INPUTS)
+    put(
+      `.verid/artifacts/03-modules/calculator/${input}`,
+      `Agreed: ${input}. Source: developer.\n`,
+    );
+  const order = cli("order", "calculator");
+  expect(order.status, order.stderr).toBe(0);
+  expect(reason(patch("src/add.ts"))).toContain("VERID_BURNT_TDD_NO_FAILING_TEST");
+  expect(patch("test/add.test.ts").stdout).toBe("");
+  put("test/add.test.ts", "// AC-1 adds two numbers\n");
+  put("scenario.json", JSON.stringify({ exit: 1, junit: "vitest-add-assert.xml", output: "red" }));
+  const red = cli("taste");
+  expect(red.status, red.stderr).toBe(1);
+  expect(state().tdd.state).toBe("COOKING");
+  expect(patch("src/add.ts").stdout).toBe("");
+  put("src/add.ts", "export const add = (a: number, b: number) => a + b;\n");
+  put("scenario.json", JSON.stringify({ exit: 0, junit: "vitest-green.xml", output: "green" }));
+  const green = cli("taste");
+  expect(green.status, green.stderr).toBe(0);
+  expect(state().tdd.state).toBe("PLATED");
+  const reviewerWrite = hook("PreToolUse", {
+    agent_id: "review-1",
+    agent_type: "verid_reviewer",
+    tool_name: "apply_patch",
+    tool_input: { command: "*** Begin Patch\n*** Add File: src/forged.ts\n+code\n*** End Patch" },
+  });
+  expect(reason(reviewerWrite)).toContain("VERID_BURNT_ROLE_READ_ONLY");
+  const reviewed = hook("SubagentStop", {
+    agent_id: "review-1",
+    agent_type: "verid_reviewer",
+    stop_hook_active: false,
+    last_assistant_message:
+      "AC-1 checked against the spec, design, diff and tests.\nSecurity: no findings.\nVerdict: pass",
+  });
+  expect(reviewed.status, reviewed.stderr).toBe(0);
+  expect(state().review).toMatchObject({
+    module: "calculator",
+    agent_type: "verid_reviewer",
+    verdict: "pass",
+  });
+  put(".verid/artifacts/03-modules/calculator/spec/spec.md", "Changed public contract\n");
+  expect(reason(patch("src/changed.ts"))).toContain("VERID_BURNT_PLAN_NOT_APPROVED");
+}, 60_000);

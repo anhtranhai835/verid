@@ -123,8 +123,9 @@ function decideFile(
           isClaudeDefinition(a.display) ||
           [a.path, a.written ?? a.path, a.display].some(
             (p) =>
-              /(?:^|\/)\.codex(?:\/|$)|(?:^|\/)\.agents\/skills(?:\/|$)/.test(slashPath(p)) ||
-              (ctx.protectedWriteDirs ?? []).some((dir) => isUnder(p, dir)),
+              /(?:^|\/)\.codex(?:\/|$)|(?:^|\/)\.agents\/skills(?:\/|$)|(?:^|\/)\.verid\/(?:agents|skills|templates|hooks|i18n|policies)(?:\/|$)/.test(
+                slashPath(p),
+              ) || (ctx.protectedWriteDirs ?? []).some((dir) => isUnder(p, dir)),
           ) ||
           config.some(
             (p) =>

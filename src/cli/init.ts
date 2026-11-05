@@ -11,6 +11,9 @@ import {
   manifestUpgrade,
   MODES,
   PROVIDERS,
+  WORKFLOWS,
+  RESOURCE_MODES,
+  resourceRoles,
   ROLE_NAMES,
   parseManifest,
   providerRoles,
@@ -30,7 +33,7 @@ import { goneRunners, runnerKey, runnerLabel, type Runner } from "../core/runner
 import { hasVeridHooks, withVeridHooks } from "../adapters/claude-settings.js";
 import {
   codexHome,
-  installedSkills,
+  installationRoot,
   mergeCodexReviewer,
   reviewerOverlay,
   reviewerContent,
@@ -63,6 +66,7 @@ import {
   withLock,
   writeState,
 } from "../adapters/state-store.js";
+import { repoResources, resourceTree, skillsFor } from "../adapters/repo-resources.js";
 
 import type { CliResult } from "./test.js";
 
@@ -203,12 +207,20 @@ export async function planCook(
   };
 
   const settingsFile = join(project, ".claude", "settings.local.json");
-  const hook = fileURLToPath(new URL("./hook.js", import.meta.url));
+  const existing = await loadManifest(project, { readOnly: true, checkPaths: false });
+  if (flags.workflow !== undefined && !WORKFLOWS.some((value) => value === flags.workflow))
+    throw invalid("--workflow", "must be classic or modular");
+  if (flags.resources !== undefined && !RESOURCE_MODES.some((value) => value === flags.resources))
+    throw invalid("--resources", "must be installed or repo");
+  const resources = existing ? existing.resources : flags.resources;
+  const hook =
+    resources === "repo"
+      ? join(project, ".verid/hooks/hook.js")
+      : fileURLToPath(new URL("./hook.js", import.meta.url));
 
   // The language for this machine's messages, kept in its state.
   const language = flags.lang === undefined ? undefined : LANGS.find((l) => l === flags.lang);
   if (flags.lang !== undefined && !language) throw invalid("--lang", "must be vi or en");
-  const existing = await loadManifest(project, { readOnly: true, checkPaths: false });
   if (flags.providers?.some((provider) => !PROVIDERS.some((known) => known === provider)))
     throw invalid("--provider", "must be claude-code or codex");
   const providers: Provider[] =
@@ -305,6 +317,8 @@ export async function planCook(
   let roles: Roles | null | undefined;
   const flagsGiven =
     flags.mode !== undefined ||
+    flags.workflow !== undefined ||
+    flags.resources !== undefined ||
     flags.drive !== undefined ||
     flags.architecture !== undefined ||
     flags.layout !== undefined ||
@@ -317,7 +331,9 @@ export async function planCook(
     flags.src.length > 0 ||
     flags.tests.length > 0;
   if (existing) {
-    const upgrades = existing.repos.map((repo) => manifestUpgrade(repo, existing.roles, providers));
+    const upgrades = existing.repos.map((repo) =>
+      manifestUpgrade(repo, existing.roles, providers, existing.resources),
+    );
     const upgrade = upgrades[0];
     roles =
       flags.upgrade && upgrade?.roles ? { ...existing.roles, ...upgrade.roles } : existing.roles;
@@ -370,11 +386,14 @@ export async function planCook(
       layout === "workspace"
         ? (detected?.repos ?? []).map((repo) => ({ ...suggested, ...repo }))
         : [suggested];
+    const selectedRoles = resourceRoles(defaultRoles(providers), flags.resources);
     const checked = parseManifest({
       schemaVersion: 1,
       mode,
       architecture: flags.architecture ?? "ddd",
-      roles: defaultRoles(providers),
+      roles: selectedRoles,
+      workflow: flags.workflow,
+      resources: flags.resources,
       drive,
       layout,
       providers,
@@ -410,12 +429,13 @@ export async function planCook(
     const text = renderManifest(
       mode,
       repos,
-      defaultRoles(providers),
+      selectedRoles,
       drive,
       layout,
       checked.manifest.iterations,
       providers,
       checked.manifest.architecture,
+      { workflow: checked.manifest.workflow, resources: checked.manifest.resources },
     );
     effective = checked.manifest;
     if (checked.manifest.iterations) {
@@ -424,12 +444,74 @@ export async function planCook(
         `iterations:\n  duration: ${JSON.stringify(duration)}\n  start_date: ${JSON.stringify(start_date)}\n  demo_day: ${JSON.stringify(demo_day)}`,
       );
     }
-    roles = defaultRoles(providers);
+    roles = selectedRoles;
     if (layout === "monorepo") repo = suggested;
     step("created", ".verid/manifest.yaml", {
       content: text,
       apply: () => writeFileSync(manifestFile(project), text, { flag: "wx" }),
     });
+  }
+  const resourcesPlanned = new Set<string>();
+  const addResource = (rel: string, content: Buffer | string) => {
+    if (resourcesPlanned.has(rel)) return;
+    resourcesPlanned.add(rel);
+    checkWritePath(rel);
+    if (existsSync(join(project, rel))) {
+      step("kept", rel);
+      return;
+    }
+    step("created", rel, {
+      content,
+      apply: () => {
+        mkdirSync(dirname(join(project, rel)), { recursive: true });
+        writeFileSync(join(project, rel), content, { flag: "wx" });
+      },
+    });
+  };
+  if (effective?.resources === "repo") {
+    for (const file of repoResources(project, providers)) addResource(file.rel, file.content);
+    for (const file of resourceTree(join(installationRoot(), "dist"), ".verid/hooks")) {
+      if (file.rel.endsWith(".js") && !file.rel.endsWith("/cli.js"))
+        addResource(file.rel, file.content);
+    }
+    for (const file of resourceTree(join(installationRoot(), "i18n"), ".verid/i18n"))
+      addResource(file.rel, file.content);
+    addResource(
+      ".verid/policies/README.md",
+      readFileSync(join(installationRoot(), "plugin/templates/policies/README.md")),
+    );
+    notes.push(bilingual("cook.resources_repo", {}));
+  }
+  if (effective?.workflow === "modular") {
+    for (const file of resourceTree(
+      join(installationRoot(), "plugin/templates"),
+      ".verid/templates",
+    ))
+      addResource(file.rel, file.content);
+    for (const rel of [
+      "workflow.md",
+      "constitution.md",
+      "architecture-profile.md",
+      "ownership.yaml",
+      "approvals/README.md",
+    ])
+      addResource(`.verid/${rel}`, readFileSync(join(installationRoot(), "plugin/templates", rel)));
+    for (const phase of [
+      "00-baseline",
+      "01-research",
+      "02-discovery",
+      "03-modules",
+      "04-plans",
+      "05-implementation",
+      "06-evaluation",
+      "07-release",
+      "adr",
+    ])
+      addResource(
+        `.verid/artifacts/${phase}/README.md`,
+        `# ${phase}\n\nRead .verid/workflow.md for this phase. Store project evidence and decisions here.\n`,
+      );
+    notes.push(bilingual("cook.workflow_modular", {}));
   }
   for (const [name, text] of Object.entries(projectRules(effective?.architecture ?? "ddd"))) {
     const rel = `.verid/rules/${name}`;
@@ -487,6 +569,7 @@ export async function planCook(
   // verid's agents come from its plugin, installed on each machine apart from the npm package.
   if (
     claude &&
+    effective?.resources !== "repo" &&
     Object.values(roles ?? {}).some((agents) => agents?.some((a) => a.startsWith("verid:")))
   ) {
     const optional = (["architect", "planner", "qa"] as const).some((role) => roles?.[role]);
@@ -499,7 +582,7 @@ export async function planCook(
 
   for (const { file: rel, block } of instructionBlocks(
     { ...effective!, providers },
-    installedSkills(),
+    skillsFor(effective!),
   )) {
     checkWritePath(rel);
     const file = join(project, rel);
@@ -551,9 +634,27 @@ export async function planCook(
       });
     else step("kept", rel);
 
-    const machine = planCodexMachine();
-    steps.push(...machine.files);
-    machineWrites.push(...machine.writes);
+    if (effective?.resources === "repo") {
+      const overlay = "../.verid/agents/verid-reviewer.toml";
+      addResource(".verid/agents/verid-reviewer.toml", reviewerContent(".verid/skills"));
+      const config = join(project, ".codex/config.toml");
+      const before = readText(config);
+      const reviewer = mergeCodexReviewer(before ?? undefined, overlay);
+      if (!reviewer.ok) throw invalid(config, reviewer.detail);
+      if (before !== reviewer.content)
+        step(before === null ? "created" : "updated", ".codex/config.toml", {
+          content: reviewer.content,
+          apply: () => {
+            mkdirSync(dirname(config), { recursive: true });
+            writeFileSync(config, reviewer.content);
+          },
+        });
+      else step("kept", ".codex/config.toml");
+    } else {
+      const machine = planCodexMachine();
+      steps.push(...machine.files);
+      machineWrites.push(...machine.writes);
+    }
     notes.push(bilingual("cook.codex_trust", {}));
   }
 
@@ -732,7 +833,7 @@ export function projectFacts(project: string, repos: readonly string[] = ["."]):
 
 /** What manifestUpgrade() would change, a line per key: `+` adds globs or roles. */
 export function manifestUpgradeLines(
-  manifest: Pick<Manifest, "repos" | "roles"> & Partial<Pick<Manifest, "providers">>,
+  manifest: Pick<Manifest, "repos" | "roles"> & Partial<Pick<Manifest, "providers" | "resources">>,
   missing: readonly string[] = [],
 ): string[] {
   return [
@@ -743,7 +844,7 @@ export function manifestUpgradeLines(
     ...missing.map((key) => `  + ${key}: ${key === "providers" ? '["claude-code"]' : "[]"}`),
     ...manifest.repos.flatMap((repo, i) =>
       upgradeLines({
-        ...manifestUpgrade(repo, manifest.roles, manifest.providers),
+        ...manifestUpgrade(repo, manifest.roles, manifest.providers, manifest.resources),
         ...(i > 0 && { roles: null }),
       }).map((line) =>
         manifest.repos.length > 1 && !line.trimStart().startsWith("+ roles.")

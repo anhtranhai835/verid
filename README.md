@@ -8,160 +8,528 @@
      hook-enforced TDD for Claude Code and Codex · RAW → COOKING → PLATED
 ```
 
-# verid: TDD for Claude Code and Codex
+# verid
 
 **English** · [Tiếng Việt](README.vi.md)
 
-verid gives coding agents a test-first workflow backed by hooks.
-It records test evidence before allowing implementation and keeps an audit trail.
-The developer approves modules, exceptions and the final handoff.
+> A spec and TDD harness for Claude Code and Codex, with hooks that check each write.
 
-## Install
+verid takes an idea, a specification or an existing codebase through a reviewable development cycle:
 
-Requires Node.js 22+ and Claude Code or Codex CLI.
+```text
+research → spec → design → plan → order → build & test → review → serve
+                                           RAW → COOKING → PLATED
+```
 
-Windows: `irm https://raw.githubusercontent.com/anhtranhai835/verid/main/install.ps1 | iex` (PowerShell). macOS/Linux: `curl -fsSL https://raw.githubusercontent.com/anhtranhai835/verid/main/install.sh | sh`.
+Requirements, decisions and module documents live in `.verid/`. The CLI records test
+evidence and checks approvals; the agent follows the installed skills or the copies
+committed with your project.
 
-Or install with `npm install -g @anhtranhai835/verid`. For Claude Code, add the `anhtranhai835/verid` marketplace and install `verid@verid`. After an upgrade or moving an installation, run `verid upgrade --yes` in each project.
+---
+
+## Why use verid?
+
+A project needs agreement on behaviour, interfaces and acceptance criteria before
+implementation. verid makes that agreement visible in documents and connects it to tests.
+
+- **Plan by module.** Each module has testable ACs; the developer decides when work can start.
+- **Use recorded evidence.** `verid taste` checks the runner exit code and JUnit report.
+- **Keep roles focused.** Claude Code can separate tester, coder and reviewer. Codex uses
+  main for tests and code, with an independent reviewer that only reads.
+- **Carry the workflow with the repo.** The modular workflow has a dossier for each
+  module; repo resources include agents, skills, templates and a pinned hook runtime.
+- **Resume from facts.** `verid menu` shows module progress, audit findings and the next step.
+
+---
+
+## Requirements
+
+- Node.js **22 or later**, with npm on `PATH`.
+- Git for repository and workspace operations.
+- Claude Code, Codex CLI, or both.
+
+## Installation
+
+### Published package
+
+```sh
+npm install -g @anhtranhai835/verid
+```
+
+The one-line installers install the published npm package and attempt provider setup.
+They need Node.js already installed.
+
+**Windows — PowerShell**
+
+```powershell
+irm https://raw.githubusercontent.com/anhtranhai835/aeriq/main/install.ps1 | iex
+```
+
+**macOS / Linux**
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/anhtranhai835/aeriq/main/install.sh | sh
+```
+
+In an interactive terminal, the installer can ask for a project folder and start
+`verid cook`. In CI or without a terminal, run cook yourself afterward.
+
+### Current source, including the new modular workflow
+
+Use the source build when the published npm version does not yet include a feature
+described in this README:
+
+```sh
+git clone https://github.com/anhtranhai835/aeriq.git
+cd aeriq
+npm ci
+npm run build
+npm install -g .
+```
+
+The executable is `verid`; the npm package is `@anhtranhai835/verid`.
+
+---
 
 ## Quick start
 
-Run `verid cook` in the project; choose provider, language, mode, architecture and drive. Put source documents in `.verid/docs/`. In remix, run `verid stock` before the agent changes code. Open the provider and ask for the work; `verid menu` shows the next step.
+In the project you want to work on:
 
-Commit `.verid/manifest.yaml`, `.verid/.gitignore`, `.verid/rules/`, `.verid/docs/`, `.verid/log/`, `AGENTS.md`, `CLAUDE.md` when present, and the research, spec, design and plan documents in prep or recipe. Keep `.claude/settings.local.json` and `.codex/hooks.json` per machine.
+```sh
+cd your-project
+verid cook
+```
 
-## From pantry to plate (Workflow)
+Cook asks for language, providers, workflow, resource location, mode, drive and
+architecture. It detects the layout and test runners, then previews the files to write.
+Confirm the preview to apply it.
 
-Gather ingredients (Research) → Write recipe (Spec) → Sketch dish (Design) → Set menu (Plan) → Place order (Order) → Cook and taste (Build and Test) → Inspect dish (Review) → Serve dish (Serve) → Hand off (Commit, push, PR). After each served dish, place the order for the next module.
+Put the documents you already have in `.verid/docs/`. Open your provider at the
+project or workspace root and ask:
 
-| Kitchen step                    | Owner                                 | Result                                                                                                        |
-| :------------------------------ | :------------------------------------ | :------------------------------------------------------------------------------------------------------------ |
-| Gather ingredients (Research)   | main, `verid:ba`                      | Read source documents in `.verid/docs/`; record scope in `.verid/research.md`.                                |
-| Write recipe (Spec)             | main, `verid:ba`                      | Write sourced requirements in `.verid/spec.md`.                                                               |
-| Sketch dish (Design)            | architect                             | Agree interfaces and dependencies in `.verid/design.md`.                                                      |
-| Set menu (Plan)                 | planner                               | Write ordered modules and testable ACs in `.verid/plan.md`.                                                   |
-| Place order (Order)             | developer in human drive              | `verid order <module>` approves one module. Auto opens modules in file order; `Depends:` names prerequisites. |
-| Cook and taste (Build and Test) | tester or QA, then coder              | Fail an AC assertion, implement, pass `verid taste`, refactor; main logs the AC in `.verid/log/<module>.md`.  |
-| Inspect dish (Review)           | reviewer, then security when mapped   | Read `verid menu --commits --file`; end each report with `Verdict: pass` or `Verdict: fail`.                  |
-| Serve dish (Serve)              | developer in human drive; auto closes | `verid serve <module>` requires covered ACs, current passing evidence and reviews.                            |
-| Hand off (Handoff)              | main                                  | After `product`, commit, push and open a PR.                                                                  |
+> Read AGENTS.md, inspect the source documents, and guide me through the next step.
 
-## Cooking cycle (TDD)
+```sh
+verid doctor
+verid menu
+```
 
-The hook decides writes by file path and role. `verid taste` runs the configured suite, checks its exit code against JUnit, and records the cycle; an ad hoc test run is diagnostic only.
+For an existing codebase in `remix` mode, run `verid stock` before agent changes.
 
-| State      | Test writes             | Production writes                  | Taste result                                                                                        |
-| :--------- | :---------------------- | :--------------------------------- | :-------------------------------------------------------------------------------------------------- |
-| RAW        | allowed                 | blocked                            | A new assertion failure enters COOKING; a test that cannot load opens RAW · stub; a pass stays RAW. |
-| RAW · stub | allowed                 | only a stub to reach the assertion | An assertion enters COOKING; a pass returns to RAW.                                                 |
-| COOKING    | frozen                  | minimum implementation             | A failure stays COOKING; a pass enters PLATED.                                                      |
-| PLATED     | allowed and reopens RAW | refactor only                      | A failure returns to COOKING; a pass stays PLATED.                                                  |
+### Start with modular documents and repo resources
 
-Name each test with its AC code. The main conversation reads agent reports and appends one dated entry per AC to `.verid/log/<module>.md`; agents do not write that log. A test write reopens RAW, and only a fresh assertion failure in RAW opens implementation. A new conversation starts RAW; `verid garnish` opens a refactor-only conversation.
+```sh
+verid cook --mode prep --workflow modular --resources repo --provider codex --yes
+verid module identity
+```
 
-`Stop` holds the main thread on COOKING, an open stub or unverified writes; in human drive it also holds once per conversation for uncovered ACs or pending review. `SubagentStop` lets tester/QA hand a recorded failing test or stub to coder, but holds writers whose latest change lacks a taste run. Each hold is issued once; auto drive also manages its own progress holds.
+Fill the module drafts, then publish the agreed requirements, design and ACs in
+`.verid/spec.md`, `.verid/design.md` and `.verid/plan.md`. Cook does not prefill
+these approval inputs with placeholder content.
 
-## Modes and drive
+For Codex, trust the project and the generated hooks through `/hooks`, then run
+`verid doctor`. See [Codex setup](#codex-setup).
 
-| Mode     | Start         | Work                                                              |
-| :------- | :------------ | :---------------------------------------------------------------- |
-| `prep`   | idea          | research, spec, design, plan, modules                             |
-| `recipe` | specification | design, plan, modules                                             |
-| `remix`  | existing code | `verid stock` records old failures; build uses the same TDD cycle |
+---
 
-`drive: human` leaves order and serve to the developer. `drive: auto` signs research, spec and design once, reviews the plan, then orders and serves modules in file order; blockers go to `.verid/blocked.md`, and the developer resumes with `verid order`. Optional iterations guide scheduling without changing gates.
+## Workflows and resource location
 
-## Providers
+These are independent choices:
 
-`AGENTS.md` is the shared instruction source; `CLAUDE.md` imports it with `@AGENTS.md`. `verid cook` and `verid upgrade` maintain the marked block in `AGENTS.md`; `verid doctor` checks both files. The hook enforces rules independently of these instructions.
+| Setting     | Value                 | Result                                                                                      |
+| ----------- | --------------------- | ------------------------------------------------------------------------------------------- |
+| `workflow`  | `classic` — default   | Shared research, spec, design and plan documents.                                           |
+| `workflow`  | `modular`             | Module dossiers and phase directories based on the repo structure template.                 |
+| `resources` | `installed` — default | Skills and agents from the installed distribution or Claude plugin.                         |
+| `resources` | `repo`                | Agents, skills, templates, policies, translations and hook runtime copied into the project. |
 
-Claude Code can split tester, coder, QA, reviewer and security through `roles`. Codex uses one main writer for tests and code and a read-only `verid_reviewer`; trust the project and its hooks in `/hooks` before work. Only an attended developer on Claude Code can grant a one-action exception with `/verid tip`.
+`modular` supports `prep` and `recipe`. `remix` uses the existing baseline workflow.
 
-## Layouts
+Repo copies are the source read by the generated native provider entries. Cook creates
+missing files and keeps existing resource customizations. Updating the npm package does
+not replace pinned repo resources; review and replace those copies explicitly.
 
-`monorepo` has one Git tree. A `workspace` has multiple child repositories and a shared `.verid/` repo; each repo has its own globs and runner but all share one TDD cycle. Workspace `CLAUDE.md` and `AGENTS.md` sit at the workspace root, per machine; `verid cook` regenerates them after cloning.
+### Module dossiers
 
-## Conventions and audit
+`verid module <name>` uses the project's `.verid/templates/module/`. It creates drafts
+and keeps files that already exist.
 
-- **Spec and dependencies:** ACs cite REQ/NFR/SEC IDs; `Depends:` shows module prerequisites. Unknown or uncovered IDs and dependency order are warnings.
-- **Architecture and screens:** `.verid/rules/architecture.md`, other project rules and `architecture_check` are advisory. A module's `Screens:` wireframe guides e2e tests and review.
-- **Session log and review:** Main appends decisions, evidence, deviations and next AC to `.verid/log/<module>.md`. The review packet `.verid/review/work.md` is a snapshot; regenerate it after fixes.
-- **Git:** `.verid/rules/git.md` describes Conventional Commits and PR handoff. Git audits warn; commits do not gate module closure.
+| Folder      | What to record                                                                  |
+| ----------- | ------------------------------------------------------------------------------- |
+| `ba/`       | Problem, users, scope, EARS requirements, sources and examples.                 |
+| `ui/`       | Journeys, screens, states, tokens and accessibility, or why UI is inapplicable. |
+| `spec/`     | Contracts, data, invariants, errors, reuse and dependency boundaries.           |
+| `tests/`    | Requirement → AC → test mapping, fixtures and runner prerequisites.             |
+| `security/` | Data classification, trust boundaries, STRIDE, abuse cases and mitigations.     |
+| `review/`   | The real independent review report and evidence pointers.                       |
+| `release/`  | Rollout, migration, rollback and delivery evidence.                             |
+
+Every modular plan section names its dossier:
+
+```markdown
+## Module: identity
+
+Artifacts: .verid/artifacts/03-modules/identity
+Review Focus: error handling and authorization boundaries.
+
+- AC-1: valid credentials open the member workspace (REQ-1)
+- AC-2: invalid credentials return the agreed generic error (REQ-2, SEC-1)
+```
+
+Requirement and AC IDs are unique across the project. Resolve draft clarifications before
+order. The module signature includes its plan section and six input documents under
+BA/UI/spec/tests/security. Changing an input requires a new order; review and release
+records are outputs and do not change that signature.
+
+The [modular cook guide](docs/modular-cook.md) has the complete template and execution flow.
+
+---
+
+## Repository layouts
+
+### One Git repository
+
+```text
+your-project/                  # .git/
+├── src/
+├── test/
+├── .verid/
+├── AGENTS.md
+├── CLAUDE.md                  # when Claude Code is selected
+├── .claude/
+├── .agents/                   # Codex skill entries with repo resources
+└── .codex/
+```
+
+Commit the project documents and generated shared instructions with the source code.
+
+### Multiple repositories in one workspace
+
+```text
+workspace/                     # no .git/ at this level
+├── api/                       # .git/
+├── web/                       # .git/
+├── .verid/                    # shared harness repository, its own .git/
+├── AGENTS.md                  # regenerated per machine
+├── CLAUDE.md                  # regenerated per machine, when selected
+├── .claude/
+├── .agents/
+└── .codex/
+```
+
+Each manifest repo has its own paths, globs and runner. The workspace shares one TDD
+cycle. Run cook and open the provider at the workspace root so it can see every repo.
+
+### What lives in .verid?
+
+The following tree shows `modular` with `repo` resources. Provider-specific files
+are created only for the selected providers; module files appear after `verid module`.
+
+```text
+.verid/
+├── manifest.yaml
+├── workflow.md
+├── constitution.md
+├── architecture-profile.md
+├── ownership.yaml
+├── docs/                      # source documents; agents only read
+├── research.md                # written after research
+├── spec.md                    # agreed requirements, with unique IDs
+├── design.md                  # agreed architecture and interfaces
+├── plan.md                    # executable module ACs
+├── agents/                    # includes the Codex reviewer TOML
+├── skills/                    # scripts, references and licenses included
+├── templates/
+├── hooks/                     # pinned runtime bundle
+├── i18n/
+├── policies/
+├── rules/
+├── approvals/                 # human-readable decisions
+├── artifacts/
+│   ├── 00-baseline/
+│   ├── 01-research/
+│   ├── 02-discovery/
+│   ├── 03-modules/<module>/
+│   │   ├── ba/
+│   │   ├── ui/
+│   │   ├── spec/
+│   │   ├── tests/
+│   │   ├── security/
+│   │   ├── review/
+│   │   └── release/
+│   ├── 04-plans/
+│   ├── 05-implementation/
+│   ├── 06-evaluation/
+│   ├── 07-release/
+│   └── adr/
+├── log/<module>.md            # main appends one entry per AC
+├── review/work.md             # generated review snapshot
+└── .state/                    # runtime approvals, test evidence and audit; ignored
+```
+
+Commit templates, repo resources, source documents, dossiers and agreed project
+documents. In a monorepo also commit `AGENTS.md`, `CLAUDE.md` when present, and native
+agent/skill entries. Codex's repo reviewer config is `.codex/config.toml`.
+
+Keep `.verid/.state/` out of Git. `.codex/hooks.json` and
+`.claude/settings.local.json` are wiring for each machine. The `approvals/` folder
+contains decision records; actual verid approvals remain in private runtime state.
+
+---
 
 ## Commands
 
-| Command                                        | Use                                                                     |
-| :--------------------------------------------- | :---------------------------------------------------------------------- |
-| `verid cook`, `verid upgrade`                  | Set up or refresh project hooks and instructions.                       |
-| `verid doctor`, `verid menu`, `verid peek`     | Check installation and audit, next workflow step, or current cycle.     |
-| `verid stock`, `verid taste`                   | Record remix baseline or run tests as evidence.                         |
-| `verid order [module]`, `verid serve <module>` | Developer approval and closure in human drive; order also resumes auto. |
-| `verid garnish`, `verid halt`, `verid resume`  | Refactor-only session, emergency halt, or resume.                       |
-| `verid menu --commits --file`                  | Write the review snapshot.                                              |
+| Command                                | Purpose                                                                       |
+| -------------------------------------- | ----------------------------------------------------------------------------- |
+| `verid cook`                           | Preview and set up a project, or wire a cloned project for this machine.      |
+| `verid upgrade [--dry-run] [--yes]`    | Refresh provider wiring and instructions and offer missing manifest defaults. |
+| `verid module <name>`                  | Create a modular dossier from project templates.                              |
+| `verid doctor`                         | Check setup, providers, resources and audit findings.                         |
+| `verid menu`                           | Show module progress and the next step.                                       |
+| `verid peek`                           | Show the current TDD state.                                                   |
+| `verid stock`                          | Record pre-existing failures for remix.                                       |
+| `verid taste`                          | Run tests and record evidence.                                                |
+| `verid order [module]`                 | Approve a module in human drive; sign or resume auto drive.                   |
+| `verid serve <module>`                 | Close a module when coverage, fresh evidence and reviews pass.                |
+| `verid menu --commits --file`          | Produce the review packet.                                                    |
+| `verid garnish`                        | Start a refactor-only session.                                                |
+| `verid halt [reason]` / `verid resume` | Pause agent tool use or resume it.                                            |
+| `verid setup-codex`                    | Set up the installed reviewer in the Codex user config.                       |
 
-## What the hook blocks
+Cook, upgrade, stock, order, serve, garnish, halt and resume are developer commands,
+run in your own terminal. Agents use taste, menu, peek and doctor. In signed auto
+drive, the harness manages module order and closure.
 
-| Rule                                 | Overridable        | Covers                                                                                                                                                                                                                                                                                                               |
-| :----------------------------------- | :----------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `VERID_BURNT_STATE_PROTECTED`        | no                 | reading or writing `.verid/.state/`, writing `.verid/review/`, or overwriting the `.verid/` root                                                                                                                                                                                                                     |
-| `VERID_BURNT_HALTED`                 | no                 | any tool call while the developer has run `verid halt`                                                                                                                                                                                                                                                               |
-| `VERID_BURNT_SECRET_PROTECTED`       | no                 | secret files: `.env*` (not templates), keys, certificates, `.ssh/`, `.npmrc`…                                                                                                                                                                                                                                        |
-| `VERID_BURNT_TRANSCRIPT_PROTECTED`   | no                 | Claude Code transcripts in `~/.claude/projects/` or `CLAUDE_CONFIG_DIR/projects/`                                                                                                                                                                                                                                    |
-| `VERID_BURNT_HOOK_PROTECTED`         | no                 | writing project/home `.claude/settings*.json`, any `.claude.json` or `.mcp.json` (MCP server lists), `.claude/agents/`, `.claude/plugins/`, project `.claude/skills/` / `~/.claude/skills/` and `.claude/commands/` / `~/.claude/commands/`, the same paths under `CLAUDE_CONFIG_DIR`, verid's `dist/` and `plugin/` |
-| `VERID_BURNT_MANIFEST_PROTECTED`     | yes                | writing `.verid/manifest.yaml`                                                                                                                                                                                                                                                                                       |
-| `VERID_BURNT_DOCS_PROTECTED`         | yes                | writing in `.verid/docs/`, the developer's documents                                                                                                                                                                                                                                                                 |
-| `VERID_BURNT_INSTRUCTIONS_PROTECTED` | yes                | changing or removing the verid block in a provider's instruction file                                                                                                                                                                                                                                                |
-| `VERID_BURNT_PATCH_UNSUPPORTED`      | no on Codex        | malformed or unknown `apply_patch` syntax, including environment routing, or a patch handed to the shell                                                                                                                                                                                                             |
-| `VERID_BURNT_TOOL_UNSUPPORTED`       | no on Codex        | a non-MCP Codex tool outside the supported list; the message names it                                                                                                                                                                                                                                                |
-| `VERID_BURNT_AGENT_CONTEXT`          | no on Codex        | reviewer dispatch with `fork_turns` other than `"none"`                                                                                                                                                                                                                                                              |
-| `VERID_BURNT_BASH_NESTED_CODEX`      | yes in Claude Code | a shell starting a nested `codex`                                                                                                                                                                                                                                                                                    |
-| `VERID_BURNT_BASH_NESTED_CLAUDE`     | yes                | Bash starting a nested `claude`                                                                                                                                                                                                                                                                                      |
-| `VERID_BURNT_BASH_DEVELOPER_ONLY`    | yes                | Bash naming `CLAUDECODE` or verid's hook, or running a developer command                                                                                                                                                                                                                                             |
-| `VERID_BURNT_BASH_DANGEROUS`         | yes                | downloading or decoding code and running it in one command (`curl …                                                                                                                                                                                                                                                  | sh`, `bash <(curl …)`, `irm … | iex`, `base64 -d | sh`, `powershell -enc`), `git --no-verify`or`core.hooksPath`, `sudo`, `doas`, RunAs, and `chmod` setuid/setgid |
-| `VERID_BURNT_SHELL_UNSUPPORTED`      | yes in Claude Code | Claude Code's unsupported shells, or Codex dynamic PowerShell forms whose command cannot be read                                                                                                                                                                                                                     |
-| `VERID_BURNT_ROLE_READ_ONLY`         | yes                | any write by the mapped reviewer or security reviewer                                                                                                                                                                                                                                                                |
-| `VERID_BURNT_ROLE_TESTER_ONLY`       | yes                | split: a test written by anyone but the tester (or qa, for end-to-end tests)                                                                                                                                                                                                                                         |
-| `VERID_BURNT_ROLE_CODER_ONLY`        | yes                | split: production code written by anyone but the coder                                                                                                                                                                                                                                                               |
-| `VERID_BURNT_PLAN_NOT_APPROVED`      | yes                | production code while no module is open (prep, recipe)                                                                                                                                                                                                                                                               |
-| `VERID_BURNT_AUTO_NO_MODULE`         | yes                | auto: production code while no module is open                                                                                                                                                                                                                                                                        |
-| `VERID_BURNT_AUTO_STUCK`             | yes                | auto: production code and tests while the drive is stuck                                                                                                                                                                                                                                                             |
-| `VERID_BURNT_TDD_NO_FAILING_TEST`    | yes                | production code while the cycle is RAW                                                                                                                                                                                                                                                                               |
-| `VERID_BURNT_TDD_TEST_FROZEN`        | yes                | a test while the cycle is COOKING                                                                                                                                                                                                                                                                                    |
-| `VERID_BURNT_GIT_INTERNALS`          | no                 | any write inside a repository's `.git` folder: refs, configuration, hooks                                                                                                                                                                                                                                            |
+### Cook flags
 
-The rules cover file tools, Bash (its plain write targets are judged like a Write), MCP tools, Claude Code's `Skill`, `Agent` and `Task`, and Codex's `apply_patch` and `collaborationspawn_agent`. Codex also protects project/home `.codex/`, project/home `.agents/skills/` and verid's `plugin/` folder, treats `~/.codex/sessions/`, `history.jsonl` and its state databases as transcripts and `~/.codex/auth.json` as a secret, including a relocated `CODEX_HOME`. Unexpected errors inside verid block the call.
+```sh
+verid cook --mode prep --workflow modular --resources repo --provider codex --lang en --yes
+```
 
-Roles: with a tester and a coder mapped, only the coder writes production code and only the tester (or qa, for end-to-end tests) writes tests; main and unknown agents cannot take either permission. Reviewer and security write nothing. The scope of the drafting roles (architect, planner, qa) and the known skill/agent lists are advisory: departures are audited, not blocked. A role needs the host's subagent identity.
+| Flag                                         | Values or effect                                                          |
+| -------------------------------------------- | ------------------------------------------------------------------------- |
+| `--mode`                                     | `prep`, `recipe` or `remix`.                                              |
+| `--workflow`                                 | `classic` or `modular`.                                                   |
+| `--resources`                                | `installed` or `repo`.                                                    |
+| `--provider`                                 | `claude-code` or `codex`; repeat for both.                                |
+| `--drive`                                    | `human` or `auto` for prep/recipe.                                        |
+| `--architecture`                             | `ddd`, `clean`, `layered` or `none`.                                      |
+| `--layout`                                   | `monorepo` or `workspace`; otherwise detected.                            |
+| `--lang`                                     | `en` or `vi`; this machine's CLI language.                                |
+| `--test-cmd`                                 | Custom command containing `{junit}` or `VERID_JUNIT`.                     |
+| `--src` / `--tests`                          | Repeatable source and test globs.                                         |
+| `--iterations`                               | Enable calendar planning; supply duration, start date and demo day below. |
+| `--duration` / `--start-date` / `--demo-day` | For example `"2 weeks"`, `2026-11-09`, `Sunday`.                          |
+| `--dry-run`                                  | Show the plan without writing.                                            |
+| `--yes`                                      | Accept suggested defaults and skip confirmation.                          |
 
-## manifest.yaml
+Interactive iteration planning uses 14 days and puts the demo on the last day.
+Iteration metadata does not change AC order or TDD gates.
+
+When a manifest exists, its configuration takes precedence over setup flags. The
+developer edits it to change choices, then runs cook again. For a switch to repo
+resources, also change Claude role names from `verid:<name>` to `verid-<name>`.
+The Codex reviewer name stays `verid_reviewer`.
+
+### Preview before writing
+
+```sh
+verid cook --mode prep --workflow modular --resources repo --provider codex --dry-run
+```
+
+The preview shows a file tree: `+` creates, `~` updates, `=` keeps, and `!` introduces
+a note. Confirmation applies the checked plan. Existing instruction text outside
+`<!-- verid:begin -->` and `<!-- verid:end -->` stays intact.
+
+---
+
+## How a module moves through the workflow
+
+| Step           | Owner and output                                                               |
+| -------------- | ------------------------------------------------------------------------------ |
+| Research       | Main with BA reads `.verid/docs/` and records scope and sources.               |
+| Spec           | Main with BA writes traceable requirements in `.verid/spec.md`.                |
+| Design         | Architect, or Codex main, agrees interfaces and reuse in `.verid/design.md`.   |
+| Plan           | Planner, or Codex main, writes ordered ACs in `.verid/plan.md`.                |
+| Order          | Developer approves the module; auto drive follows its signed plan.             |
+| Build and test | Tester/QA then coder on Claude; main on Codex; every cycle uses `verid taste`. |
+| Review         | Fresh reviewers inspect ACs, design, dossier, diff and the review packet.      |
+| Serve          | Evidence, AC coverage and verdicts must pass before closure.                   |
+| Handoff        | Main prepares the commits and PR after the agreed product checks.              |
+
+### Modes and drive
+
+| Mode     | Starting point          | First work                                 |
+| -------- | ----------------------- | ------------------------------------------ |
+| `prep`   | An idea                 | Research, clarification, spec and design.  |
+| `recipe` | Existing specifications | Validate the inputs, then design and plan. |
+| `remix`  | Existing code           | Record the baseline with `verid stock`.    |
+
+`human` leaves order and serve to the developer. `auto` starts when the developer
+signs research, spec and design with `verid order`. It reviews the plan and works
+module by module. Questions that block progress go into `.verid/blocked.md`; the
+developer resolves them and resumes with `verid order`.
+
+### TDD and evidence
+
+| State      | Test writes            | Production writes                            | Next evidence                                 |
+| ---------- | ---------------------- | -------------------------------------------- | --------------------------------------------- |
+| RAW        | Allowed                | Blocked                                      | A new failing assertion opens implementation. |
+| RAW · stub | Allowed                | A stub that lets the test reach an assertion | A failing assertion enters COOKING.           |
+| COOKING    | Frozen                 | Minimum implementation                       | Passing tests enter PLATED.                   |
+| PLATED     | A test edit starts RAW | Refactoring                                  | Run taste again after the change.             |
+
+Test names include their `AC-n` code. Only `verid taste` supplies gate evidence;
+other test commands are useful for diagnosis. A passing run must still match the
+current files. The main thread appends the result and next AC to the module log.
+
+Stop hooks hold incomplete work for a failing cycle, open stub or unverified change.
+Reviewers remain read-only. A report or template file does not stand in for a real
+test run, reviewer verdict or approval.
+
+---
+
+## Agents, skills and provider integration
+
+`AGENTS.md` is the shared instruction source. `CLAUDE.md` imports it through
+`@AGENTS.md`. Hooks check tool calls independently of the prose instructions.
+
+| Work                   | Skill                       | Writer/reviewer                     |
+| ---------------------- | --------------------------- | ----------------------------------- |
+| Orientation            | `onboard`                   | Main; reads and reports.            |
+| Research and spec      | `ba`                        | Main.                               |
+| Module dossiers        | `modules`                   | Main, using repo templates.         |
+| Architecture           | `design`                    | Mapped architect, or Codex main.    |
+| Module plan            | `plan`                      | Mapped planner, or Codex main.      |
+| TDD and implementation | `build`, `tdd`, `debugging` | Tester/QA and coder, or Codex main. |
+| Evaluation             | `review`, `security`        | Independent read-only reviewers.    |
+
+With installed Claude resources, names use `verid:<name>`. For example:
+
+```sh
+claude plugin marketplace add anhtranhai835/verid
+claude plugin install verid@verid
+```
+
+Repo resources use `verid-<name>` entries under `.claude/skills/` and
+`.claude/agents/`. They route to `.verid/skills/` and `.verid/agents/`. Codex
+discovers local skill entries under `.agents/skills/`.
+
+The onboard skill inventories repos and runners, reports health and gives the next
+step. It proposes manifest changes for the developer to apply.
+
+### Codex setup
+
+For a project with repo resources:
+
+1. Run cook with `--provider codex --resources repo`.
+2. Open Codex at the project or workspace root.
+3. Trust the project and each generated verid hook through `/hooks`.
+4. Run `verid doctor` and resolve setup findings.
+5. Let main write tests/code; use `verid_reviewer` with `fork_turns: "none"` for review.
+
+Cook adds a project `.codex/config.toml` whose reviewer points at
+`../.verid/agents/verid-reviewer.toml`. That overlay reads repo skills and uses a
+read-only sandbox. Repo mode does not write the Codex user's config.
+
+For `resources: installed`, cook sets up the user reviewer and uses installed skill
+paths. Trust remains a user action in either mode.
+
+The repo hook has an integration test for Codex order, RED/GREEN, read-only review
+and invalidation after a module spec change. An offline check with Codex CLI
+`0.166.0` also confirmed that its model-visible input includes the project
+instructions and repo skills. See the [validation notes](docs/modular-cook.md#dùng-với-codex).
+
+### Protection and audit
+
+The hook protects runtime state, secrets, provider definitions, hook bundles and
+instruction blocks. It checks module approval, the TDD cycle and writer roles.
+Supported Codex calls include `apply_patch`, shell actions and reviewer dispatch.
+
+Spec coverage, dependency order, architecture conventions and known dispatch lists
+also produce advisory findings. Read the complete [hook rule reference](docs/hook-reference.md)
+for rule codes and override behaviour. A one-call exception requires an attended
+developer in Claude Code.
+
+---
+
+## Manifest example
+
+This example uses the modular workflow, repo resources and Codex:
 
 ```yaml
 schemaVersion: 1
-mode: prep # prep | recipe | remix
-providers: [claude-code, codex]
-drive: human # human | auto
-layout: monorepo # monorepo | workspace
+mode: prep
+workflow: modular
+resources: repo
+providers: [codex]
+architecture: ddd
+layout: monorepo
+drive: human
 allowed_skills: []
 allowed_agents: []
 roles:
-  reviewer: ["verid:reviewer", "verid_reviewer"]
-  tester: ["verid:tester"]
-  coder: ["verid:coder"]
+  reviewer: [verid_reviewer]
 repos:
   - path: .
     source_globs: ["**"]
     test_globs: ["**/test/**", "**/*.test.*"]
+    ignore_globs: ["**/*.md", "**/*.json", "**/*.yaml", ".verid/**", ".agents/**", ".codex/**"]
 ```
 
-Test globs take priority over ignore and source globs. The developer edits the manifest; `verid cook` supplies defaults. Optional `allowed_skills: ["superpowers:*"]` and `allowed_agents` extend dispatch; mapped `roles` and the TDD gate still decide writes. The retired `roles.researcher` is replaced by `verid:ba` in main.
+Cook generates fuller defaults for detected runners and file conventions. Test globs
+take priority over ignored files and source globs. A custom runner must write JUnit
+to `{junit}` or the `VERID_JUNIT` environment path. Only the developer edits the manifest.
+
+---
+
+## Working with a teammate
+
+After cloning the project, install the CLI and run `verid cook` at the project or
+workspace root. Existing manifest choices and repo resource copies are retained;
+cook restores missing setup files and rewires hooks for the current machine.
+
+In a multi-repo workspace, share the `.verid` repository. Cook can clone missing
+manifest repos from their configured remotes. Commit native entries and
+instructions in the source repo for monorepos; regenerate workspace-root entries
+on each machine.
+
+## Upgrading
+
+```sh
+npm install -g @anhtranhai835/verid
+verid upgrade --dry-run
+verid upgrade --yes
+verid doctor
+```
+
+For a source install, update the checkout, build it and reinstall it first.
+Upgrade refreshes provider wiring and instructions and adds accepted missing
+defaults. Existing repo resources and module documents are preserved. Refresh
+pinned resources by reviewing their changes and replacing the intended copies.
+
+---
 
 ## Development
 
-`npm run typecheck`, `npx prettier --check .`, `npm test`; Windows CI also runs `npm run test:full` in [ci.yml](.github/workflows/ci.yml).
+```sh
+npm ci
+npm run typecheck
+npx prettier --check .
+npm test
+npm run test:full
+```
+
+Windows [CI](.github/workflows/ci.yml) runs typecheck, formatting and the full suite,
+including installer tests. `npm test` omits the installer end-to-end suite.
 
 ## Credits
 
-verid draws on [superpowers](https://github.com/obra/superpowers) and [andrej-karpathy-skills](https://github.com/forrestchang/andrej-karpathy-skills). See the bundled skill licenses for attribution.
+The README structure and workspace presentation follow the example of
+[Haren](https://github.com/odarino/haren). verid's bundled workflows also draw on
+[superpowers](https://github.com/obra/superpowers) and
+[andrej-karpathy-skills](https://github.com/forrestchang/andrej-karpathy-skills).
+See each bundled skill's license for attribution.
 
 ## License
 

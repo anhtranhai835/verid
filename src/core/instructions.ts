@@ -99,7 +99,7 @@ export function renderInstructions(
   const codex = provider === "codex";
   const extras =
     [...(manifest.allowed_skills ?? []), ...(manifest.allowed_agents ?? [])].length > 0;
-  return [
+  const rendered = [
     BEGIN,
     "## verid",
     "",
@@ -111,9 +111,11 @@ export function renderInstructions(
     codex
       ? "- Only the developer edits the manifest; /verid tip and /verid confirm have no effect on Codex; exceptions require Claude Code."
       : "- Only the developer edits the manifest or opens exceptions with /verid tip and /verid confirm.",
-    codex
-      ? "- Call the installed skills by absolute path; do not copy their text."
-      : "- Call the installed skills; do not copy their text.",
+    manifest.resources === "repo"
+      ? "- Read skills and agents from .verid/skills/ and .verid/agents/ in this repo. Local verid-<name> entries route there; calls written verid:<name> in those files mean verid-<name> here. Resolve supporting files relative to the repo copy."
+      : codex
+        ? "- Call the installed skills by absolute path; do not copy their text."
+        : "- Call the installed skills; do not copy their text.",
     "",
     "### TDD cycle",
     "- RAW: production code is locked. Write one failing test, then run verid taste.",
@@ -121,6 +123,12 @@ export function renderInstructions(
     "- PLATED: all tests pass. Refactor without new behaviour; the next test starts RAW.",
     "",
     "### Workflow",
+    ...(manifest.workflow === "modular"
+      ? [
+          `- Modular cook: read .verid/workflow.md and ${skill("modules")} first. Run verid module <name>, fill .verid/artifacts/03-modules/<name>/{ba,ui,spec,tests,security}, publish canonical requirements/design/ACs, then order → TDD → independent review → serve. Include Artifacts: .verid/artifacts/03-modules/<name> in every plan module.`,
+          "- Follow .verid/templates/ for contracts, data, errors, UI states, security and traceability. Main records actual review/release reports; read-only reviewers write nothing.",
+        ]
+      : []),
     "- Session start gives the cycle and next step; else run verid peek.",
     `- New developer or workspace: verid:onboard${codex ? ` → ${skill("onboard")}` : ""} reads repos, health and status, and writes nothing.`,
     ...(codex
@@ -173,4 +181,7 @@ export function renderInstructions(
     "- On friction with verid itself (a confusing denial, an unclear skill, a stuck drive, a workaround), the main thread appends a dated entry to .verid/feedback.md: friction, gap or bug; the skill, code or command; what happened; a suggestion. Subagents report it to main. Never edit or remove entries or copy source, test output, transcripts or secrets into it; project bugs belong elsewhere.",
     END,
   ].join("\n");
+  return manifest.resources === "repo"
+    ? rendered.replace(/\bverid:(?!begin\b|end\b)([a-z][a-z-]+)/g, "verid-$1")
+    : rendered;
 }

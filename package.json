@@ -32,6 +32,8 @@
     "plugin/skills",
     "plugin/agents",
     "plugin/codex",
+    "plugin/templates",
+    "docs",
     "README.vi.md"
   ],
   "scripts": {

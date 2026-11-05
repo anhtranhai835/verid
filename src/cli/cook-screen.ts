@@ -14,6 +14,8 @@ import {
   DRIVES,
   IGNORE_GLOBS,
   MODES,
+  WORKFLOWS,
+  RESOURCE_MODES,
   parseManifest,
   suggestManifest,
   suggestMode,
@@ -195,12 +197,31 @@ export async function interactiveCook(
     if (provider === null) return cancelled();
     flags.providers =
       provider === 0 ? ["claude-code"] : provider === 1 ? ["codex"] : ["claude-code", "codex"];
+    const workflow = await select(
+      io,
+      say("cook.workflow"),
+      WORKFLOWS.map((value) => ({ label: value, hint: say(`cook.workflow.${value}`) })),
+      0,
+    );
+    if (workflow === null) return cancelled();
+    flags.workflow = WORKFLOWS[workflow];
+    const resources = await select(
+      io,
+      say("cook.resources"),
+      RESOURCE_MODES.map((value) => ({ label: value, hint: say(`cook.resources.${value}`) })),
+      0,
+    );
+    if (resources === null) return cancelled();
+    flags.resources = RESOURCE_MODES[resources];
     const facts = projectFacts(project, repoPaths);
     const mode = await select(
       io,
       say("cook.mode"),
-      MODES.map((m) => ({ label: `${MODE_EMOJI[m]} ${m}`, hint: say(`cook.mode.${m}`) })),
-      MODES.indexOf(suggestMode(facts)),
+      (flags.workflow === "modular" ? MODES.filter((m) => m !== "remix") : MODES).map((m) => ({
+        label: `${MODE_EMOJI[m]} ${m}`,
+        hint: say(`cook.mode.${m}`),
+      })),
+      flags.workflow === "modular" ? 0 : MODES.indexOf(suggestMode(facts)),
     );
     if (mode === null) return cancelled();
     flags.mode = MODES[mode];

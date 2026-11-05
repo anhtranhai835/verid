@@ -25,6 +25,8 @@ function scriptedTerminal(
   keys: (string | (() => string))[],
   providerKeys = ENTER,
   architectureKeys = ENTER,
+  workflowKeys = ENTER,
+  resourceKeys = ENTER,
 ) {
   const input = Object.assign(new PassThrough(), { isTTY: true, setRawMode: () => undefined });
   const output = new PassThrough();
@@ -32,6 +34,14 @@ function scriptedTerminal(
   let screen = "";
   output.on("data", (d) => {
     screen += d;
+    if (/\? (Choose cook workflow|Chọn luồng cook)/.test(String(d))) {
+      setImmediate(() => input.write(workflowKeys));
+      return;
+    }
+    if (/\? (Where should cook resources live|Lưu tài nguyên cook ở đâu)/.test(String(d))) {
+      setImmediate(() => input.write(resourceKeys));
+      return;
+    }
     if (/(^|\n|\x1b\[0J)\? (Choose providers|Chọn provider)/.test(String(d))) {
       setImmediate(() => input.write(providerKeys));
       return;
@@ -79,6 +89,28 @@ const state = () =>
   JSON.parse(readFileSync(join(project, ".verid", ".state", "state.json"), "utf8"));
 
 describe("interactiveCook: verid cook in the developer's terminal", () => {
+  it("selects modular workflow and repo resources for Codex before writing", async () => {
+    vitestProject();
+    const terminal = scriptedTerminal(
+      [ENTER, ENTER, ENTER, ENTER, ENTER],
+      DOWN + ENTER,
+      ENTER,
+      DOWN + ENTER,
+      DOWN + ENTER,
+    );
+    const result = await interactiveCook(project, terminal.io, "en-US");
+    expect(result.exit).toBe(0);
+    expect(parse(manifest())).toMatchObject({
+      workflow: "modular",
+      resources: "repo",
+      providers: ["codex"],
+    });
+    expect(existsSync(join(project, ".verid/workflow.md"))).toBe(true);
+    expect(existsSync(join(project, ".agents/skills/verid-modules/SKILL.md"))).toBe(true);
+    expect(existsSync(join(project, "codex home/config.toml"))).toBe(false);
+    expect(terminal.screen()).toContain("Choose cook workflow");
+    expect(terminal.screen()).toContain("Where should cook resources live?");
+  });
   it("offers all architecture profiles with DDD selected by default", async () => {
     const rows = [
       [ENTER, "ddd"],

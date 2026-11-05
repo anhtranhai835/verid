@@ -148,6 +148,8 @@ export type Drive = (typeof DRIVES)[number];
 
 export const LAYOUTS = ["monorepo", "workspace"] as const;
 export type Layout = (typeof LAYOUTS)[number];
+export const WORKFLOWS = ["classic", "modular"] as const;
+export const RESOURCE_MODES = ["installed", "repo"] as const;
 
 const agentList = z
   .array(z.string().check(z.minLength(1, nonEmpty)))
@@ -256,6 +258,8 @@ const manifestSchema = z
     roles: z.optional(roles),
     drive: z._default(z.enum(DRIVES, { error: "must be human or auto" }), "human"),
     layout: z._default(z.enum(LAYOUTS, { error: "must be monorepo or workspace" }), "monorepo"),
+    workflow: z.optional(z.enum(WORKFLOWS)),
+    resources: z.optional(z.enum(RESOURCE_MODES)),
     iterations: z.optional(iterations),
     git: z.optional(git),
     architecture: z._default(z.enum(ARCHITECTURES), "ddd"),
@@ -292,6 +296,12 @@ const manifestSchema = z
           code: "custom",
           path: ["iterations"],
           message: "needs mode prep or recipe",
+        });
+      if (m.workflow === "modular" && m.mode === "remix")
+        return ctx.addIssue({
+          code: "custom",
+          path: ["workflow"],
+          message: "modular needs mode prep or recipe",
         });
       if (m.drive !== "auto") return;
       if (m.mode === "remix")
@@ -331,6 +341,17 @@ export const DEFAULT_ROLES: Roles = {
 export function defaultRoles(providers: readonly Provider[]): Roles {
   const { security: _, ...codexOnly } = DEFAULT_ROLES;
   return providerRoles(providers.includes("claude-code") ? DEFAULT_ROLES : codexOnly, providers)!;
+}
+
+export function resourceRoles(roles: Roles, resources?: string): Roles {
+  return resources === "repo"
+    ? Object.fromEntries(
+        Object.entries(roles).map(([role, names]) => [
+          role,
+          names?.map((name) => name.replace(/^verid:/, "verid-")),
+        ]),
+      )
+    : roles;
 }
 
 /** Keep Claude mappings while registering the user-layer Codex reviewer. */
@@ -380,6 +401,8 @@ export interface ProjectFacts {
 
 /** `verid cook --test-cmd ... --src ... --tests ...`; each flag replaces what was recognised. */
 export interface InitFlags {
+  workflow?: string | undefined;
+  resources?: string | undefined;
   architecture?: string | undefined;
   testCmd?: string | undefined;
   src: readonly string[];
@@ -536,6 +559,7 @@ export function renderManifest(
   iterations?: Iterations,
   providers: readonly Provider[] = ["claude-code"],
   architecture: (typeof ARCHITECTURES)[number] = "ddd",
+  options: Pick<Manifest, "workflow" | "resources"> = {},
 ): string {
   const repos: readonly Repo[] = Array.isArray(repo) ? repo : [repo as Repo];
   return [
@@ -544,6 +568,8 @@ export function renderManifest(
     `mode: ${JSON.stringify(mode)} # ${MODES.join(" | ")}`,
     `providers: ${JSON.stringify(providers)} # claude-code | codex`,
     `architecture: ${architecture} # ddd | clean | layered | none`,
+    ...(options.workflow ? [`workflow: ${options.workflow} # classic | modular`] : []),
+    ...(options.resources ? [`resources: ${options.resources} # installed | repo`] : []),
     "allowed_skills: [] # additional exact names or prefix:*; verid:* is known by default",
     "allowed_agents: [] # roles are known by default",
     ...(layout === "workspace" ? ['layout: "workspace" # monorepo | workspace'] : []),
@@ -596,6 +622,7 @@ export function manifestUpgrade(
   repo: Repo,
   roles?: Roles,
   providers: readonly Provider[] = ["claude-code"],
+  resources?: string,
 ): {
   tests: string[];
   ignore: string[];
@@ -607,17 +634,18 @@ export function manifestUpgrade(
   const ownTests = !repo.test_globs.some((g) => TEST_GLOBS.includes(g));
   const used = new Set(Object.values(roles ?? {}).flat());
   const claude = providers.includes("claude-code");
-  const { security: _, ...codexOnly } = DEFAULT_ROLES;
+  const defaults = resourceRoles(DEFAULT_ROLES, resources);
+  const { security: _, ...codexOnly } = defaults;
   const added: Roles =
     roles === undefined
       ? claude
-        ? DEFAULT_ROLES
+        ? defaults
         : codexOnly
       : Object.fromEntries(
           (
             ["architect", "planner", "qa", ...(claude ? (["security"] as const) : [])] as const
           ).flatMap((role) => {
-            const agents = DEFAULT_ROLES[role];
+            const agents = defaults[role];
             return !roles[role] && agents && !agents.some((name) => used.has(name))
               ? [[role, agents]]
               : [];

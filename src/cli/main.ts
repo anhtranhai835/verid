@@ -54,6 +54,7 @@ import { doctorCommand } from "./doctor.js";
 import { auditLines } from "../adapters/rule-audit.js";
 import { writeReviewPacket } from "../adapters/review-packet.js";
 import { initCommand, setupCodexCommand } from "./init.js";
+import { moduleCommand } from "./module.js";
 import { baselineCommand, lastRefusal, testCommand, type CliResult } from "./test.js";
 
 /** `dist/cli.js`: the command line in, its output and exit code out. */
@@ -90,6 +91,7 @@ export async function runCli(args: readonly string[]): Promise<CliResult> {
     else if (cmd === "setup-codex" && rest.length === 0) r = setupCodexCommand();
     else if (cmd === "taste" && rest.length === 0) r = await testCommand(project);
     else if (cmd === "doctor" && rest.length === 0) r = await doctorCommand(project);
+    else if (cmd === "module" && rest.length === 1) r = await moduleCommand(project, rest[0]!);
     else if (cmd === "peek" && rest.length === 0) r = await status(project);
     else if (cmd === "menu" && rest.length === 0) r = await menu(project);
     else if (
@@ -118,6 +120,8 @@ export async function runCli(args: readonly string[]): Promise<CliResult> {
 }
 
 const COOK_OPTIONS = {
+  workflow: { type: "string" },
+  resources: { type: "string" },
   mode: { type: "string" },
   drive: { type: "string" },
   architecture: { type: "string" },
@@ -142,6 +146,8 @@ function initFlags(args: string[], command: "cook" | "upgrade") {
     if (command === "upgrade") parseArgs({ args, options: UPGRADE_OPTIONS });
     const { values } = parseArgs({ args, options: COOK_OPTIONS });
     return {
+      workflow: values.workflow,
+      resources: values.resources,
       mode: values.mode,
       drive: values.drive,
       architecture: values.architecture,
@@ -214,6 +220,7 @@ type Misuse = { key: MessageKey; params: Record<string, string> };
 
 // How many arguments each command takes after its name; cook takes flags.
 const ARGS: Record<string, number> = {
+  module: 1,
   doctor: 0,
   taste: 0,
   peek: 0,
@@ -275,6 +282,7 @@ function usage(project: string, wrong: Misuse | null): CliResult {
       who: dev,
     },
     { emoji: "🩺", command: `${v} doctor`, what: say("usage.doctor") },
+    { emoji: "📁", command: `${v} module <name>`, what: say("usage.module"), who: "modular" },
     { emoji: "👅", command: `${v} taste`, what: say("usage.taste") },
     { emoji: "👀", command: `${v} peek`, what: say("usage.peek") },
     { emoji: "📋", command: `${v} menu [--commits [--file]]`, what: say("usage.menu") },
@@ -298,6 +306,7 @@ function usage(project: string, wrong: Misuse | null): CliResult {
   const tty = wrong ? process.stderr.isTTY : process.stdout.isTTY;
   const color = Boolean(tty) && !process.env.NO_COLOR;
   const lines = usageLines(say("usage.tagline"), rows, say("usage.in_claude"), color);
+  lines.push("", `   ${say("usage.cook_options")}`);
   if (!wrong) return { exit: 0, stdout: `${lines.join("\n")}\n`, stderr: "" };
   const text = [t(lang, wrong.key, wrong.params), ...lines].join("\n");
   return { exit: 2, stdout: "", stderr: `${text}\n` };
@@ -533,7 +542,12 @@ function signAuto(project: string, manifest: Manifest, wanted: string | undefine
   const paths = statePaths(project);
   return withLock(paths, () => {
     const state = readState(paths);
-    const facts = autoFactsOf(project, state, manifest.iterations !== undefined);
+    const facts = autoFactsOf(
+      project,
+      state,
+      manifest.iterations !== undefined,
+      manifest.workflow === "modular",
+    );
     const { researchHash, specHash, designHash } = facts;
     if (researchHash === null)
       throw new VeridError("VERID_BURNT_RESEARCH_MISSING", { path: researchFile(project) });
@@ -685,7 +699,11 @@ async function planModule(project: string, command: string, wanted: string | und
   const { mode } = manifest;
   if (mode === "remix") throw new VeridError("VERID_BURNT_MODE_MISMATCH", { command, mode });
   const file = planFile(project);
-  const plan = readPlan(project, manifest.iterations !== undefined);
+  const plan = readPlan(
+    project,
+    manifest.iterations !== undefined,
+    manifest.workflow === "modular",
+  );
   if (plan === null) throw new VeridError("VERID_BURNT_PLAN_MISSING", { path: file });
   if (!plan.ok)
     throw new VeridError("VERID_BURNT_PLAN_INVALID", { path: file, detail: plan.detail });

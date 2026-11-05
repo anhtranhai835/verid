@@ -12,7 +12,6 @@ import {
   codexTrust,
   hasCodexReviewer,
   hasCurrentCodexHooks,
-  installedSkills,
   reviewerOverlay,
   reviewerContent,
 } from "../adapters/codex-settings.js";
@@ -24,7 +23,8 @@ import { isDirectory, loadManifest } from "../adapters/manifest.js";
 import { checkedRepos } from "../adapters/architecture.js";
 import { errno, readState, statePaths, VeridError } from "../adapters/state-store.js";
 import { findRunners } from "../adapters/test-runner.js";
-import { repoFolder } from "../adapters/workspace.js";
+import { checkSetupPath, repoFolder } from "../adapters/workspace.js";
+import { skillsFor } from "../adapters/repo-resources.js";
 import { ROLE_NAMES, type Manifest } from "../core/manifest.js";
 import type { ErrorCode, MessageKey } from "../core/errors.js";
 import type { CliResult } from "./test.js";
@@ -71,7 +71,10 @@ export async function doctorCommand(project: string): Promise<CliResult> {
 
   if (!manifest || manifest.providers.includes("claude-code")) {
     const settingsFile = join(project, ".claude/settings.local.json");
-    const hook = fileURLToPath(new URL("./hook.js", import.meta.url));
+    const hook =
+      manifest?.resources === "repo"
+        ? join(project, ".verid/hooks/hook.js")
+        : fileURLToPath(new URL("./hook.js", import.meta.url));
     let currentHooks = false;
     try {
       currentHooks = hasCurrentVeridHooks(JSON.parse(readFileSync(settingsFile, "utf8")), hook);
@@ -81,75 +84,117 @@ export async function doctorCommand(project: string): Promise<CliResult> {
     if (!currentHooks) problem("hooks", "doctor.hooks.missing", "doctor.hooks.fix");
     else lines.push(say("doctor.hooks.ok"));
 
-    const config = process.env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude");
-    const recordFile = join(config, "plugins/installed_plugins.json");
-    let installed: Record<string, unknown> = {};
-    try {
-      const record: unknown = JSON.parse(readFileSync(recordFile, "utf8"));
-      if (!isObject(record) || record.version !== 2 || !isObject(record.plugins))
-        problem("plugins.record", "doctor.plugins.unsupported", "doctor.plugins.repair", {
-          file: recordFile,
-        });
-      else installed = record.plugins;
-    } catch (e) {
-      if (errno(e) !== "ENOENT" && !(e instanceof SyntaxError))
-        problem("plugins.record", "doctor.plugins.unreadable", "doctor.plugins.permissions", {
-          file: recordFile,
-        });
-      else if (e instanceof SyntaxError)
-        problem("plugins.record", "doctor.plugins.invalid", "doctor.plugins.reinstall", {
-          file: recordFile,
-        });
+    if (manifest?.resources !== "repo") {
+      const config = process.env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude");
+      const recordFile = join(config, "plugins/installed_plugins.json");
+      let installed: Record<string, unknown> = {};
+      try {
+        const record: unknown = JSON.parse(readFileSync(recordFile, "utf8"));
+        if (!isObject(record) || record.version !== 2 || !isObject(record.plugins))
+          problem("plugins.record", "doctor.plugins.unsupported", "doctor.plugins.repair", {
+            file: recordFile,
+          });
+        else installed = record.plugins;
+      } catch (e) {
+        if (errno(e) !== "ENOENT" && !(e instanceof SyntaxError))
+          problem("plugins.record", "doctor.plugins.unreadable", "doctor.plugins.permissions", {
+            file: recordFile,
+          });
+        else if (e instanceof SyntaxError)
+          problem("plugins.record", "doctor.plugins.invalid", "doctor.plugins.reinstall", {
+            file: recordFile,
+          });
+      }
+      // An install record of this plugin that applies here: for the user, or for this project.
+      const applicable = (name: string) =>
+        Object.entries(installed).flatMap(([key, entries]) =>
+          key.startsWith(`${name}@`) && Array.isArray(entries)
+            ? entries.filter(
+                (entry: unknown): entry is { installPath: string } =>
+                  isObject(entry) &&
+                  typeof entry.installPath === "string" &&
+                  isDirectory(entry.installPath) &&
+                  (entry.scope === "user" ||
+                    (["project", "local"].includes(String(entry.scope)) &&
+                      typeof entry.projectPath === "string" &&
+                      resolve(entry.projectPath) === resolve(project))),
+              )
+            : [],
+        );
+      for (const [name, marketplace, source] of [
+        ["verid", "verid", "anhtranhai835/verid"],
+      ] as const) {
+        const found = applicable(name).length > 0;
+        if (!found)
+          problem(`plugin.${name}`, "doctor.plugin.missing", "doctor.plugin.fix", {
+            name,
+            source,
+            marketplace,
+          });
+        else lines.push(say("doctor.plugin.ok", { name }));
+      }
+      // A mapped verid agent ("verid:<name>") needs an install of verid that has it, as an older
+      // install lacks the agents a newer verid maps. Other plugins may name agents by frontmatter or
+      // declare their own paths, so verid cannot tell; without verid, plugin.verid says what to install.
+      const verids = applicable("verid");
+      if (verids.length > 0)
+        for (const role of ROLE_NAMES)
+          for (const agent of manifest?.roles?.[role] ?? []) {
+            const [plugin, name] = agent.split(":");
+            if (plugin !== "verid" || !name) continue;
+            const provided = verids.some((entry) =>
+              existsSync(join(entry.installPath, "agents", `${name}.md`)),
+            );
+            if (!provided)
+              problem(`agent.${agent}`, "doctor.agent.missing", "doctor.agent.fix", {
+                agent,
+                role,
+                plugin,
+              });
+          }
     }
-    // An install record of this plugin that applies here: for the user, or for this project.
-    const applicable = (name: string) =>
-      Object.entries(installed).flatMap(([key, entries]) =>
-        key.startsWith(`${name}@`) && Array.isArray(entries)
-          ? entries.filter(
-              (entry: unknown): entry is { installPath: string } =>
-                isObject(entry) &&
-                typeof entry.installPath === "string" &&
-                isDirectory(entry.installPath) &&
-                (entry.scope === "user" ||
-                  (["project", "local"].includes(String(entry.scope)) &&
-                    typeof entry.projectPath === "string" &&
-                    resolve(entry.projectPath) === resolve(project))),
-            )
-          : [],
-      );
-    for (const [name, marketplace, source] of [
-      ["verid", "verid", "anhtranhai835/verid"],
-    ] as const) {
-      const found = applicable(name).length > 0;
-      if (!found)
-        problem(`plugin.${name}`, "doctor.plugin.missing", "doctor.plugin.fix", {
-          name,
-          source,
-          marketplace,
-        });
-      else lines.push(say("doctor.plugin.ok", { name }));
-    }
-    // A mapped verid agent ("verid:<name>") needs an install of verid that has it, as an older
-    // install lacks the agents a newer verid maps. Other plugins may name agents by frontmatter or
-    // declare their own paths, so verid cannot tell; without verid, plugin.verid says what to install.
-    const verids = applicable("verid");
-    if (verids.length > 0)
-      for (const role of ROLE_NAMES)
-        for (const agent of manifest?.roles?.[role] ?? []) {
-          const [plugin, name] = agent.split(":");
-          if (plugin !== "verid" || !name) continue;
-          const provided = verids.some((entry) =>
-            existsSync(join(entry.installPath, "agents", `${name}.md`)),
-          );
-          if (!provided)
-            problem(`agent.${agent}`, "doctor.agent.missing", "doctor.agent.fix", {
-              agent,
-              role,
-              plugin,
-            });
-        }
   }
-  const blocks = manifest ? instructionBlocks(manifest, installedSkills()) : [];
+  const blocks = manifest ? instructionBlocks(manifest, skillsFor(manifest)) : [];
+  if (manifest?.resources === "repo") {
+    const skills = [
+      "ba",
+      "design",
+      "plan",
+      "build",
+      "tdd",
+      "review",
+      "security",
+      "onboard",
+      ...(manifest.workflow === "modular" ? ["modules"] : []),
+    ];
+    const required = [
+      ".verid/hooks/hook.js",
+      ".verid/i18n/en.json",
+      ".verid/i18n/vi.json",
+      ...skills.flatMap((name) => [
+        `.verid/skills/${name}/SKILL.md`,
+        ...(manifest.providers.includes("codex") ? [`.agents/skills/verid-${name}/SKILL.md`] : []),
+        ...(manifest.providers.includes("claude-code")
+          ? [`.claude/skills/verid-${name}/SKILL.md`]
+          : []),
+      ]),
+      ...Object.values(manifest.roles ?? {}).flatMap((names) =>
+        (names ?? []).flatMap((name) =>
+          name.startsWith("verid-") && manifest.providers.includes("claude-code")
+            ? [`.claude/agents/${name}.md`, `.verid/agents/${name.slice(6)}.md`]
+            : [],
+        ),
+      ),
+    ];
+    for (const file of required) {
+      try {
+        checkSetupPath(project, file);
+        if (!existsSync(join(project, file))) throw new Error("missing");
+      } catch {
+        problem(`resources.${file}`, "doctor.resources_missing", "doctor.resources_fix", { file });
+      }
+    }
+  }
   for (const { file, block: expected } of blocks) {
     let text: string | undefined;
     try {
@@ -170,7 +215,10 @@ export async function doctorCommand(project: string): Promise<CliResult> {
   }
   for (const provider of manifest?.providers ?? []) {
     if (provider === "codex") {
-      const hook = fileURLToPath(new URL("./hook.js", import.meta.url));
+      const local = manifest?.resources === "repo";
+      const hook = local
+        ? join(project, ".verid/hooks/hook.js")
+        : fileURLToPath(new URL("./hook.js", import.meta.url));
       const hookFile = join(project, ".codex", "hooks.json");
       let settings: unknown;
       try {
@@ -200,17 +248,32 @@ export async function doctorCommand(project: string): Promise<CliResult> {
       else lines.push(say("doctor.codex.trust_ok"));
       // Codex's internal definition hash serialization is not part of the captured contract.
       lines.push(say("doctor.codex.retrust"));
+      const overlay = local
+        ? join(project, ".verid/agents/verid-reviewer.toml")
+        : reviewerOverlay();
+      let reviewerConfig = config;
+      if (local) {
+        try {
+          reviewerConfig = readFileSync(join(project, ".codex/config.toml"), "utf8");
+        } catch {
+          reviewerConfig = "";
+        }
+      }
       let overlayCurrent = false;
       try {
-        overlayCurrent =
-          readFileSync(reviewerOverlay(), "utf8").replaceAll("\r\n", "\n") ===
-          reviewerContent().replaceAll("\r\n", "\n");
+        overlayCurrent = local
+          ? readFileSync(overlay, "utf8").includes('sandbox_mode = "read-only"')
+          : readFileSync(overlay, "utf8").replaceAll("\r\n", "\n") ===
+            reviewerContent().replaceAll("\r\n", "\n");
       } catch {
         /* Missing or unreadable installation needs upgrade. */
       }
       if (
         !overlayCurrent ||
-        !hasCodexReviewer(config, reviewerOverlay()) ||
+        !hasCodexReviewer(
+          reviewerConfig,
+          local ? "../.verid/agents/verid-reviewer.toml" : overlay,
+        ) ||
         !manifest!.roles?.reviewer?.includes("verid_reviewer")
       )
         problem("codex.reviewer", "doctor.codex.reviewer_missing", "doctor.hooks.fix");

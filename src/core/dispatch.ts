@@ -11,7 +11,7 @@ export const DEFAULT_ALLOWED_AGENTS = [
   "verid:project-manager",
   "verid:debugger",
 ] as const;
-type DispatchManifest = Pick<Manifest, "roles" | "allowed_skills" | "allowed_agents">;
+type DispatchManifest = Pick<Manifest, "roles" | "allowed_skills" | "allowed_agents" | "resources">;
 
 export const skillAllowlist = (manifest?: DispatchManifest | null): string[] => [
   ...DEFAULT_ALLOWED_SKILLS,
@@ -19,7 +19,9 @@ export const skillAllowlist = (manifest?: DispatchManifest | null): string[] => 
 ];
 export const agentAllowlist = (manifest?: DispatchManifest | null): string[] => [
   ...new Set([
-    ...DEFAULT_ALLOWED_AGENTS,
+    ...DEFAULT_ALLOWED_AGENTS.map((name) =>
+      manifest?.resources === "repo" ? name.replace(/^verid:/, "verid-") : name,
+    ),
     ...Object.values(manifest?.roles ?? {}).flatMap((agents) => agents ?? []),
     ...(manifest?.allowed_agents ?? []),
   ]),
@@ -37,13 +39,19 @@ export function decideDispatch(
     return { kind: "allow", reason: "not a dispatch" };
   const code = skill ? "VERID_BURNT_SKILL_NOT_ALLOWED" : "VERID_BURNT_AGENT_NOT_ALLOWED";
   const name = input[skill ? "skill" : "subagent_type"];
+  const dispatched =
+    skill && manifest?.resources === "repo" && typeof name === "string"
+      ? name.replace(/^verid-/, "verid:")
+      : name;
   const list = skill ? skillAllowlist(manifest) : agentAllowlist(manifest);
   const allowed =
     typeof name === "string" &&
     name !== "" &&
     list.some((entry) =>
       skill && entry.endsWith(":*")
-        ? name.startsWith(entry.slice(0, -1)) && name.length > entry.length - 1
+        ? typeof dispatched === "string" &&
+          dispatched.startsWith(entry.slice(0, -1)) &&
+          dispatched.length > entry.length - 1
         : name === entry,
     );
   if (allowed || lifted.has(code)) return { kind: "allow", reason: "allowed dispatch" };

@@ -466,7 +466,12 @@ async function tddGate(
   // cannot go on without the developer.
   const facts =
     manifest.drive === "auto"
-      ? autoFactsOf(project, state, manifest.iterations !== undefined)
+      ? autoFactsOf(
+          project,
+          state,
+          manifest.iterations !== undefined,
+          manifest.workflow === "modular",
+        )
       : null;
   // A write is judged before it runs, so a Bash `rm .verid/blocked.md` latches the file first.
   if (facts !== null && toLatch(state, facts.blockedFile))
@@ -477,7 +482,8 @@ async function tddGate(
   // tool call, whose hook the host lets through once it runs out of time.
   const auto = facts === null ? null : autoPhase(facts);
   const planApproved =
-    manifest.mode === "remix" || (auto ? auto.kind === "module" : hasOpenModule(project, state));
+    manifest.mode === "remix" ||
+    (auto ? auto.kind === "module" : hasOpenModule(project, state, manifest));
   const lock: AutoLock | null = auto?.kind === "stuck" ? "VERID_BURNT_AUTO_STUCK" : null;
   const who = {
     writer: writerFor(p.agent_id, p.agent_type, manifest.roles),
@@ -705,7 +711,11 @@ async function lifecycle(p: z.infer<typeof lifecycleSchema>): Promise<Result> {
     // remembers which one, since a conversation may stop many times.
     return withLock(paths, () => {
       const state = readState(paths);
-      const plan = readPlan(project);
+      const plan = readPlan(
+        project,
+        manifest.iterations !== undefined,
+        manifest.workflow === "modular",
+      );
       const views = plan?.ok ? planViews(project, plan, state) : [];
       const open = openModule(views);
       if (!open || state.ac_stop_session === p.session_id) return { exit: 0 };
@@ -816,7 +826,12 @@ function autoStop(
   return withLock(paths, () => {
     let state = readState(paths);
     if (state.auto.signed === null) return null;
-    let facts = autoFactsOf(project, state, manifest.iterations !== undefined);
+    let facts = autoFactsOf(
+      project,
+      state,
+      manifest.iterations !== undefined,
+      manifest.workflow === "modular",
+    );
     const session = p.session_id;
     state = latchBlocked(paths, state, facts.blockedFile, session);
     state = advance(project, paths, state, { ...facts, auto: state.auto }, manifest);
@@ -923,7 +938,12 @@ function observe(project: string, paths: StatePaths, manifest: Manifest): void {
   withLock(paths, () => {
     const state = readState(paths);
     if (state.auto.signed === null) return;
-    const facts = autoFactsOf(project, state, manifest.iterations !== undefined);
+    const facts = autoFactsOf(
+      project,
+      state,
+      manifest.iterations !== undefined,
+      manifest.workflow === "modular",
+    );
     const moved = advance(project, paths, state, facts, manifest);
     if (moved !== state) writeState(paths, moved);
   });
@@ -1018,7 +1038,14 @@ async function subagentStop(p: z.infer<typeof lifecycleSchema>): Promise<Result>
     }
     const rounds =
       auto && writer === "coder"
-        ? coderRounds(project, paths, state, p, manifest.iterations !== undefined)
+        ? coderRounds(
+            project,
+            paths,
+            state,
+            p,
+            manifest.iterations !== undefined,
+            manifest.workflow === "modular",
+          )
         : null;
     if (!wrote && rounds === null) return { exit: 0 };
     writeState(paths, {
@@ -1040,8 +1067,9 @@ function coderRounds(
   state: State,
   p: z.infer<typeof lifecycleSchema>,
   iterations: boolean,
+  modular = false,
 ): Record<string, number> | null {
-  if (autoPhase(autoFactsOf(project, state, iterations)).kind !== "module") return null;
+  if (autoPhase(autoFactsOf(project, state, iterations, modular)).kind !== "module") return null;
   const { failing, crashed, passed_acs } = state.tdd;
   const before = state.auto.coder_rounds;
   const after = coderRoundsAfter(before, [...failing.map(keyId), ...crashed], passed_acs);
@@ -1074,7 +1102,14 @@ function recordReview(
   const identity = null;
   withLock(paths, () => {
     const read = readState(paths);
-    const known = auto ? autoFactsOf(project, read, manifest.iterations !== undefined) : null;
+    const known = auto
+      ? autoFactsOf(
+          project,
+          read,
+          manifest.iterations !== undefined,
+          manifest.workflow === "modular",
+        )
+      : null;
     // Capture audit bases before recording a module review.
     const advanced =
       known && autoPhase(known).kind === "module"
@@ -1085,7 +1120,7 @@ function recordReview(
     const phase = facts === null ? null : autoPhase(facts);
     const module =
       phase === null
-        ? openModuleName(project, state)
+        ? openModuleName(project, state, manifest)
         : phase.kind === "module"
           ? phase.view.name
           : undefined;
@@ -1158,12 +1193,16 @@ function recordReview(
 }
 
 /** A missing or broken plan has no open module, so production code stays locked. */
-function hasOpenModule(project: string, state: State): boolean {
-  return openModuleName(project, state) !== undefined;
+function hasOpenModule(project: string, state: State, manifest: Manifest): boolean {
+  return openModuleName(project, state, manifest) !== undefined;
 }
 
-function openModuleName(project: string, state: State): string | undefined {
-  const plan = readPlan(project);
+function openModuleName(project: string, state: State, manifest?: Manifest): string | undefined {
+  const plan = readPlan(
+    project,
+    manifest?.iterations !== undefined,
+    manifest?.workflow === "modular",
+  );
   if (!plan?.ok) return undefined;
   const views = planViews(project, plan, state);
   return openModule(views)?.name;
@@ -1192,8 +1231,10 @@ function onError(event: string | undefined, err: unknown): Result {
 /** The module whose log a session reads, in either drive; undefined when none is open or in remix. */
 function loggedModule(project: string, manifest: Manifest, state: State): string | undefined {
   if (manifest.mode === "remix") return undefined;
-  if (manifest.drive !== "auto") return openModuleName(project, state);
-  const phase = autoPhase(autoFactsOf(project, state, manifest.iterations !== undefined));
+  if (manifest.drive !== "auto") return openModuleName(project, state, manifest);
+  const phase = autoPhase(
+    autoFactsOf(project, state, manifest.iterations !== undefined, manifest.workflow === "modular"),
+  );
   return phase.kind === "module" ? phase.view.name : undefined;
 }
 

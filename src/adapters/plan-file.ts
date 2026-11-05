@@ -30,6 +30,16 @@ import { type Work } from "./git.js";
 import { bilingual } from "./i18n.js";
 import { auditLines } from "./rule-audit.js";
 import { errno, readFileHash } from "./state-store.js";
+import { checkSetupPath } from "./workspace.js";
+
+export const MODULE_INPUTS = [
+  "ba/requirements.md",
+  "ui/brief.md",
+  "spec/spec.md",
+  "spec/design.md",
+  "tests/test-plan.md",
+  "security/threat-model.md",
+] as const;
 
 export const planFile = (project: string): string => join(project, ".verid", "plan.md");
 export const researchFile = (project: string): string => join(project, ".verid", "research.md");
@@ -79,7 +89,7 @@ export type PlanRead =
  * Any other failure propagates: a plan that cannot be read must not look like one that is
  * missing, or the gate would misjudge it.
  */
-export function readPlan(project: string, iterations = false): PlanRead | null {
+export function readPlan(project: string, iterations = false, modular = false): PlanRead | null {
   let bytes: Buffer;
   try {
     bytes = readFileSync(planFile(project));
@@ -89,9 +99,43 @@ export function readPlan(project: string, iterations = false): PlanRead | null {
   }
   const plan = parsePlan(bytes.toString("utf8"), iterations);
   if (!plan.ok) return plan;
-  const hashes = Object.fromEntries(
-    plan.modules.map((m) => [m.name, createHash("sha256").update(m.text, "utf8").digest("hex")]),
-  );
+  const hashes: Record<string, string> = {};
+  for (const module of plan.modules) {
+    const hash = createHash("sha256").update(module.text, "utf8");
+    const references = [...module.text.matchAll(/^Artifacts:[ \t]*(.*?)[ \t]*\r?$/gm)];
+    if (references.length > 1)
+      return { ok: false, detail: `${module.name}: use one Artifacts line` };
+    const reference = references[0]?.[1];
+    if (modular && reference === undefined)
+      return {
+        ok: false,
+        detail: `${module.name}: modular workflow requires Artifacts: .verid/artifacts/03-modules/${module.name}`,
+      };
+    if (reference !== undefined) {
+      const expected = `.verid/artifacts/03-modules/${module.name}`;
+      if (reference !== expected)
+        return { ok: false, detail: `${module.name}: Artifacts must be ${expected}` };
+      for (const input of MODULE_INPUTS) {
+        const rel = `${expected}/${input}`;
+        checkSetupPath(project, rel);
+        let content: Buffer;
+        try {
+          content = readFileSync(join(project, rel));
+        } catch (error) {
+          if (errno(error) === "ENOENT")
+            return {
+              ok: false,
+              detail: `${rel}: missing module input; run verid module ${module.name}`,
+            };
+          throw error;
+        }
+        if (!content.toString("utf8").trim() || content.includes("[NEEDS CLARIFICATION"))
+          return { ok: false, detail: `${rel}: resolve the module draft before order` };
+        hash.update("\0").update(input).update("\0").update(content);
+      }
+    }
+    hashes[module.name] = hash.digest("hex");
+  }
   return { ok: true, modules: plan.modules, hashes };
 }
 
@@ -101,18 +145,20 @@ export function readPlan(project: string, iterations = false): PlanRead | null {
  */
 export function openWork(
   project: string,
-  manifest: Pick<Manifest, "drive" | "iterations">,
+  manifest: Pick<Manifest, "drive" | "iterations" | "workflow">,
   state: State,
 ): { module: string; work: Work | undefined; branch?: string } | null {
   const iterations = manifest.iterations !== undefined;
   if (manifest.drive === "auto") {
-    const phase = autoPhase(autoFactsOf(project, state, iterations));
+    const phase = autoPhase(
+      autoFactsOf(project, state, iterations, manifest.workflow === "modular"),
+    );
     if (phase.kind !== "module") return null;
     const { name } = phase.view;
     const work = state.auto.work?.module === name ? state.auto.work : undefined;
     return { module: name, work: work?.roots, ...(work?.branch && { branch: work.branch }) };
   }
-  const plan = readPlan(project, iterations);
+  const plan = readPlan(project, iterations, manifest.workflow === "modular");
   const views = plan?.ok ? planViews(project, plan, state) : [];
   const name = openModule(views)?.name;
   return name === undefined ? null : { module: name, work: state.modules[name]?.work };
@@ -124,7 +170,12 @@ export function openWork(
  * `.verid/blocked.md` (null when missing or blank). Reads only; any read error but a missing file
  * propagates, so a file that cannot be read never looks like one that was not written.
  */
-export function autoFactsOf(project: string, state: State, iterations = false): AutoFacts {
+export function autoFactsOf(
+  project: string,
+  state: State,
+  iterations = false,
+  modular = false,
+): AutoFacts {
   let blocked: string;
   try {
     blocked = readFileSync(blockedFile(project), "utf8").trim();
@@ -132,13 +183,21 @@ export function autoFactsOf(project: string, state: State, iterations = false): 
     if (errno(e) !== "ENOENT") throw e;
     blocked = "";
   }
+  const plan = readPlan(project, iterations, modular);
+  const planHash = readFileHash(planFile(project));
+  const inputHash =
+    plan?.ok && plan.modules.some((module) => /^Artifacts:/m.test(module.text))
+      ? createHash("sha256")
+          .update(JSON.stringify([planHash, plan.hashes]))
+          .digest("hex")
+      : planHash;
   return {
     auto: state.auto,
     researchHash: readFileHash(researchFile(project)),
     specHash: readFileHash(specFile(project)),
     designHash: readDesignHash(project),
-    planHash: readFileHash(planFile(project)),
-    plan: readPlan(project, iterations),
+    planHash: inputHash,
+    plan,
     approvals: state.modules,
     evidence: { passedAcs: state.tdd.passed_acs, passedE2eAcs: state.tdd.passed_e2e_acs },
     blockedFile: blocked === "" ? null : blocked,
@@ -203,7 +262,12 @@ export function peekLines(
     const { phase, step } = autoStanding(project, state, roles, manifest, singleWriter);
     return [head, ...(phase.kind === "module" ? [hint] : []), step, bilingual("status.menu", {})];
   }
-  const plan = planStanding(project, state, manifest?.iterations !== undefined);
+  const plan = planStanding(
+    project,
+    state,
+    manifest?.iterations !== undefined,
+    manifest?.workflow === "modular",
+  );
   const open = plan.ok && openModule(plan.views) !== undefined;
   return [
     head,
@@ -226,9 +290,13 @@ const architectureLines = (
     : [];
 
 /** The plan as `verid menu` reads it: the modules' phases, the open questions, the next step. */
-function planStanding(project: string, state: State, iterations = false) {
+function planStanding(project: string, state: State, iterations = false, modular = false) {
   const questions = questionLines(project);
-  const plan = readPlan(project, iterations) ?? { ok: true as const, modules: [], hashes: {} };
+  const plan = readPlan(project, iterations, modular) ?? {
+    ok: true as const,
+    modules: [],
+    hashes: {},
+  };
   if (!plan.ok) return { ok: false as const, questions, detail: plan.detail };
   const hasResearch = existsSync(researchFile(project));
   const hasSpec = existsSync(specFile(project));
@@ -271,7 +339,12 @@ function autoStanding(
   manifest?: Manifest,
   singleWriter = false,
 ) {
-  const facts = autoFactsOf(project, state, manifest?.iterations !== undefined);
+  const facts = autoFactsOf(
+    project,
+    state,
+    manifest?.iterations !== undefined,
+    manifest?.workflow === "modular",
+  );
   const phase = autoPhase(facts);
   const next = autoNextStep(
     phase,
@@ -366,7 +439,12 @@ export function menuLines(
   }
   if (drive === "auto")
     return autoMenuLines(project, mode, state, roles, manifest, today, singleWriter);
-  const plan = planStanding(project, state, manifest?.iterations !== undefined);
+  const plan = planStanding(
+    project,
+    state,
+    manifest?.iterations !== undefined,
+    manifest?.workflow === "modular",
+  );
   if (!plan.ok)
     return [
       `verid: mode ${mode} · plan invalid`,

@@ -1,0 +1,3 @@
+# Record project owners; provider role enforcement is configured in manifest.yaml.
+schemaVersion: 1
+modules: {}
