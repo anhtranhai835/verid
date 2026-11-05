@@ -139,15 +139,7 @@ Dimensions skipped: [list + reason]
 
 ### Iterative — Progress Summary (every 5 iterations)
 
-```
-=== Scenario Progress (iteration 15) ===
-Scenarios kept:    12  (8 new, 4 variants)
-Discarded:          3  (2 duplicates, 1 out-of-scope)
-Dimensions covered: 7/12 (58%)
-Edge cases found:  18
-Severity:          2 Critical, 4 High, 8 Medium, 4 Low
-Coverage gaps:     scale, temporal, recovery
-```
+Use the format in `references/saturation-loop.md`.
 
 ### Iterative — Scenario Log (in the reply)
 

@@ -167,7 +167,7 @@ describe("provider instruction blocks", () => {
         "- RAW: production code is locked. Write one failing test, then run verid taste.",
         "- COOKING: tests are frozen. Write the minimum production code to pass them, then run verid taste.",
         "- PLATED: all tests pass. Refactor without new behaviour; the next test starts RAW.",
-        "- Start of a session: run verid peek for the cycle and the next step.",
+        "- Session start gives the cycle and next step; run verid peek only if it did not.",
         "- Inputs: the developer's documents in .verid/docs/ (agents read them, never write them).",
         "- Session log: .verid/log/<module>.md; read it at session start, and the main thread appends after each AC.",
         "- State: .verid/manifest.yaml; .verid/research.md, spec.md, design.md and plan.md; local evidence and audit in .verid/.state/.",
