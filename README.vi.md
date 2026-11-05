@@ -30,24 +30,28 @@ Chạy `verid cook` trong project; chọn provider, ngôn ngữ, mode, kiến tr
 
 Commit `.verid/manifest.yaml`, `.verid/.gitignore`, `.verid/rules/`, `.verid/docs/`, `.verid/log/`, `AGENTS.md`, `CLAUDE.md` khi có, và tài liệu research, spec, design, plan trong prep hoặc recipe. Giữ `.claude/settings.local.json` và `.codex/hooks.json` riêng trên mỗi máy.
 
-## Quy trình
+## Từ nguyên liệu đến lên món (Workflow)
 
 ```mermaid
 flowchart LR
-  R[Research] --> S[Spec] --> D[Design] --> P[Plan] --> O[Order] --> B[Build và taste] --> V[Review] --> C[Serve] --> H[Commit, push, PR]
-  C -->|module tiếp theo| O
+  R[Chọn nguyên liệu<br/>Research] --> S[Viết công thức<br/>Spec] --> D[Phác món<br/>Design] --> P[Lên thực đơn<br/>Plan]
+  P --> O[Gọi món<br/>Order] --> B[Vào bếp và nếm thử<br/>Build and Test] --> V[Kiểm món<br/>Review] --> C[Bưng món<br/>Serve] --> H[Bàn giao<br/>Commit, push, PR]
+  C -->|món tiếp theo| O
 ```
 
-| Bước              | Người thực hiện                        | Kết quả                                                                                                                    |
-| :---------------- | :------------------------------------- | :------------------------------------------------------------------------------------------------------------------------- |
-| Research và spec  | luồng chính, `verid:ba`                | Đọc `.verid/docs/`; ghi yêu cầu có nguồn vào `.verid/research.md` và `.verid/spec.md`.                                     |
-| Design và plan    | architect, planner                     | Thống nhất interface và phụ thuộc; ghi `.verid/design.md` và AC có thể kiểm thử vào `.verid/plan.md`.                      |
-| Order             | developer ở human drive                | `verid order <module>` duyệt module. Auto mở theo thứ tự file sau khi plan được review; `Depends:` nêu module phụ thuộc.   |
-| Build             | tester hoặc QA, rồi coder              | Mỗi lần một AC: test fail ở assertion, triển khai, `verid taste` pass, refactor. Luồng chính ghi `.verid/log/<module>.md`. |
-| Review            | reviewer, rồi security nếu được ánh xạ | Đọc gói `verid menu --commits --file`; mỗi báo cáo kết thúc bằng `Verdict: pass` hoặc `Verdict: fail`.                     |
-| Serve và bàn giao | developer ở human drive; auto tự đóng  | `verid serve <module>` cần AC được phủ, test pass còn hiệu lực và review đạt. Sau `product`, commit, push và mở PR.        |
+| Bước trong bếp                      | Người thực hiện                        | Kết quả                                                                                                               |
+| :---------------------------------- | :------------------------------------- | :-------------------------------------------------------------------------------------------------------------------- |
+| Chọn nguyên liệu (Research)         | luồng chính, `verid:ba`                | Đọc tài liệu nguồn trong `.verid/docs/`; ghi phạm vi vào `.verid/research.md`.                                        |
+| Viết công thức (Spec)               | luồng chính, `verid:ba`                | Ghi yêu cầu có nguồn vào `.verid/spec.md`.                                                                            |
+| Phác món (Design)                   | architect                              | Thống nhất interface và phụ thuộc trong `.verid/design.md`.                                                           |
+| Lên thực đơn (Plan)                 | planner                                | Ghi module theo thứ tự và AC có thể kiểm thử vào `.verid/plan.md`.                                                    |
+| Gọi món (Order)                     | developer ở human drive                | `verid order <module>` duyệt một module. Auto mở theo thứ tự file; `Depends:` nêu module phụ thuộc.                   |
+| Vào bếp và nếm thử (Build and Test) | tester hoặc QA, rồi coder              | Làm assertion của AC fail, triển khai, `verid taste` pass, refactor; luồng chính ghi AC vào `.verid/log/<module>.md`. |
+| Kiểm món (Review)                   | reviewer, rồi security nếu được ánh xạ | Đọc `verid menu --commits --file`; mỗi báo cáo kết thúc bằng `Verdict: pass` hoặc `Verdict: fail`.                    |
+| Bưng món (Serve)                    | developer ở human drive; auto tự đóng  | `verid serve <module>` cần AC được phủ, test pass còn hiệu lực và review đạt.                                         |
+| Bàn giao (Handoff)                  | luồng chính                            | Sau `product`, commit, push và mở PR.                                                                                 |
 
-## Vòng TDD
+## Vòng nấu (TDD cycle)
 
 Hook xét quyền ghi theo đường dẫn file và vai trò. `verid taste` chạy bộ test đã cấu hình, đối chiếu exit code với JUnit và ghi trạng thái vòng; chạy test ngoài lệnh này chỉ giúp chẩn đoán.
 

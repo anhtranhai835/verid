@@ -30,24 +30,28 @@ Run `verid cook` in the project; choose provider, language, mode, architecture a
 
 Commit `.verid/manifest.yaml`, `.verid/.gitignore`, `.verid/rules/`, `.verid/docs/`, `.verid/log/`, `AGENTS.md`, `CLAUDE.md` when present, and the research, spec, design and plan documents in prep or recipe. Keep `.claude/settings.local.json` and `.codex/hooks.json` per machine.
 
-## Workflow
+## From pantry to plate (Workflow)
 
 ```mermaid
 flowchart LR
-  R[Research] --> S[Spec] --> D[Design] --> P[Plan] --> O[Order] --> B[Build and taste] --> V[Review] --> C[Serve] --> H[Commit, push, PR]
-  C -->|next module| O
+  R[Gather ingredients<br/>Research] --> S[Write recipe<br/>Spec] --> D[Sketch dish<br/>Design] --> P[Set menu<br/>Plan]
+  P --> O[Place order<br/>Order] --> B[Cook and taste<br/>Build and Test] --> V[Inspect dish<br/>Review] --> C[Serve dish<br/>Serve] --> H[Hand off<br/>Commit, push, PR]
+  C -->|next dish| O
 ```
 
-| Step              | Owner                                         | Result                                                                                                                          |
-| :---------------- | :-------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------ |
-| Research and spec | main, `verid:ba`                              | Read `.verid/docs/`; write sourced requirements in `.verid/research.md` and `.verid/spec.md`.                                   |
-| Design and plan   | architect, planner                            | Agree interfaces and dependencies; write `.verid/design.md` and testable ACs in `.verid/plan.md`.                               |
-| Order             | developer in human drive                      | `verid order <module>` approves the module. Auto opens modules in file order after plan review; `Depends:` names prerequisites. |
-| Build             | tester or QA, then coder                      | One AC at a time: fail an assertion, implement, pass `verid taste`, refactor. Main appends `.verid/log/<module>.md`.            |
-| Review            | reviewer, then security when mapped           | Read `verid menu --commits --file` and end each report with `Verdict: pass` or `Verdict: fail`.                                 |
-| Serve and handoff | developer in human drive; auto closes modules | `verid serve <module>` requires covered ACs, current passing evidence and reviews. After `product`, commit, push and open a PR. |
+| Kitchen step                    | Owner                                 | Result                                                                                                        |
+| :------------------------------ | :------------------------------------ | :------------------------------------------------------------------------------------------------------------ |
+| Gather ingredients (Research)   | main, `verid:ba`                      | Read source documents in `.verid/docs/`; record scope in `.verid/research.md`.                                |
+| Write recipe (Spec)             | main, `verid:ba`                      | Write sourced requirements in `.verid/spec.md`.                                                               |
+| Sketch dish (Design)            | architect                             | Agree interfaces and dependencies in `.verid/design.md`.                                                      |
+| Set menu (Plan)                 | planner                               | Write ordered modules and testable ACs in `.verid/plan.md`.                                                   |
+| Place order (Order)             | developer in human drive              | `verid order <module>` approves one module. Auto opens modules in file order; `Depends:` names prerequisites. |
+| Cook and taste (Build and Test) | tester or QA, then coder              | Fail an AC assertion, implement, pass `verid taste`, refactor; main logs the AC in `.verid/log/<module>.md`.  |
+| Inspect dish (Review)           | reviewer, then security when mapped   | Read `verid menu --commits --file`; end each report with `Verdict: pass` or `Verdict: fail`.                  |
+| Serve dish (Serve)              | developer in human drive; auto closes | `verid serve <module>` requires covered ACs, current passing evidence and reviews.                            |
+| Hand off (Handoff)              | main                                  | After `product`, commit, push and open a PR.                                                                  |
 
-## TDD cycle
+## Cooking cycle (TDD)
 
 The hook decides writes by file path and role. `verid taste` runs the configured suite, checks its exit code against JUnit, and records the cycle; an ad hoc test run is diagnostic only.
 
