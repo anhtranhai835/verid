@@ -1,0 +1,8 @@
+{
+  "session_id": "{{SESSION_ID}}",
+  "transcript_path": "{{TRANSCRIPT_PATH}}",
+  "cwd": "{{CWD}}",
+  "scratchpad_dir": "{{SCRATCHPAD_DIR}}",
+  "hook_event_name": "SessionStart",
+  "source": "startup"
+}

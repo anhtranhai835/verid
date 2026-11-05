@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Hand-written, not recorded: JUnit shapes vitest does not emit (a top-level <testsuite>,
+     nested suites, <error>, a message-only <failure>), as pytest and others write them. -->
+<testsuite name="pytest" tests="4" errors="1" failures="1" skipped="1">
+  <testcase classname="tests.test_calc" name="test_add"/>
+  <testcase classname="" name="tests.test_io">
+    <error message="collection failure">ImportError: No module named 'io_utils'</error>
+  </testcase>
+  <testsuite name="nested">
+    <testcase classname="tests.test_more" name="test_bad">
+      <failure message="assert 1 == 2"/>
+    </testcase>
+    <testcase classname="tests.test_more" name="test_body">
+      <failure message="assert add(1, 2) == 3">def test_body():
+&gt;       assert add(1, 2) == 3</failure>
+    </testcase>
+    <testcase classname="tests.test_more" name="test_later">
+      <skipped message="later"/>
+    </testcase>
+  </testsuite>
+</testsuite>

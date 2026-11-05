@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- pytest-crash.xml after the stub: the same test now fails on its assertion. -->
+<testsuites><testsuite name="pytest" tests="2" errors="0" failures="1" skipped="0">
+  <testcase classname="tests.test_calc" name="test_add">
+    <failure message="assert 0 == 3">def test_add():
+&gt;       assert calc.add(1, 2) == 3
+E       assert 0 == 3</failure>
+  </testcase>
+  <testcase classname="tests.test_calc" name="test_sub"/>
+</testsuite></testsuites>

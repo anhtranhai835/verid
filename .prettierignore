@@ -1,0 +1,19 @@
+# Pinned upstream text: only SKILL.md's discovery name may change.
+plugin/skills/debugging/
+# ClaudeKit reference trees are kept as distributed; their verid wrappers are formatted separately.
+plugin/skills/problem-solving/references/
+plugin/skills/backend-development/
+plugin/skills/frontend-development/
+plugin/skills/databases/
+plugin/skills/devops/
+plugin/skills/mobile-development/
+plugin/skills/web-testing/
+plugin/skills/react-best-practices/
+plugin/skills/mcp-builder/
+plugin/skills/context-engineering/
+plugin/skills/ui-ux-pro-max/
+plugin/skills/security-scan/
+plugin/skills/docs-seeker/
+# Recorded host payloads and reviewer notes stay as they were written.
+test/fixtures/codex/
+.claude/agent-memory/

@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="4" failures="2" errors="0" time="0.020103746">
+    <testsuite name="test/add.test.ts" timestamp="2026-10-19T11:44:29.886Z" hostname="host" tests="1" failures="1" errors="0" skipped="0" time="0">
+        <testcase classname="test/add.test.ts" name="test/add.test.ts" time="0">
+            <failure message="Cannot find module &apos;../src/add.js&apos; imported from /project/test/add.test.ts" type="Error">
+Error: Cannot find module &apos;../src/add.js&apos; imported from /project/test/add.test.ts
+ ❯ test/add.test.ts:2:1
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+Serialized Error: { code: &apos;ERR_MODULE_NOT_FOUND&apos; }
+            </failure>
+        </testcase>
+    </testsuite>
+    <testsuite name="test/greet.test.ts" timestamp="2026-10-19T11:44:29.894Z" hostname="host" tests="3" failures="1" errors="0" skipped="1" time="0.020103746">
+        <testcase classname="test/greet.test.ts" name="greet &amp; &lt;name&gt; &gt; says hi" time="0.016428998">
+            <failure message="expected &apos;Hello An&apos; to be &apos;Hi An&apos; // Object.is equality" type="AssertionError">
+AssertionError: expected &apos;Hello An&apos; to be &apos;Hi An&apos; // Object.is equality
+
+Expected: &quot;Hi An&quot;
+Received: &quot;Hello An&quot;
+
+ ❯ test/greet.test.ts:4:43
+            </failure>
+        </testcase>
+        <testcase classname="test/greet.test.ts" name="greet &amp; &lt;name&gt; &gt; speaks Vietnamese" time="0">
+            <skipped/>
+        </testcase>
+        <testcase classname="test/greet.test.ts" name="greet &amp; &lt;name&gt; &gt; returns a string" time="0.00105212">
+        </testcase>
+    </testsuite>
+</testsuites>

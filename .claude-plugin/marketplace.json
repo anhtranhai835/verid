@@ -1,0 +1,14 @@
+{
+  "name": "verid",
+  "owner": {
+    "name": "Anh Tran"
+  },
+  "description": "Self-contained verid BA, onboard, design, planning, TDD, debugging and review skills with architect, planner, tester, coder, QA, reviewer and security agents",
+  "plugins": [
+    {
+      "name": "verid",
+      "source": "./plugin",
+      "description": "Self-contained verid BA, onboard, design, planning, TDD, debugging and review skills with architect, planner, tester, coder, QA, reviewer and security agents"
+    }
+  ]
+}

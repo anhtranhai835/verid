@@ -1,0 +1,20 @@
+{
+  "session_id": "{{SESSION_ID}}",
+  "transcript_path": "{{TRANSCRIPT_PATH}}",
+  "cwd": "{{CWD}}",
+  "scratchpad_dir": "{{SCRATCHPAD_DIR}}",
+  "prompt_id": "8c3f965b-626d-4cc0-ad46-70331fbf9650",
+  "permission_mode": "default",
+  "effort": {
+    "level": "medium"
+  },
+  "hook_event_name": "PreToolUse",
+  "tool_name": "Agent",
+  "tool_input": {
+    "description": "Run verid tip x subagent",
+    "prompt": "/verid tip x. Then use the Read tool to read .claude/commands/verid.md and reply done.",
+    "subagent_type": "general-purpose",
+    "run_in_background": false
+  },
+  "tool_use_id": "toolu_01MsemhvwLBzczoXF5EL32Q3"
+}

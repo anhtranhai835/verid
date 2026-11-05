@@ -1,0 +1,10 @@
+{
+  "name": "verid",
+  "version": "1.0.0",
+  "description": "Self-contained verid TDD workflow with ClaudeKit-derived skills and read-only helper agents",
+  "author": {
+    "name": "Anh Tran"
+  },
+  "homepage": "https://github.com/anhtranhai835/verid",
+  "license": "MIT"
+}
