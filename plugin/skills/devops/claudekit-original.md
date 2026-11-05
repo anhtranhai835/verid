@@ -1,5 +1,5 @@
 ---
-name: ck:devops
+name: verid:devops
 description: Deploy to Cloudflare (Workers, R2, D1), Docker, GCP (Cloud Run, GKE), Kubernetes (kubectl, Helm). Use for serverless, containers, CI/CD, GitOps, security audit.
 user-invocable: true
 when_to_use: "Invoke for cloud, containers, Kubernetes, CI/CD, or GitOps."

@@ -1,5 +1,5 @@
 ---
-name: ck:databases
+name: verid:databases
 description: Design schemas, write queries for MongoDB and PostgreSQL. Use for database design, SQL/NoSQL queries, aggregation pipelines, indexes, migrations, replication, performance optimization, psql CLI.
 user-invocable: true
 when_to_use: "Invoke when schema, query, migration, or index work is central."

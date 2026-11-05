@@ -1,6 +1,6 @@
 # STRIDE + OWASP Security Checklist
 
-Reference checklist for `ck:security` audits. Use during Step 2 (STRIDE Analysis) and Step 3 (OWASP Top 10 Check).
+Reference checklist for `verid:security` reviews. Use during Step 2 (STRIDE Analysis) and Step 3 (OWASP Top 10 Check).
 
 ---
 

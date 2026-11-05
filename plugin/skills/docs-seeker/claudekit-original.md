@@ -1,5 +1,5 @@
 ---
-name: ck:docs-seeker
+name: verid:docs-seeker
 description: Search library/framework documentation via llms.txt (context7.com). Use for API docs, GitHub repository analysis, technical documentation lookup, latest library features.
 user-invocable: true
 when_to_use: "Invoke when current library or framework docs are needed."

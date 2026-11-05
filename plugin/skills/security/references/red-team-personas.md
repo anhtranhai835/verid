@@ -1,6 +1,6 @@
-# Red-Team Personas — ck:security Discovery Loop
+# Red-Team Personas — verid:security Discovery Loop
 
-Adapted from upstream `/autoresearch:security` adversarial lenses (uditgoenka/autoresearch, MIT).
+Adapted from the upstream autoresearch security adversarial lenses (uditgoenka/autoresearch, MIT).
 
 Each persona represents a distinct attacker mindset. When `--red-team` mode is active, the discovery loop iterates over personas in order. Each iteration assumes the persona's threat model and probes from that lens before moving on.
 

@@ -1,5 +1,5 @@
 ---
-name: ck:mcp-builder
+name: verid:mcp-builder
 description: Build MCP servers for LLM-external service integration. Use for FastMCP (Python), MCP SDK (Node/TypeScript), tool design, API integration, resource providers.
 user-invocable: true
 when_to_use: "Invoke when building an MCP server or tool surface."

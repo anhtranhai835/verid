@@ -1,5 +1,5 @@
 ---
-name: ck:web-testing
+name: verid:web-testing
 description: Web testing with Playwright, Vitest, k6. E2E/unit/integration/load/security/visual/a11y testing. Use for test automation, flakiness, Core Web Vitals, mobile gestures, cross-browser.
 user-invocable: true
 when_to_use: "Invoke for browser, visual, load, or accessibility tests."

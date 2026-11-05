@@ -258,7 +258,9 @@ describe("self-contained verid skills", () => {
       expect(skill, name).toContain(`name: ${name}`);
       expect(skill, name).toContain("verid taste");
       expect(skill, name).toContain("claudekit-original.md");
-      expect(read(`plugin/skills/${name}/claudekit-original.md`).length, name).toBeGreaterThan(100);
+      const original = read(`plugin/skills/${name}/claudekit-original.md`);
+      expect(original, name).toContain(`name: verid:${name}\n`);
+      expect(original, name).not.toMatch(/\bck:[a-z]/);
     }
   });
 

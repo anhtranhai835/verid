@@ -1,5 +1,5 @@
 ---
-name: ck:security-scan
+name: verid:security-scan
 description: "Scan codebase for security vulnerabilities, hardcoded secrets, dependency issues, and OWASP patterns. Use when asked to 'security scan', 'check for secrets', 'audit security', or before major releases."
 user-invocable: true
 when_to_use: "Invoke for secrets, dependency, and OWASP-style scans."
@@ -18,10 +18,10 @@ Lightweight security scanner using Claude's reasoning + shell tools. No external
 ## Usage
 
 ```
-/ck:security-scan              # Full scan of current project
-/ck:security-scan --secrets-only   # Only secret/credential detection
-/ck:security-scan --deps-only      # Only dependency audit
-/ck:security-scan src/api/         # Scan specific directory
+/verid:security-scan              # Full scan of current project
+/verid:security-scan --secrets-only   # Only secret/credential detection
+/verid:security-scan --deps-only      # Only dependency audit
+/verid:security-scan src/api/         # Scan specific directory
 ```
 
 ## Scan Categories

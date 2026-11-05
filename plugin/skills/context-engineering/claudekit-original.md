@@ -1,5 +1,5 @@
 ---
-name: ck:context-engineering
+name: verid:context-engineering
 description: >-
   Check context usage limits, monitor time remaining, optimize token consumption, debug context failures.
   Use when asking about context percentage, rate limits, usage warnings, context optimization, agent architectures, memory systems.
