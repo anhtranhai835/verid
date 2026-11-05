@@ -5,7 +5,7 @@ description: Use for React or TypeScript UI implementation and component structu
 
 # verid:frontend-development
 
-This optional skill brings ClaudeKit's frontend-development reference material into the verid plugin. Read `claudekit-original.md` for its topic index, then open only the matching bundled reference or script. Paths in that original file are relative to this skill directory.
+This optional skill brings ClaudeKit's frontend-development reference material into the verid plugin. Read `claudekit-original.md` for its topic index, then open only the matching guide under `references/`. Paths in that original file are relative to this skill directory.
 
 Apply only patterns supported by the project's actual framework and libraries; treat example MUI, router, and alias choices as examples.
 

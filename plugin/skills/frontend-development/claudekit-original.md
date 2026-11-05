@@ -121,7 +121,7 @@ import type { Post } from '~types/post';
 - Use SuspenseLoader component (with fade animation)
 - Component structure: Props → Hooks → Handlers → Render → Export
 
-**[📖 Complete Guide: resources/component-patterns.md](resources/component-patterns.md)**
+**[📖 Complete Guide: references/component-patterns.md](references/component-patterns.md)**
 
 ---
 
@@ -139,7 +139,7 @@ import type { Post } from '~types/post';
 - Centralized methods per feature
 - Route format: `/form/route` (NOT `/api/form/route`)
 
-**[📖 Complete Guide: resources/data-fetching.md](resources/data-fetching.md)**
+**[📖 Complete Guide: references/data-fetching.md](references/data-fetching.md)**
 
 ---
 
@@ -160,7 +160,7 @@ features/
     types/        # TypeScript types
 ```
 
-**[📖 Complete Guide: resources/file-organization.md](resources/file-organization.md)**
+**[📖 Complete Guide: references/file-organization.md](references/file-organization.md)**
 
 ---
 
@@ -181,7 +181,7 @@ features/
 <Grid xs={12} md={6}>             // ❌ Old syntax
 ```
 
-**[📖 Complete Guide: resources/styling-guide.md](resources/styling-guide.md)**
+**[📖 Complete Guide: references/styling-guide.md](references/styling-guide.md)**
 
 ---
 
@@ -206,7 +206,7 @@ export const Route = createFileRoute('/my-route/')({
 });
 ```
 
-**[📖 Complete Guide: resources/routing-guide.md](resources/routing-guide.md)**
+**[📖 Complete Guide: references/routing-guide.md](references/routing-guide.md)**
 
 ---
 
@@ -233,7 +233,7 @@ if (isLoading) {
 - NEVER `react-toastify`
 - TanStack Query `onError` callbacks
 
-**[📖 Complete Guide: resources/loading-and-error-states.md](resources/loading-and-error-states.md)**
+**[📖 Complete Guide: references/loading-and-error-states.md](references/loading-and-error-states.md)**
 
 ---
 
@@ -246,7 +246,7 @@ if (isLoading) {
 - Debounced search (300-500ms)
 - Memory leak prevention (cleanup in useEffect)
 
-**[📖 Complete Guide: resources/performance.md](resources/performance.md)**
+**[📖 Complete Guide: references/performance.md](references/performance.md)**
 
 ---
 
@@ -258,7 +258,7 @@ if (isLoading) {
 - Type imports: `import type { User } from '~types/user'`
 - Component prop interfaces with JSDoc
 
-**[📖 Complete Guide: resources/typescript-standards.md](resources/typescript-standards.md)**
+**[📖 Complete Guide: references/typescript-standards.md](references/typescript-standards.md)**
 
 ---
 
@@ -271,7 +271,7 @@ if (isLoading) {
 - `useAuth` hook for current user
 - Mutation patterns with cache invalidation
 
-**[📖 Complete Guide: resources/common-patterns.md](resources/common-patterns.md)**
+**[📖 Complete Guide: references/common-patterns.md](references/common-patterns.md)**
 
 ---
 
@@ -285,7 +285,7 @@ if (isLoading) {
 - Suspense + useSuspenseQuery
 - Form with validation
 
-**[📖 Complete Guide: resources/complete-examples.md](resources/complete-examples.md)**
+**[📖 Complete Guide: references/complete-examples.md](references/complete-examples.md)**
 
 ---
 
@@ -293,16 +293,16 @@ if (isLoading) {
 
 | Need to... | Read this resource |
 |------------|-------------------|
-| Create a component | [component-patterns.md](resources/component-patterns.md) |
-| Fetch data | [data-fetching.md](resources/data-fetching.md) |
-| Organize files/folders | [file-organization.md](resources/file-organization.md) |
-| Style components | [styling-guide.md](resources/styling-guide.md) |
-| Set up routing | [routing-guide.md](resources/routing-guide.md) |
-| Handle loading/errors | [loading-and-error-states.md](resources/loading-and-error-states.md) |
-| Optimize performance | [performance.md](resources/performance.md) |
-| TypeScript types | [typescript-standards.md](resources/typescript-standards.md) |
-| Forms/Auth/DataGrid | [common-patterns.md](resources/common-patterns.md) |
-| See full examples | [complete-examples.md](resources/complete-examples.md) |
+| Create a component | [component-patterns.md](references/component-patterns.md) |
+| Fetch data | [data-fetching.md](references/data-fetching.md) |
+| Organize files/folders | [file-organization.md](references/file-organization.md) |
+| Style components | [styling-guide.md](references/styling-guide.md) |
+| Set up routing | [routing-guide.md](references/routing-guide.md) |
+| Handle loading/errors | [loading-and-error-states.md](references/loading-and-error-states.md) |
+| Optimize performance | [performance.md](references/performance.md) |
+| TypeScript types | [typescript-standards.md](references/typescript-standards.md) |
+| Forms/Auth/DataGrid | [common-patterns.md](references/common-patterns.md) |
+| See full examples | [complete-examples.md](references/complete-examples.md) |
 
 ---
 
@@ -393,7 +393,7 @@ export const MyComponent: React.FC<MyComponentProps> = ({ id, onAction }) => {
 export default MyComponent;
 ```
 
-For complete examples, see [resources/complete-examples.md](resources/complete-examples.md)
+For complete examples, see [references/complete-examples.md](references/complete-examples.md)
 
 ---
 

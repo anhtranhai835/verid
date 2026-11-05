@@ -32,12 +32,7 @@ Commit `.verid/manifest.yaml`, `.verid/.gitignore`, `.verid/rules/`, `.verid/doc
 
 ## Từ nguyên liệu đến lên món (Workflow)
 
-```mermaid
-flowchart LR
-  R[Chọn nguyên liệu<br/>Research] --> S[Viết công thức<br/>Spec] --> D[Phác món<br/>Design] --> P[Lên thực đơn<br/>Plan]
-  P --> O[Gọi món<br/>Order] --> B[Vào bếp và nếm thử<br/>Build and Test] --> V[Kiểm món<br/>Review] --> C[Bưng món<br/>Serve] --> H[Bàn giao<br/>Commit, push, PR]
-  C -->|món tiếp theo| O
-```
+Chọn nguyên liệu (Research) → Viết công thức (Spec) → Phác món (Design) → Lên thực đơn (Plan) → Gọi món (Order) → Vào bếp và nếm thử (Build and Test) → Kiểm món (Review) → Bưng món (Serve) → Bàn giao (Commit, push, PR). Bưng xong một món thì gọi món tiếp theo cho module kế tiếp.
 
 | Bước trong bếp                      | Người thực hiện                        | Kết quả                                                                                                               |
 | :---------------------------------- | :------------------------------------- | :-------------------------------------------------------------------------------------------------------------------- |

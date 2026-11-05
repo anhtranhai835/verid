@@ -254,6 +254,24 @@ describe("self-contained verid skills", () => {
     }
   });
 
+  it("resolves every bundled file the ClaudeKit topic indexes link to", () => {
+    expect(read("plugin/skills/frontend-development/SKILL.md")).toContain("references/");
+    const pattern =
+      /(?:\]\(|`)(?:\.\/)?((?:references|reference|resources|scripts)\/[\w./-]+\.\w+|[\w-]+\.md)(?:\)|`)/g;
+    for (const name of ["frontend-development", "databases", "web-testing"]) {
+      const base = `plugin/skills/${name}`;
+      const links = [...read(`${base}/claudekit-original.md`).matchAll(pattern)].map(
+        (match) => match[1]!,
+      );
+      expect(links.length, name).toBeGreaterThan(0);
+      for (const link of links)
+        expect(existsSync(join(root, base, link)), `${name}: ${link}`).toBe(true);
+    }
+    const webIndex = read("plugin/skills/web-testing/claudekit-original.md");
+    for (const guide of ["interactive-testing-patterns.md", "shadow-dom-testing.md"])
+      expect(webIndex).toContain(`references/${guide}`);
+  });
+
   it("offers ClaudeKit-derived read-only helper agents without changing role mappings", () => {
     const names = [
       "brainstormer",

@@ -44,6 +44,8 @@ npx lighthouse https://example.com     # Performance
 - `./references/e2e-testing-playwright.md` - Fixtures, sharding, selectors
 - `./references/playwright-component-testing.md` - CT patterns (production-ready)
 - `./references/component-testing.md` - React/Vue/Angular patterns
+- `./references/interactive-testing-patterns.md` - Forms, keyboard, drag and drop
+- `./references/shadow-dom-testing.md` - Shadow DOM and web components
 
 ### Test Infrastructure
 - `./references/test-data-management.md` - Factories, fixtures, seeding

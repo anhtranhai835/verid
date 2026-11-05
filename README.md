@@ -32,12 +32,7 @@ Commit `.verid/manifest.yaml`, `.verid/.gitignore`, `.verid/rules/`, `.verid/doc
 
 ## From pantry to plate (Workflow)
 
-```mermaid
-flowchart LR
-  R[Gather ingredients<br/>Research] --> S[Write recipe<br/>Spec] --> D[Sketch dish<br/>Design] --> P[Set menu<br/>Plan]
-  P --> O[Place order<br/>Order] --> B[Cook and taste<br/>Build and Test] --> V[Inspect dish<br/>Review] --> C[Serve dish<br/>Serve] --> H[Hand off<br/>Commit, push, PR]
-  C -->|next dish| O
-```
+Gather ingredients (Research) → Write recipe (Spec) → Sketch dish (Design) → Set menu (Plan) → Place order (Order) → Cook and taste (Build and Test) → Inspect dish (Review) → Serve dish (Serve) → Hand off (Commit, push, PR). After each served dish, place the order for the next module.
 
 | Kitchen step                    | Owner                                 | Result                                                                                                        |
 | :------------------------------ | :------------------------------------ | :------------------------------------------------------------------------------------------------------------ |

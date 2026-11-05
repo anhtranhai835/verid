@@ -33,7 +33,7 @@ Use when:
 ## Reference Navigation
 
 ### Database Design
-- **[db-design.md](references/db-design.md)** - Activate when user requests: Database/table design for transactional (OLTP), analytics (OLAP), create or extend schema, design fact/dimension tables, analyze/review CSV/JSON/SQL files to create tables, or need advice on data storage structure.
+- **[db-design.md](db-design.md)** - Activate when user requests: Database/table design for transactional (OLTP), analytics (OLAP), create or extend schema, design fact/dimension tables, analyze/review CSV/JSON/SQL files to create tables, or need advice on data storage structure.
 
 ### MongoDB References
 - **[mongodb-crud.md](references/mongodb-crud.md)** - CRUD operations, query operators, atomic updates
