@@ -121,7 +121,7 @@ export function renderInstructions(
     "- PLATED: all tests pass. Refactor without new behaviour; the next test starts RAW.",
     "",
     "### Workflow",
-    "- Session start gives the cycle and next step; run verid peek only if it did not.",
+    "- Session start gives the cycle and next step; else run verid peek.",
     `- New developer or workspace: verid:onboard${codex ? ` → ${skill("onboard")}` : ""} reads repos, health and status, and writes nothing.`,
     ...(codex
       ? [
