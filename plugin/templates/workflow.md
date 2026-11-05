@@ -2,6 +2,8 @@
 
 Based on the supplied 10-repo-structure.md, adapted to verid's providers and TDD gates.
 The project workspace is .verid/; runtime evidence stays in .verid/.state/.
+With resources: repo, run the verid commands below as `node .verid/verid.mjs <command>`
+from the project root. The local CLI and its runtime dependencies are bundled.
 
 1. Baseline: inventory repos, existing code, runners and risks in artifacts/00-baseline/. For an existing project, record adoption scope before proposing changes.
 2. Research: read .verid/docs/; write research evidence in artifacts/01-research/ and the agreed summary in .verid/research.md.
@@ -24,5 +26,5 @@ When resources: repo, .verid/agents, skills, templates and policies are project-
 Claude uses local verid-<name> entries under .claude/. Codex uses .agents/skills/ entries
 and a project reviewer in .codex/config.toml. Native entries read the repo copies.
 Cook fills missing files and preserves existing copies; upgrades do not overwrite customization.
-After cloning, install the verid CLI and run cook to regenerate this machine's hooks, then
+After cloning, run `node .verid/verid.mjs cook --yes` to regenerate this machine's hooks, then
 trust the project and hooks in Codex. Commit the resource copies, templates and dossiers.

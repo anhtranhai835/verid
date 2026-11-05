@@ -22,12 +22,16 @@ Codex giữ reviewer `verid_reviewer`. Cook giữ những role đã được ng�
 
 ```sh
 verid cook --mode prep --workflow modular --resources repo --provider codex --yes
-verid module identity
-verid menu
+node .verid/verid.mjs module identity
+node .verid/verid.mjs menu
 ```
 
 Thêm `--provider claude-code` để dùng cả hai provider. Bỏ hai flag mới để dùng mặc định.
-Từ checkout source, build rồi thay `verid` bằng `node /path/to/verid/dist/cli.js`.
+Từ checkout source, build rồi thay `verid` bằng `node /path/to/aeriq/dist/cli.js`.
+
+Sau cook với `resources: repo`, mọi lệnh chạy qua `node .verid/verid.mjs <lệnh>` từ
+gốc project. CLI, hook và thư viện runtime đã được bundle trong repo; máy của thành
+viên mới không cần cài verid global hay cài dependencies riêng cho verid.
 
 ## Cây được tạo
 
@@ -45,6 +49,7 @@ your-project/
 │   └── hooks.json                      # hook riêng cho máy, cần trust
 └── .verid/
     ├── manifest.yaml
+    ├── verid.mjs                       # launcher CLI local, chạy bằng node
     ├── architecture-profile.md
     ├── constitution.md
     ├── ownership.yaml
@@ -57,7 +62,7 @@ your-project/
     ├── agents/                        # có cả reviewer TOML của Codex
     ├── skills/                        # đầy đủ scripts, references, licenses
     ├── templates/                     # bộ mẫu dùng khi verid module
-    ├── hooks/                         # bundle hook và các chunk đi kèm
+    ├── hooks/                         # CLI, hook, chunks và package.json cho ESM
     ├── i18n/
     ├── policies/                      # quy ước dự án; enforcement do hook/manifest
     ├── rules/
@@ -131,7 +136,8 @@ có tên `verid:<name>`, được hướng dẫn ánh xạ sang local `verid-<na
 
 Sau cook, mở Codex trong project, trust project và các hook verid qua `/hooks`, rồi chạy
 `verid doctor`. Trust là quyết định của người dùng trong Codex; cook không giả lập
-`trusted_hash`. Sau clone hoặc đổi máy, cài CLI và chạy cook để cập nhật đường dẫn hook.
+`trusted_hash`. Sau clone hoặc đổi máy, chạy `node .verid/verid.mjs cook --yes` để cập
+nhật đường dẫn hook. CLI trong repo dùng chính skills, agents và templates tại đây.
 Cook giữ nguyên bản tài nguyên repo đã có; muốn cập nhật bản pin, developer xem diff và
 thay bộ tương ứng. Một project dùng nhiều provider vẫn cần native entry tương ứng.
 

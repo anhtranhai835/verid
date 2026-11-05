@@ -34,6 +34,8 @@ import { hasVeridHooks, withVeridHooks } from "../adapters/claude-settings.js";
 import {
   codexHome,
   installationRoot,
+  contentRoot,
+  runtimeDirectory,
   mergeCodexReviewer,
   reviewerOverlay,
   reviewerContent,
@@ -470,23 +472,21 @@ export async function planCook(
   };
   if (effective?.resources === "repo") {
     for (const file of repoResources(project, providers)) addResource(file.rel, file.content);
-    for (const file of resourceTree(join(installationRoot(), "dist"), ".verid/hooks")) {
-      if (file.rel.endsWith(".js") && !file.rel.endsWith("/cli.js"))
-        addResource(file.rel, file.content);
+    for (const file of resourceTree(runtimeDirectory(), ".verid/hooks")) {
+      if (file.rel.endsWith(".js")) addResource(file.rel, file.content);
     }
+    addResource(".verid/hooks/package.json", '{"type":"module","private":true}\n');
+    addResource(".verid/verid.mjs", '#!/usr/bin/env node\nimport "./hooks/cli.js";\n');
     for (const file of resourceTree(join(installationRoot(), "i18n"), ".verid/i18n"))
       addResource(file.rel, file.content);
     addResource(
       ".verid/policies/README.md",
-      readFileSync(join(installationRoot(), "plugin/templates/policies/README.md")),
+      readFileSync(join(contentRoot(), "templates/policies/README.md")),
     );
     notes.push(bilingual("cook.resources_repo", {}));
   }
   if (effective?.workflow === "modular") {
-    for (const file of resourceTree(
-      join(installationRoot(), "plugin/templates"),
-      ".verid/templates",
-    ))
+    for (const file of resourceTree(join(contentRoot(), "templates"), ".verid/templates"))
       addResource(file.rel, file.content);
     for (const rel of [
       "workflow.md",
@@ -495,7 +495,7 @@ export async function planCook(
       "ownership.yaml",
       "approvals/README.md",
     ])
-      addResource(`.verid/${rel}`, readFileSync(join(installationRoot(), "plugin/templates", rel)));
+      addResource(`.verid/${rel}`, readFileSync(join(contentRoot(), "templates", rel)));
     for (const phase of [
       "00-baseline",
       "01-research",

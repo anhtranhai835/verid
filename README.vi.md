@@ -51,7 +51,7 @@ thu. verid ghi những điều đó thành tài liệu rồi nối chúng với 
 
 ## Cài đặt
 
-### Gói đã phát hành
+### Gói đã phát hành (cài global tùy chọn)
 
 ```sh
 npm install -g @anhtranhai835/verid
@@ -84,10 +84,25 @@ git clone https://github.com/anhtranhai835/aeriq.git
 cd aeriq
 npm ci
 npm run build
-npm install -g .
 ```
 
-Tên lệnh là `verid`; tên gói npm là `@anhtranhai835/verid`.
+Từ project đích, chạy CLI đã build một lần, thay đường dẫn bằng checkout của bạn:
+
+```sh
+node /path/to/aeriq/dist/cli.js cook --mode prep --workflow modular --resources repo --provider codex --yes
+```
+
+Sau cook, repo có CLI và các thư viện runtime đi kèm. Từ gốc project:
+
+```sh
+node .verid/verid.mjs module identity
+node .verid/verid.mjs menu
+node .verid/verid.mjs taste
+```
+
+Chế độ repo chạy được mà không cần cài verid global hoặc một bộ `node_modules` riêng
+cho verid. Máy vẫn cần Node.js, provider và test runner của project.
+Tên lệnh khi cài global tùy chọn là `verid`; tên gói npm là `@anhtranhai835/verid`.
 
 ---
 
@@ -120,7 +135,7 @@ Nếu dùng mode `remix` cho code có sẵn, chạy `verid stock` trước khi a
 
 ```sh
 verid cook --mode prep --workflow modular --resources repo --provider codex --yes
-verid module identity
+node .verid/verid.mjs module identity
 ```
 
 Điền bản nháp của module, rồi tổng hợp yêu cầu, thiết kế và AC đã thống nhất vào
@@ -220,6 +235,8 @@ workspace/                     # cấp này không có .git/
 Mỗi repo trong manifest có path, globs và runner riêng. Workspace dùng chung một
 vòng TDD. Chạy cook và mở provider tại gốc workspace để thấy tất cả repo.
 
+`AGENTS.md` và `CLAUDE.md` ở gốc workspace được tạo cho mỗi máy; `verid cook` tạo lại chúng.
+
 ### Những gì nằm trong .verid
 
 Cây dưới đây dùng `modular` với tài nguyên `repo`. File tích hợp provider được tạo
@@ -228,6 +245,7 @@ theo provider đã chọn; hồ sơ module xuất hiện sau `verid module`.
 ```text
 .verid/
 ├── manifest.yaml
+├── verid.mjs                   # launcher CLI local; chạy bằng node
 ├── workflow.md
 ├── constitution.md
 ├── architecture-profile.md
@@ -240,7 +258,7 @@ theo provider đã chọn; hồ sơ module xuất hiện sau `verid module`.
 ├── agents/                    # gồm reviewer TOML cho Codex
 ├── skills/                    # có scripts, references và licenses
 ├── templates/
-├── hooks/                     # bundle runtime được pin
+├── hooks/                     # CLI, hook và thư viện runtime được bundle
 ├── i18n/
 ├── policies/
 ├── rules/
@@ -279,6 +297,9 @@ quyết định; approval thực của verid vẫn nằm trong trạng thái run
 ---
 
 ## Lệnh
+
+Với chế độ repo, chạy từng lệnh bằng `node .verid/verid.mjs <lệnh>` từ gốc project.
+Cách viết gọn `verid` bên dưới dùng được khi chọn cài global.
 
 | Lệnh                                  | Công dụng                                                                 |
 | ------------------------------------- | ------------------------------------------------------------------------- |
@@ -448,7 +469,9 @@ Nó kiểm tra approval module, vòng TDD và vai trò ghi. Các lệnh Codex đ
 gồm `apply_patch`, shell và gọi reviewer.
 
 Coverage spec, thứ tự phụ thuộc, quy ước kiến trúc và danh sách dispatch đã biết
-còn tạo cảnh báo tham khảo. Xem [bảng rule hook đầy đủ](docs/hook-reference.vi.md)
+còn tạo cảnh báo tham khảo. Quy ước `.verid/rules/architecture.md` và kết quả
+`architecture_check` là chỉ dẫn không chặn; doctor và menu hiển thị các cảnh báo này.
+Xem [bảng rule hook đầy đủ](docs/hook-reference.vi.md)
 để biết mã rule và cách override. Ngoại lệ một lần gọi cần developer trực tiếp
 trong Claude Code.
 
@@ -482,11 +505,18 @@ Cook tạo defaults đầy đủ hơn theo runner và quy ước file đã nhậ
 được ưu tiên hơn ignore và source. Runner tùy chỉnh phải ghi JUnit vào `{junit}`
 hoặc đường dẫn trong biến môi trường `VERID_JUNIT`. Chỉ developer sửa manifest.
 
+Với skill bên ngoài, `allowed_skills: ["superpowers:*"]` thêm namespace đã biết;
+`allowed_agents` thêm tên agent cụ thể. `roles` đã ánh xạ và gate TDD vẫn quyết định
+quyền ghi. `roles.researcher` đã bỏ; dùng `verid:ba` ở luồng chính
+(`verid-ba` khi dùng tài nguyên repo).
+
 ---
 
 ## Làm việc cùng thành viên mới
 
-Sau khi clone project, cài CLI và chạy `verid cook` tại gốc project hoặc workspace.
+Sau khi clone project dùng tài nguyên repo, chạy `node .verid/verid.mjs cook --yes`
+tại gốc project hoặc workspace. CLI đã được commit sẵn, chạy bằng Node.js.
+Với tài nguyên installed, cài CLI và chạy `verid cook`.
 Lựa chọn trong manifest và tài nguyên repo đã có được giữ lại; cook thêm file setup
 còn thiếu và nối lại hook cho máy hiện tại.
 
@@ -495,6 +525,10 @@ còn thiếu từ remote đã cấu hình trong manifest. Với monorepo, commit
 và chỉ dẫn cùng source repo; với workspace, tạo lại các entry ở gốc theo từng máy.
 
 ## Nâng cấp
+
+Với tài nguyên repo, `node .verid/verid.mjs cook --yes` nối lại phiên bản đã commit
+cho máy hiện tại. Khi đổi phiên bản được pin, xem diff và cập nhật runtime cùng các
+bản tài nguyên trong repo. Nếu chọn cài global, có thể nâng cấp bằng:
 
 ```sh
 npm install -g @anhtranhai835/verid

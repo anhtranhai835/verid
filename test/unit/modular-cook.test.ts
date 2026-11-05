@@ -51,6 +51,8 @@ it("previews without writes, installs portable Codex resources, and preserves cu
   expect(read("AGENTS.md")).toContain(".verid/skills/ba/SKILL.md");
   expect(read(".codex/hooks.json")).toContain("--provider codex");
   expect(existsSync(join(project, ".verid/hooks/hook.js"))).toBe(true);
+  expect(existsSync(join(project, ".verid/hooks/cli.js"))).toBe(true);
+  expect(read(".verid/verid.mjs")).toContain('import "./hooks/cli.js"');
   expect(existsSync(join(project, ".verid/i18n/vi.json"))).toBe(true);
   expect(existsSync(join(project, "user-codex/config.toml"))).toBe(false);
   put(".verid/templates/module/spec/spec.md", "Custom {{module}} contract\n");

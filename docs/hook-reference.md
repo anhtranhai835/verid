@@ -4,7 +4,8 @@
 
 Repo resource definitions in `.verid/agents/`, `.verid/skills/`, `.verid/templates/`,
 `.verid/hooks/`, `.verid/i18n/` and `.verid/policies/` are also protected by
-`VERID_BURNT_HOOK_PROTECTED`. Agents may read them; the developer maintains these copies.
+`VERID_BURNT_HOOK_PROTECTED`, together with the `.verid/verid.mjs` launcher. Agents may
+read them; the developer maintains these copies.
 
 | Rule                                 | Overridable        | Covers                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | :----------------------------------- | :----------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |

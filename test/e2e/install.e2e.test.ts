@@ -74,6 +74,7 @@ describe("npm skill distribution", () => {
     const files = JSON.parse(result.stdout)[0].files.map((file: { path: string }) => file.path);
     for (const name of [
       "ba",
+      "modules",
       "design",
       "plan",
       "build",
@@ -119,7 +120,13 @@ describe("npm skill distribution", () => {
     ])
       expect(files).toContain(`plugin/skills/debugging/${name}`);
     expect(files).not.toContain("plugin/skills/debugging/CREATION-LOG.md");
-  });
+    for (const path of [
+      "plugin/templates/workflow.md",
+      "plugin/templates/module/spec/spec.md",
+      "docs/modular-cook.md",
+    ])
+      expect(files).toContain(path);
+  }, 60_000);
 });
 
 describe.each(installs)("verid installed with $name", ({ available, install }) => {

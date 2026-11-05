@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { installedSkills, installationRoot } from "./codex-settings.js";
+import { contentRoot, installedSkills, reviewerTemplateFile } from "./codex-settings.js";
 import { checkSetupPath } from "./workspace.js";
 import type { Manifest } from "../core/manifest.js";
 
@@ -22,11 +22,12 @@ export function resourceTree(source: string, target: string): ResourceFile[] {
 
 /** Native host entries route to the repo copy, so changes there are used on the next call. */
 export function repoResources(project: string, providers: Manifest["providers"]): ResourceFile[] {
-  const root = join(installationRoot(), "plugin");
+  const root = contentRoot();
   const files = [
     ...resourceTree(join(root, "skills"), ".verid/skills"),
     ...resourceTree(join(root, "agents"), ".verid/agents"),
     ...resourceTree(join(root, "templates"), ".verid/templates"),
+    { rel: ".verid/templates/codex-reviewer.toml", content: readFileSync(reviewerTemplateFile()) },
   ];
   const effective = (file: ResourceFile) => {
     checkSetupPath(project, file.rel);
@@ -43,7 +44,7 @@ export function repoResources(project: string, providers: Manifest["providers"])
     const frontmatter = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text)?.[1];
     if (!frontmatter) throw new Error(`Missing frontmatter: ${file.rel}`);
     const header = frontmatter.replace(/^name:.*$/m, `name: verid-${name}`);
-    const body = `Read ${file.rel} from the project root and follow its instructions. Resolve supporting files relative to that file's folder. In this repo, calls named verid:<name> use the local verid-<name> skill or agent. Read AGENTS.md and .verid/workflow.md when present before starting.\n`;
+    const body = `Read ${file.rel} from the project root and follow its instructions. Resolve supporting files relative to that file's folder. In this repo, calls named verid:<name> use the local verid-<name> skill or agent. Run verid commands as node .verid/verid.mjs <command> from the project root. Read AGENTS.md and .verid/workflow.md when present before starting.\n`;
     if (providers.includes("claude-code"))
       files.push({
         rel: skill ? `.claude/skills/verid-${name}/SKILL.md` : `.claude/agents/verid-${name}.md`,

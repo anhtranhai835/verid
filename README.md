@@ -50,7 +50,7 @@ implementation. verid makes that agreement visible in documents and connects it 
 
 ## Installation
 
-### Published package
+### Published package (optional global installation)
 
 ```sh
 npm install -g @anhtranhai835/verid
@@ -84,10 +84,25 @@ git clone https://github.com/anhtranhai835/aeriq.git
 cd aeriq
 npm ci
 npm run build
-npm install -g .
 ```
 
-The executable is `verid`; the npm package is `@anhtranhai835/verid`.
+Run the built CLI once from the target project, replacing the path with your checkout:
+
+```sh
+node /path/to/aeriq/dist/cli.js cook --mode prep --workflow modular --resources repo --provider codex --yes
+```
+
+After cook, the repo includes its own CLI and bundled dependencies. From the project root:
+
+```sh
+node .verid/verid.mjs module identity
+node .verid/verid.mjs menu
+node .verid/verid.mjs taste
+```
+
+No global verid install or separate verid `node_modules` is required for repo mode.
+Node.js, your provider and the project's test runner remain prerequisites.
+The optional global executable is `verid`; the npm package is `@anhtranhai835/verid`.
 
 ---
 
@@ -120,7 +135,7 @@ For an existing codebase in `remix` mode, run `verid stock` before agent changes
 
 ```sh
 verid cook --mode prep --workflow modular --resources repo --provider codex --yes
-verid module identity
+node .verid/verid.mjs module identity
 ```
 
 Fill the module drafts, then publish the agreed requirements, design and ACs in
@@ -220,6 +235,8 @@ workspace/                     # no .git/ at this level
 Each manifest repo has its own paths, globs and runner. The workspace shares one TDD
 cycle. Run cook and open the provider at the workspace root so it can see every repo.
 
+Workspace-root `AGENTS.md` and `CLAUDE.md` are per machine; `verid cook` regenerates them.
+
 ### What lives in .verid?
 
 The following tree shows `modular` with `repo` resources. Provider-specific files
@@ -228,6 +245,7 @@ are created only for the selected providers; module files appear after `verid mo
 ```text
 .verid/
 ├── manifest.yaml
+├── verid.mjs                   # local CLI launcher; run with node
 ├── workflow.md
 ├── constitution.md
 ├── architecture-profile.md
@@ -240,7 +258,7 @@ are created only for the selected providers; module files appear after `verid mo
 ├── agents/                    # includes the Codex reviewer TOML
 ├── skills/                    # scripts, references and licenses included
 ├── templates/
-├── hooks/                     # pinned runtime bundle
+├── hooks/                     # bundled CLI, hook and runtime dependencies
 ├── i18n/
 ├── policies/
 ├── rules/
@@ -278,6 +296,9 @@ contains decision records; actual verid approvals remain in private runtime stat
 ---
 
 ## Commands
+
+In repo mode, run each command as `node .verid/verid.mjs <command>` from the
+project root. The `verid` shorthand below also works with an optional global install.
 
 | Command                                | Purpose                                                                       |
 | -------------------------------------- | ----------------------------------------------------------------------------- |
@@ -447,7 +468,9 @@ instruction blocks. It checks module approval, the TDD cycle and writer roles.
 Supported Codex calls include `apply_patch`, shell actions and reviewer dispatch.
 
 Spec coverage, dependency order, architecture conventions and known dispatch lists
-also produce advisory findings. Read the complete [hook rule reference](docs/hook-reference.md)
+also produce advisory findings. The conventions in `.verid/rules/architecture.md` and
+configured `architecture_check` results are advisory; doctor and menu report their findings.
+Read the complete [hook rule reference](docs/hook-reference.md)
 for rule codes and override behaviour. A one-call exception requires an attended
 developer in Claude Code.
 
@@ -481,12 +504,19 @@ Cook generates fuller defaults for detected runners and file conventions. Test g
 take priority over ignored files and source globs. A custom runner must write JUnit
 to `{junit}` or the `VERID_JUNIT` environment path. Only the developer edits the manifest.
 
+For external skills, `allowed_skills: ["superpowers:*"]` adds a known namespace;
+`allowed_agents` adds exact agent names. Mapped `roles` and the TDD gate still decide
+writes. The retired `roles.researcher` is replaced by `verid:ba` in the main thread
+(`verid-ba` with repo resources).
+
 ---
 
 ## Working with a teammate
 
-After cloning the project, install the CLI and run `verid cook` at the project or
-workspace root. Existing manifest choices and repo resource copies are retained;
+After cloning a project with repo resources, run `node .verid/verid.mjs cook --yes`
+at the project or workspace root. The committed CLI is ready to run with Node.js.
+For installed resources, install the CLI and run `verid cook` instead.
+Existing manifest choices and repo resource copies are retained;
 cook restores missing setup files and rewires hooks for the current machine.
 
 In a multi-repo workspace, share the `.verid` repository. Cook can clone missing
@@ -495,6 +525,10 @@ instructions in the source repo for monorepos; regenerate workspace-root entries
 on each machine.
 
 ## Upgrading
+
+For repo resources, `node .verid/verid.mjs cook --yes` rewires the committed version
+for the current machine. To change that pinned version, review and update the repo's
+runtime and resource copies. An optional global installation can be upgraded with:
 
 ```sh
 npm install -g @anhtranhai835/verid

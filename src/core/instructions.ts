@@ -116,6 +116,11 @@ export function renderInstructions(
       : codex
         ? "- Call the installed skills by absolute path; do not copy their text."
         : "- Call the installed skills; do not copy their text.",
+    ...(manifest.resources === "repo"
+      ? [
+          "- Run every verid CLI command as node .verid/verid.mjs <command> from the project root, including cook after cloning. The CLI and runtime dependencies are bundled in this repo; Node.js is required.",
+        ]
+      : []),
     "",
     "### TDD cycle",
     "- RAW: production code is locked. Write one failing test, then run verid taste.",

@@ -169,6 +169,10 @@ export async function doctorCommand(project: string): Promise<CliResult> {
     ];
     const required = [
       ".verid/hooks/hook.js",
+      ".verid/hooks/cli.js",
+      ".verid/verid.mjs",
+      ".verid/hooks/package.json",
+      ".verid/templates/codex-reviewer.toml",
       ".verid/i18n/en.json",
       ".verid/i18n/vi.json",
       ...skills.flatMap((name) => [

@@ -27,14 +27,6 @@ export function veridCommand(cli: string, exists: (path: string) => boolean): st
 // chunk; from src/adapters/ (tests in process) it is the build in dist/.
 let verid: string | undefined;
 export const veridName = () => {
-  // Repo hooks are a pinned runtime copy; the developer installs the CLI separately.
-  // There is no CLI beside these chunks, so their hints must use the installed command.
-  if (
-    fileURLToPath(import.meta.url)
-      .replaceAll("\\", "/")
-      .includes("/.verid/hooks/")
-  )
-    return "verid";
   const [beside, built] = ["./cli.js", "../../dist/cli.js"].map((path) =>
     fileURLToPath(new URL(path, import.meta.url)),
   );

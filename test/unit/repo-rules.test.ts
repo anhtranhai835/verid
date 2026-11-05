@@ -108,32 +108,28 @@ describe("repo rules", () => {
 
   it("both READMEs locate the per-machine workspace instruction files", () => {
     const rows = [
-      ["README.md", "## Layouts", "per machine"],
+      ["README.md", "## Repository layouts", "per machine"],
       ["README.vi.md", "## Bố cục", "mỗi máy"],
     ] as const;
     for (const [file, layoutHeading, machine] of rows) {
       const text = readFileSync(join(root, file), "utf8");
       const layouts = text.split(layoutHeading)[1]?.split("\n## ")[0] ?? "";
-      const rootInstructions =
-        layouts
-          .split(/\r?\n/)
-          .find((line) => line.includes("CLAUDE.md") && line.includes("AGENTS.md")) ?? "";
-      expect(rootInstructions, file).toContain("verid cook");
-      expect(rootInstructions, file).toContain(machine);
+      for (const detail of ["CLAUDE.md", "AGENTS.md", "verid cook", machine])
+        expect(layouts, file).toContain(detail);
     }
   });
 
   it("both READMEs explain explicit external dispatch additions and BA migration", () => {
-    for (const file of ["README.md", "README.vi.md"]) {
+    for (const [file, heading] of [
+      ["README.md", "## Manifest example"],
+      ["README.vi.md", "## Ví dụ manifest"],
+    ] as const) {
       const text = readFileSync(join(root, file), "utf8");
-      const manifest = text.split("## manifest.yaml")[1]?.split("\n## ")[0] ?? "";
+      const manifest = text.split(heading)[1]?.split("\n## ")[0] ?? "";
       expect(manifest, file).toContain("allowed_agents: []");
-      const dispatch =
-        manifest
-          .split(/\r?\n/)
-          .find((line) => line.includes('allowed_skills: ["superpowers:*"]')) ?? "";
-      expect(dispatch, file).toContain("roles");
-      expect(dispatch, file).toContain("TDD");
+      expect(manifest, file).toContain('allowed_skills: ["superpowers:*"]');
+      expect(manifest, file).toContain("roles");
+      expect(manifest, file).toContain("TDD");
       expect(manifest, file).toContain("roles.researcher");
       expect(manifest, file).toContain("verid:ba");
     }
@@ -141,14 +137,18 @@ describe("repo rules", () => {
 
   it("both READMEs name project and home skill definitions in hook protection", () => {
     const rows = [
-      ["README.md", "## What the hook blocks"],
-      ["README.vi.md", "## Hook chặn gì"],
+      ["README.md", "docs/hook-reference.md"],
+      ["README.vi.md", "docs/hook-reference.vi.md"],
     ] as const;
-    for (const [file, blocksHeading] of rows) {
+    for (const [file, reference] of rows) {
       const text = readFileSync(join(root, file), "utf8");
-      const blocks = text.split(blocksHeading)[1]?.split("\n## ")[0] ?? "";
+      expect(text, file).toContain(`](${reference})`);
+      const blocks = readFileSync(join(root, reference), "utf8");
       const protection =
-        blocks.split(/\r?\n/).find((line) => line.includes("VERID_BURNT_HOOK_PROTECTED")) ?? "";
+        blocks
+          .split(/\r?\n/)
+          .find((line) => line.startsWith("|") && line.includes("VERID_BURNT_HOOK_PROTECTED")) ??
+        "";
       expect(protection, file).toContain(".claude/skills/");
       expect(protection, file).toContain("~/.claude/skills/");
     }
@@ -156,14 +156,18 @@ describe("repo rules", () => {
 
   it("both READMEs name project and home command definitions in hook protection", () => {
     const rows = [
-      ["README.md", "## What the hook blocks"],
-      ["README.vi.md", "## Hook chặn gì"],
+      ["README.md", "docs/hook-reference.md"],
+      ["README.vi.md", "docs/hook-reference.vi.md"],
     ] as const;
-    for (const [file, blocksHeading] of rows) {
+    for (const [file, reference] of rows) {
       const text = readFileSync(join(root, file), "utf8");
-      const blocks = text.split(blocksHeading)[1]?.split("\n## ")[0] ?? "";
+      expect(text, file).toContain(`](${reference})`);
+      const blocks = readFileSync(join(root, reference), "utf8");
       const protection =
-        blocks.split(/\r?\n/).find((line) => line.includes("VERID_BURNT_HOOK_PROTECTED")) ?? "";
+        blocks
+          .split(/\r?\n/)
+          .find((line) => line.startsWith("|") && line.includes("VERID_BURNT_HOOK_PROTECTED")) ??
+        "";
       expect(protection, file).toContain(".claude/commands/");
       expect(protection, file).toContain("~/.claude/commands/");
     }
@@ -171,14 +175,16 @@ describe("repo rules", () => {
 
   it("both READMEs include relocated config in hook and transcript protection", () => {
     const rows = [
-      ["README.md", "## What the hook blocks"],
-      ["README.vi.md", "## Hook chặn gì"],
+      ["README.md", "docs/hook-reference.md"],
+      ["README.vi.md", "docs/hook-reference.vi.md"],
     ] as const;
-    for (const [file, blocksHeading] of rows) {
+    for (const [file, reference] of rows) {
       const text = readFileSync(join(root, file), "utf8");
-      const blocks = text.split(blocksHeading)[1]?.split("\n## ")[0] ?? "";
+      expect(text, file).toContain(`](${reference})`);
+      const blocks = readFileSync(join(root, reference), "utf8");
       for (const code of ["VERID_BURNT_HOOK_PROTECTED", "VERID_BURNT_TRANSCRIPT_PROTECTED"]) {
-        const protection = blocks.split(/\r?\n/).find((line) => line.includes(code)) ?? "";
+        const protection =
+          blocks.split(/\r?\n/).find((line) => line.startsWith("|") && line.includes(code)) ?? "";
         expect(protection, `${file}: ${code}`).toContain("CLAUDE_CONFIG_DIR");
       }
     }
@@ -187,8 +193,10 @@ describe("repo rules", () => {
   // Relative markdown links and any `*.md` named in the text. `.verid/` is the user's project
   // (the plan the agent writes there), not this repo.
   it("docs and catalogs name only files that exist", () => {
-    const named = (text: string) =>
-      [
+    // text fences show generated project trees, whose files belong to the consuming repo.
+    const named = (text: string) => {
+      text = text.replace(/^```text\r?\n[\s\S]*?^```[ \t]*$/gm, "");
+      return [
         ...[...text.matchAll(/\]\((?!https?:|#)([^)#\s]+)/g)].map((m) => m[1] ?? ""),
         ...[...text.matchAll(/[\w./-]+\.md\b/g)].map((m) => m[0]),
       ].filter(
@@ -196,6 +204,7 @@ describe("repo rules", () => {
           !path.startsWith(".verid/") &&
           !["AGENTS.md", "CLAUDE.md", "CLAUDE.local.md", ".claude/CLAUDE.md"].includes(path),
       );
+    };
     const missing = ["README.md", "README.vi.md", "i18n/en.json", "i18n/vi.json"]
       .flatMap((file) => named(readFileSync(join(root, file), "utf8")).map((p) => `${file}: ${p}`))
       .filter((entry) => !existsSync(join(root, entry.slice(entry.indexOf(": ") + 2))));
@@ -213,7 +222,7 @@ describe("repo rules", () => {
 
   // The two refusals of the auto drive and the architecture closure codes are not rules (no
   // override lifts them) but the READMEs explain them too.
-  it("both READMEs name every rule code and the auto drive's two refusals", () => {
+  it("each README links a reference covering every rule code and the auto drive's two refusals", () => {
     // Retired codes remain accepted in old state; advisory codes are no longer hook refusals.
     const advisory = new Set([
       "PLUGIN_PROTECTED",
@@ -232,8 +241,13 @@ describe("repo rules", () => {
       "GIT_UNRESOLVED",
     ]);
     const codes = RULE_CODES.filter((code) => !advisory.has(code.replace("VERID_BURNT_", "")));
-    const missing = ["README.md", "README.vi.md"].flatMap((file) => {
-      const text = readFileSync(join(root, file), "utf8");
+    const missing = [
+      ["README.md", "docs/hook-reference.md"],
+      ["README.vi.md", "docs/hook-reference.vi.md"],
+    ].flatMap(([file, reference]) => {
+      const readme = readFileSync(join(root, file!), "utf8");
+      expect(readme, file).toContain(`](${reference})`);
+      const text = readme + readFileSync(join(root, reference!), "utf8");
       return codes.filter((c) => !new RegExp(`\\b${c}\\b`).test(text)).map((c) => `${file}: ${c}`);
     });
     expect(missing).toEqual([]);

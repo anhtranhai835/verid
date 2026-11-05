@@ -1,5 +1,13 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, expect, it } from "vitest";
@@ -15,7 +23,14 @@ beforeEach(() => {
 afterEach(() => rmSync(project, { recursive: true, force: true }));
 const env = () => ({ ...developerEnv("CODEX"), CODEX_HOME: join(project, "user-codex") });
 const cli = (...args: string[]) =>
-  spawnSync(process.execPath, [CLI, ...args], { cwd: project, env: env(), encoding: "utf8" });
+  spawnSync(
+    process.execPath,
+    [
+      existsSync(join(project, ".verid/verid.mjs")) ? join(project, ".verid/verid.mjs") : CLI,
+      ...args,
+    ],
+    { cwd: project, env: env(), encoding: "utf8" },
+  );
 const put = (rel: string, content: string) => {
   mkdirSync(dirname(join(project, rel)), { recursive: true });
   writeFileSync(join(project, rel), content);
@@ -69,7 +84,13 @@ it("runs the built repo hook on Codex through module order, RED/GREEN and a read
   const session = hook("SessionStart", { source: "startup" });
   expect(session.status, session.stderr).toBe(0);
   expect(session.stdout).toContain("Codex");
-  expect(session.stdout).not.toContain("hooks/cli.js");
+  expect(session.stdout).toContain("hooks/cli.js");
+  expect(reason(patch(".verid/verid.mjs"))).toContain("VERID_BURNT_HOOK_PROTECTED");
+  const developerCall = hook("PreToolUse", {
+    tool_name: "Bash",
+    tool_input: { command: "node .verid/verid.mjs order calculator" },
+  });
+  expect(reason(developerCall)).toContain("VERID_BURNT_BASH_DEVELOPER_ONLY");
   expect(reason(patch(".verid/skills/ba/SKILL.md"))).toContain("VERID_BURNT_HOOK_PROTECTED");
   expect(reason(patch("src/add.ts"))).toContain("VERID_BURNT_PLAN");
   expect(cli("module", "calculator").status).toBe(0);
@@ -123,4 +144,44 @@ it("runs the built repo hook on Codex through module order, RED/GREEN and a read
   });
   put(".verid/artifacts/03-modules/calculator/spec/spec.md", "Changed public contract\n");
   expect(reason(patch("src/changed.ts"))).toContain("VERID_BURNT_PLAN_NOT_APPROVED");
+}, 60_000);
+
+it("runs its repo CLI after moving the project without a verid installation on PATH", () => {
+  const cooked = cli(
+    "cook",
+    "--yes",
+    "--mode",
+    "prep",
+    "--workflow",
+    "modular",
+    "--resources",
+    "repo",
+    "--provider",
+    "codex",
+  );
+  expect(cooked.status, cooked.stderr).toBe(0);
+  const moved = `${project}-moved`;
+  renameSync(project, moved);
+  project = moved;
+  const isolated = Object.fromEntries(
+    Object.entries(env()).filter(([key]) => key.toLowerCase() !== "path"),
+  );
+  isolated.PATH = dirname(process.execPath);
+  isolated.NODE_PATH = "";
+  const local = (...args: string[]) =>
+    spawnSync(process.execPath, [join(project, ".verid/verid.mjs"), ...args], {
+      cwd: project,
+      env: isolated,
+      encoding: "utf8",
+    });
+  const setup = local("cook", "--yes");
+  expect(setup.status, setup.stderr).toBe(0);
+  expect(readFileSync(join(project, ".codex/hooks.json"), "utf8")).toContain("--provider codex");
+  const module = local("module", "offline");
+  expect(module.status, module.stderr).toBe(0);
+  expect(existsSync(join(project, ".verid/artifacts/03-modules/offline/spec/spec.md"))).toBe(true);
+  const help = local("help");
+  expect(help.status, help.stderr).toBe(0);
+  expect(help.stdout).toContain("module <name>");
+  expect(readFileSync(join(project, "AGENTS.md"), "utf8")).toContain("node .verid/verid.mjs");
 }, 60_000);

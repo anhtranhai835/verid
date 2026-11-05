@@ -17,15 +17,22 @@ export function installationRoot(): string {
     ? join(folder, "..", "..")
     : join(folder, "..");
 }
-export const installedSkills = (): string => join(installationRoot(), "plugin", "skills");
-export const reviewerOverlay = (): string =>
-  join(installationRoot(), "dist", "codex-reviewer.toml");
+export const isRepoRuntime = (): boolean =>
+  basename(dirname(fileURLToPath(import.meta.url))) === "hooks" &&
+  basename(installationRoot()) === ".verid";
+export const contentRoot = (): string =>
+  isRepoRuntime() ? installationRoot() : join(installationRoot(), "plugin");
+export const runtimeDirectory = (): string =>
+  join(installationRoot(), isRepoRuntime() ? "hooks" : "dist");
+export const installedSkills = (): string => join(contentRoot(), "skills");
+export const reviewerTemplateFile = (): string =>
+  isRepoRuntime()
+    ? join(contentRoot(), "templates/codex-reviewer.toml")
+    : join(contentRoot(), "codex/verid-reviewer.toml");
+export const reviewerOverlay = (): string => join(runtimeDirectory(), "codex-reviewer.toml");
 
 export function reviewerContent(skillsRoot = installedSkills()): string {
-  const template = readFileSync(
-    join(installationRoot(), "plugin", "codex", "verid-reviewer.toml"),
-    "utf8",
-  );
+  const template = readFileSync(reviewerTemplateFile(), "utf8");
   const skill = (name: string) => join(skillsRoot, name, "SKILL.md").replaceAll("\\", "/");
   return template
     .replace("{{REVIEW_SKILL}}", () => skill("review"))
