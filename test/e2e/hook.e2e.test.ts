@@ -5,13 +5,11 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { verifyAuditChain } from "../../src/adapters/audit-log.js";
 import { runHook } from "./in-process.js";
-import { developerEnv } from "./helpers.js";
+import { developerEnv, claudeFixture, type Payload } from "./helpers.js";
 
 // Runs the built hook as a real process, the way Claude Code does, fed with recorded payloads.
 const root = join(import.meta.dirname, "..", "..");
 const HOOK = join(root, "dist", "hook.js");
-const FIXTURES = join(root, "test", "fixtures", "claude-code");
-const SESSION = "11111111-2222-3333-4444-555555555555";
 
 let project: string;
 let stateFile: string;
@@ -34,19 +32,8 @@ function freshState(): void {
 }
 afterEach(() => rmSync(project, { recursive: true, force: true }));
 
-type Payload = Record<string, any>;
-const esc = (s: string) => JSON.stringify(s).slice(1, -1);
-
-function fixture(name: string, edit?: (p: Payload) => void): string {
-  const text = readFileSync(join(FIXTURES, `${name}.json`), "utf8")
-    .replaceAll("{{CWD}}", esc(project))
-    .replaceAll("{{HOME}}", esc(homedir()))
-    .replaceAll("{{SESSION_ID}}", SESSION)
-    .replaceAll(/\{\{[A-Z_]+\}\}/g, "placeholder");
-  const payload = JSON.parse(text) as Payload;
-  edit?.(payload);
-  return JSON.stringify(payload);
-}
+const fixture = (name: string, edit?: (p: Payload) => void): string =>
+  claudeFixture(project, name, edit);
 
 // Claude Code sets CLAUDE_* for its hooks; start clean so the test machine's own session leaks nothing.
 function env(extra: Record<string, string>): NodeJS.ProcessEnv {

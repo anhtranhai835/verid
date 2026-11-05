@@ -7,21 +7,19 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { homedir, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { loadManifest } from "../../src/adapters/manifest.js";
 import { launchable } from "../../src/adapters/architecture.js";
 import { runCli, runHook } from "./in-process.js";
+import { claudeFixture, type Payload } from "./helpers.js";
 
 // verid taste runs a project-owned architecture checker after a passing suite. The suite is the
 // fake runner (scenario.json picks a recorded JUnit report) and the checker a script whose exit,
 // delay and side effect come from its arguments. CLI and hook run in process.
-const root = join(import.meta.dirname, "..", "..");
 const RUNNER = join(import.meta.dirname, "fake-runner.mjs");
 const CHECKER = join(import.meta.dirname, "fake-checker.mjs");
-const FIXTURES = join(root, "test", "fixtures", "claude-code");
-const SESSION = "11111111-2222-3333-4444-555555555555";
 
 let project: string;
 const outside: string[] = [];
@@ -95,18 +93,8 @@ const hook = (input: string): Promise<Run> => runHook(input, { CLAUDE_PROJECT_DI
 const verdict = (r: Run) =>
   r.code === 0 ? "exit 0" : (/verid \[(\w+)\]/.exec(r.stderr)?.[1] ?? `exit ${r.code}`);
 
-type Payload = Record<string, any>;
-const esc = (s: string) => JSON.stringify(s).slice(1, -1);
-function fixture(name: string, edit?: (p: Payload) => void): string {
-  const text = readFileSync(join(FIXTURES, `${name}.json`), "utf8")
-    .replaceAll("{{CWD}}", () => esc(project))
-    .replaceAll("{{HOME}}", esc(homedir()))
-    .replaceAll("{{SESSION_ID}}", SESSION)
-    .replaceAll(/\{\{[A-Z_]+\}\}/g, "placeholder");
-  const payload = JSON.parse(text) as Payload;
-  edit?.(payload);
-  return JSON.stringify(payload);
-}
+const fixture = (name: string, edit?: (p: Payload) => void): string =>
+  claudeFixture(project, name, edit);
 const write = (rel: string, agent?: string) =>
   fixture(agent ? "pre-tool-use-write-from-plugin-agent" : "pre-tool-use-write", (p) => {
     p.tool_input.file_path = join(project, ...rel.split("/"));

@@ -9,18 +9,16 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { homedir, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { parse } from "yaml";
-import { developerEnv } from "./helpers.js";
+import { developerEnv, claudeFixture, type Payload } from "./helpers.js";
 
 // Runs the built `verid cook` as a developer would in their own terminal, then runs the hook
 // commands it wrote to .claude/settings.local.json exactly as Claude Code spawns them.
 const root = join(import.meta.dirname, "..", "..");
 const CLI = join(root, "dist", "cli.js");
-const FIXTURES = join(root, "test", "fixtures", "claude-code");
-const SESSION = "11111111-2222-3333-4444-555555555555";
 const HOOK = join(root, "dist", "hook.js");
 // How a developer tells verid about a project it does not recognise: the test command is all it
 // needs. The runner is not installed yet, so verid taste finds no report; nothing here touches
@@ -94,18 +92,7 @@ const put = (dir: string, rel: string, content: string) => {
   writeFileSync(file(dir, rel), content);
 };
 
-type Payload = Record<string, any>;
-const esc = (s: string) => JSON.stringify(s).slice(1, -1);
-function payload(dir: string, name: string, edit?: (p: Payload) => void): string {
-  const text = readFileSync(join(FIXTURES, `${name}.json`), "utf8")
-    .replaceAll("{{CWD}}", esc(dir))
-    .replaceAll("{{HOME}}", esc(homedir()))
-    .replaceAll("{{SESSION_ID}}", SESSION)
-    .replaceAll(/\{\{[A-Z_]+\}\}/g, "placeholder");
-  const p = JSON.parse(text) as Payload;
-  edit?.(p);
-  return JSON.stringify(p);
-}
+const payload = claudeFixture;
 const writeTo = (dir: string, rel: string) =>
   payload(dir, "pre-tool-use-write", (p) => (p.tool_input.file_path = file(dir, rel)));
 // cook maps verid's tester and coder, so each part is written by its subagent (agent_id set).

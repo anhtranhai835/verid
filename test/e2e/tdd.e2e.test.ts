@@ -12,13 +12,13 @@ import {
   symlinkSync,
   writeFileSync,
 } from "node:fs";
-import { homedir, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { verifyAuditChain } from "../../src/adapters/audit-log.js";
 import { MODES } from "../../src/core/manifest.js";
 import { runCli, runHook } from "./in-process.js";
-import { developerEnv } from "./helpers.js";
+import { developerEnv, claudeFixture, type Payload } from "./helpers.js";
 
 // Runs the CLI and hook in process, and the built CLI for a few runs. The test command is a fake runner
 // that copies recorded vitest JUnit reports, so scenario.json picks each run's outcome.
@@ -28,7 +28,6 @@ const CLI = join(root, "dist", "cli.js");
 // What verid's messages tell the agent to run: works without `npm link`.
 const VERID_CMD = `node "${CLI.replaceAll("\\", "/")}"`;
 const RUNNER = join(import.meta.dirname, "fake-runner.mjs");
-const FIXTURES = join(root, "test", "fixtures", "claude-code");
 const SESSION = "11111111-2222-3333-4444-555555555555";
 
 let project: string;
@@ -74,20 +73,8 @@ function freshState(): void {
   writeFileSync(manifestFile, manifest());
 }
 
-type Payload = Record<string, any>;
-const esc = (s: string) => JSON.stringify(s).slice(1, -1);
-
-function fixture(name: string, edit?: (p: Payload) => void): string {
-  const text = readFileSync(join(FIXTURES, `${name}.json`), "utf8")
-    // A replacer function: a string replacement would turn the `$$` in the project path into `$`.
-    .replaceAll("{{CWD}}", () => esc(project))
-    .replaceAll("{{HOME}}", esc(homedir()))
-    .replaceAll("{{SESSION_ID}}", SESSION)
-    .replaceAll(/\{\{[A-Z_]+\}\}/g, "placeholder");
-  const payload = JSON.parse(text) as Payload;
-  edit?.(payload);
-  return JSON.stringify(payload);
-}
+const fixture = (name: string, edit?: (p: Payload) => void): string =>
+  claudeFixture(project, name, edit);
 
 // Claude Code sets CLAUDE_* for hooks and Bash; start clean so the test machine's session leaks nothing.
 function env(extra: Record<string, string> = {}): NodeJS.ProcessEnv {
