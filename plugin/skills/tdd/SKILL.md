@@ -16,6 +16,14 @@ RAW = RED, COOKING = GREEN, PLATED = REFACTOR.
 3. In COOKING, tests are frozen. Implement the minimum fix, then taste until PLATED.
 4. Refactor only in PLATED without adding behaviour; taste after each change.
 
+After a test write, taste before handing off. RAW · stub permits only a stub, then
+taste again for an assertion failure. The main conversation writes
+`.verid/log/<module>.md` after each AC; agents report paths and evidence to it.
+Stop holds main on COOKING, stub or unverified writes, and once for uncovered ACs
+or review. SubagentStop lets a tester/QA hand off a recorded failure or stub;
+other writers must taste their changes. A hold is issued only once per stop.
+For a refactor-only conversation, the developer can run `verid garnish`.
+
 Only a passing `verid taste` after the last change counts as completion evidence;
 an ad hoc runner command is useful for diagnosis but records no verid evidence.
 Respect mapped tester/QA and coder ownership. Never weaken a test or bypass a denial;
@@ -37,12 +45,8 @@ For an `(e2e)` AC, drive the real product through Playwright or a path matching 
 - **I'll test after:** immediate green cannot prove the test catches the missing behaviour.
 - **Tests after achieve the same goal:** existing code biases the cases; test first defines the outcome.
 - **Already tested manually:** a manual try leaves no repeatable regression check.
-- **I've spent hours on this code:** sunk time does not prove correctness; establish a failing test first.
-- **Keep it as reference:** adapting untested code is still implementing before the test.
 - **Need to explore first:** explore, discard the spike, then build from a failing test.
 - **Hard to test:** reconsider the public interface or coupling before adding mocks.
-- **TDD is slower:** debugging unprotected changes and rechecking them costs more.
-- **Manual testing is faster:** it must be repeated after every change and misses boundaries.
 - **Existing code has no tests:** add a regression for the behaviour you are changing.
 
 State uncertainty and ask about ambiguity.

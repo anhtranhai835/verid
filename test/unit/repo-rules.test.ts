@@ -79,6 +79,21 @@ describe("repo rules", () => {
     expect(left).toEqual([]);
   });
 
+  it("the TDD skill documents the lifecycle and the build skill follows it", () => {
+    const tdd = readFileSync(join(root, "plugin/skills/tdd/SKILL.md"), "utf8");
+    const build = readFileSync(join(root, "plugin/skills/build/SKILL.md"), "utf8");
+    for (const detail of [
+      "RAW · stub",
+      "COOKING",
+      "PLATED",
+      "SubagentStop",
+      "verid garnish",
+      ".verid/log/<module>.md",
+    ])
+      expect(tdd, detail).toContain(detail);
+    expect(build).toContain("verid:tdd");
+  });
+
   it("counts each Limitations group's bullets correctly in both READMEs", () => {
     const wrong = ["README.md", "README.vi.md"].flatMap((file) =>
       [
