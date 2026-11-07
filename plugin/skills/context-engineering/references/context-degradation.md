@@ -49,12 +49,10 @@ Predictable degradation as context grows. Not binary - a continuum.
 
 ## Model Degradation Thresholds
 
-| Model | Degradation Onset | Severe Degradation |
-|-------|-------------------|-------------------|
-| GPT-5.2 | ~64K tokens | ~200K tokens |
-| Claude Opus 4.5 | ~100K tokens | ~180K tokens |
-| Claude Sonnet 4.5 | ~80K tokens | ~150K tokens |
-| Gemini 3 Pro | ~500K tokens | ~800K tokens |
+Thresholds differ per model and change with each release, so do not rely on fixed
+numbers. Use the current model's documented context window and watch for the
+symptoms above. Compact or split the work well before the window fills, and earlier
+when the task needs exact recall from the middle of the context.
 
 ## Four-Bucket Mitigation
 
