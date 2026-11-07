@@ -2,6 +2,13 @@
 
 [Về README](../README.vi.md)
 
+`VERID_BURNT_TASK_SESSION` là rule Kanban không cho agent mở ngoại lệ. Người dùng
+chọn task, rồi một session AI mới nhận task đó. Session lập kế hoạch, session khác
+và session đã làm task trước không được nhận task này. Sửa spec, plan hoặc design
+cần duyệt lại và mở session mới. Resume/compact giữ task hiện tại. Nghiệm thu xong,
+AI dừng; người dùng chọn task tiếp theo trong `verid board`.
+Xem [workflow Kanban](kanban-workflow.md).
+
 Định nghĩa tài nguyên repo trong `.verid/agents/`, `.verid/skills/`, `.verid/templates/`,
 `.verid/hooks/`, `.verid/i18n/` và `.verid/policies/` cũng được bảo vệ bởi
 `VERID_BURNT_HOOK_PROTECTED`, cùng launcher `.verid/verid.mjs`. Agent đọc các tài nguyên

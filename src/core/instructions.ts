@@ -128,6 +128,13 @@ export function renderInstructions(
     "- PLATED: all tests pass. Refactor without new behaviour; the next test starts RAW.",
     "",
     "### Workflow",
+    ...(manifest.workflow === "kanban"
+      ? [
+          "- Kanban: spec → task plan → developer selection in verid board → a fresh AI session for exactly one task → TDD → independent review → developer serve → stop. Never select, approve or start the next task yourself.",
+          "- ONE TASK PER SESSION: only work on the selected task named by SessionStart. Planning sessions and sessions used for another task cannot claim it. Resume/compact keeps the same task; /clear does not authorize switching tasks. After serve, stop and let the developer choose another task and open a new session.",
+          "- Break .verid/spec.md into small independently reviewable ## Module: <task-name> sections in .verid/plan.md. Each task lists testable ACs citing REQ/NFR/SEC IDs, scope and dependencies. Use Title: for a readable card title; keep product as the final end-to-end task. The board can seed one draft task per requirement; refine broad criteria before approval.",
+        ]
+      : []),
     ...(manifest.workflow === "modular"
       ? [
           `- Modular cook: read .verid/workflow.md and ${skill("modules")} first. Run verid module <name>, fill .verid/artifacts/03-modules/<name>/{ba,ui,spec,tests,security}, publish canonical requirements/design/ACs, then order → TDD → independent review → serve. Include Artifacts: .verid/artifacts/03-modules/<name> in every plan module.`,
@@ -159,12 +166,17 @@ export function renderInstructions(
     "### Commands",
     "- Agent: verid taste (the only test runs that count as evidence), verid peek, verid menu, verid doctor.",
     "- Developer only, in their own terminal: verid cook, upgrade, stock, order [module], serve <module>, garnish, halt, resume.",
+    ...(manifest.workflow === "kanban"
+      ? [
+          "- Developer only: verid board opens the local task selection UI; the agent never starts it.",
+        ]
+      : []),
     "",
     "### Files",
     "- Inputs: the developer's documents in .verid/docs/ (agents read them, never write them).",
     "- Session log: .verid/log/<module>.md; read it at session start, and the main thread appends after each AC.",
     "- State: .verid/manifest.yaml; .verid/research.md, spec.md, design.md and plan.md; local evidence and audit in .verid/.state/.",
-    "- Conventions (advisory; audit warns without blocking): .verid/rules/git.md, architecture.md, workflow.md. Read them when relevant.",
+    "- Rules (advisory): .verid/rules/git.md, architecture.md, workflow.md. Keep commits small and feature-scoped; no unrelated changes.",
     "",
     // The defaults (verid:* and the roles above) need no list; only additions are worth the tokens.
     ...(extras

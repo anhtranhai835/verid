@@ -377,7 +377,7 @@ describe("verid doctor", () => {
       "badly named": "0 ",
       detached: "0 ",
       "main unclear": "0 ",
-      "two good commits": "0  · 2 commits",
+      "two good commits": "0 ", // Small feature commits do not earn a count warning.
       "bad message": "0 ",
       "repository program": "0 ",
       "program ran": false,

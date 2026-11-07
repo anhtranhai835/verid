@@ -1,5 +1,6 @@
 /** Codes a policy rule can deny with. Overrides are bound to one of these. */
 export const RULE_CODES = [
+  "VERID_BURNT_TASK_SESSION",
   "VERID_BURNT_HALTED",
   "VERID_BURNT_PLUGIN_PROTECTED",
   "VERID_BURNT_STATE_PROTECTED",

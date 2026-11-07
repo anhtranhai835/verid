@@ -155,14 +155,50 @@ Hai lựa chọn này độc lập:
 | ----------- | ---------------------- | ------------------------------------------------------------------------------- |
 | `workflow`  | `classic` — mặc định   | Research, spec, design và plan chung cho project.                               |
 | `workflow`  | `modular`              | Hồ sơ từng module và thư mục phase theo template cấu trúc repo.                 |
+| `workflow`  | `kanban`               | Bảng task trên trình duyệt, người dùng chọn ưu tiên, mỗi task một session AI.   |
 | `resources` | `installed` — mặc định | Skills và agents từ bản đã cài hoặc plugin Claude.                              |
 | `resources` | `repo`                 | Chép agents, skills, templates, policies, bản dịch và hook runtime vào project. |
 
-`modular` dùng với `prep` và `recipe`. `remix` dùng workflow baseline hiện có.
+`modular` và `kanban` dùng với `prep` và `recipe`. `kanban` cần `drive: human`.
+`remix` dùng workflow baseline hiện có.
 
 Các entry tích hợp provider đọc bản tài nguyên trong repo. Cook thêm file thiếu và
 giữ những tùy chỉnh đã có. Khi nâng gói npm, bản tài nguyên repo được pin vẫn được
 giữ lại; developer xem diff rồi chủ động thay những bản cần cập nhật.
+
+### Kanban: mỗi task một session AI
+
+```sh
+verid cook --mode prep --workflow kanban --provider codex --yes
+verid board
+# Nếu dùng tài nguyên repo: node .verid/verid.mjs board
+```
+
+Lệnh mở Kanban trên trình duyệt; giữ terminal đó chạy. Dùng `--no-open` để tự mở
+URL được in ra, hoặc `--port 4318` để chọn cổng.
+
+1. Viết yêu cầu trong `.verid/spec.md` dạng `- REQ-1: hành vi kiểm thử được`
+   (cũng hỗ trợ `NFR-1`, `SEC-1`). Có thể sửa spec/plan ngay trên bảng.
+   Hoàn thiện research và design trước khi chọn task.
+2. Nhấn **Tách task từ spec** để tạo bản nháp một task cho mỗi yêu cầu và task
+   kiểm thử sản phẩm cuối cùng. Giữ nguyên plan đã tồn tại. Chỉnh scope, tiêu chí
+   và phụ thuộc trong **Kế hoạch task**, hoặc để AI lập plan chi tiết.
+   Mỗi `## Module: <tên>` là một card; `Title:` đặt tên dễ đọc.
+3. Chọn task muốn làm trước. Verid duyệt bằng `order`, chỉ mở một task mỗi lần.
+   Sao chép nội dung session, mở **session AI mới** trong project rồi gửi nội dung đó.
+   Bảng chuẩn bị bàn giao; người dùng mở session của provider.
+4. AI làm TDD và review độc lập. Nhấn **Duyệt & lên món** để chạy `serve` với
+   đầy đủ kiểm tra bằng chứng. Dừng session cũ, chọn task tiếp theo rồi mở session mới.
+
+Hook lưu ràng buộc task/session qua các lần chạy. Session lập kế hoạch, session
+khác đang mở và session từng làm task trước không được nhận task này. Resume/compact
+giữ task hiện tại; clear context không cho session cũ nhận task tiếp theo. Sửa spec,
+scope trong plan hoặc design phải duyệt lại và mở session mới. AI không tự chọn task kế tiếp.
+
+Project hiện có: developer đặt `workflow: kanban`, `drive: human` trong
+`.verid/manifest.yaml`, rồi chạy `verid upgrade --yes` để cập nhật quy định AI.
+Nếu đang pin runtime cũ trong repo, cập nhật bản runtime đó. Xem thêm
+[hướng dẫn workflow](docs/kanban-workflow.md).
 
 ### Hồ sơ module
 

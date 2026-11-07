@@ -74,8 +74,6 @@ export function auditWarnings(project: string, manifest: Manifest, state: State)
               "GIT_COMMIT_MESSAGE",
               `${root.repo}: ${commit.sha.slice(0, 12)} ${commit.message.split(/\r?\n/)[0]}`,
             );
-        for (const { repo, commits } of history.counts)
-          warn("GIT_COMMITS", `${repo}: ${commits} commits`);
       }
     }
     for (const repo of manifest.repos.filter((r) => r.architecture_check)) {

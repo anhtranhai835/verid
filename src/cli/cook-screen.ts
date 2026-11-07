@@ -217,11 +217,16 @@ export async function interactiveCook(
     const mode = await select(
       io,
       say("cook.mode"),
-      (flags.workflow === "modular" ? MODES.filter((m) => m !== "remix") : MODES).map((m) => ({
+      (flags.workflow === "modular" || flags.workflow === "kanban"
+        ? MODES.filter((m) => m !== "remix")
+        : MODES
+      ).map((m) => ({
         label: `${MODE_EMOJI[m]} ${m}`,
         hint: say(`cook.mode.${m}`),
       })),
-      flags.workflow === "modular" ? 0 : MODES.indexOf(suggestMode(facts)),
+      flags.workflow === "modular" || flags.workflow === "kanban"
+        ? 0
+        : MODES.indexOf(suggestMode(facts)),
     );
     if (mode === null) return cancelled();
     flags.mode = MODES[mode];
@@ -231,7 +236,10 @@ export async function interactiveCook(
       const drive = await select(
         io,
         say("cook.drive"),
-        DRIVES.map((d) => ({ label: d, hint: say(`cook.drive.${d}`) })),
+        (flags.workflow === "kanban" ? (["human"] as const) : DRIVES).map((d) => ({
+          label: d,
+          hint: say(`cook.drive.${d}`),
+        })),
         0,
       );
       if (drive === null) return cancelled();

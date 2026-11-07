@@ -148,7 +148,7 @@ export type Drive = (typeof DRIVES)[number];
 
 export const LAYOUTS = ["monorepo", "workspace"] as const;
 export type Layout = (typeof LAYOUTS)[number];
-export const WORKFLOWS = ["classic", "modular"] as const;
+export const WORKFLOWS = ["classic", "modular", "kanban"] as const;
 export const RESOURCE_MODES = ["installed", "repo"] as const;
 
 const agentList = z
@@ -297,11 +297,17 @@ const manifestSchema = z
           path: ["iterations"],
           message: "needs mode prep or recipe",
         });
-      if (m.workflow === "modular" && m.mode === "remix")
+      if ((m.workflow === "modular" || m.workflow === "kanban") && m.mode === "remix")
         return ctx.addIssue({
           code: "custom",
           path: ["workflow"],
-          message: "modular needs mode prep or recipe",
+          message: `${m.workflow} needs mode prep or recipe`,
+        });
+      if (m.workflow === "kanban" && m.drive === "auto")
+        return ctx.addIssue({
+          code: "custom",
+          path: ["drive"],
+          message: "kanban needs drive human: the developer selects each task",
         });
       if (m.drive !== "auto") return;
       if (m.mode === "remix")
@@ -568,7 +574,7 @@ export function renderManifest(
     `mode: ${JSON.stringify(mode)} # ${MODES.join(" | ")}`,
     `providers: ${JSON.stringify(providers)} # claude-code | codex`,
     `architecture: ${architecture} # ddd | clean | layered | none`,
-    ...(options.workflow ? [`workflow: ${options.workflow} # classic | modular`] : []),
+    ...(options.workflow ? [`workflow: ${options.workflow} # classic | modular | kanban`] : []),
     ...(options.resources ? [`resources: ${options.resources} # installed | repo`] : []),
     "allowed_skills: [] # additional exact names or prefix:*; verid:* is known by default",
     "allowed_agents: [] # roles are known by default",

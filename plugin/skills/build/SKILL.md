@@ -5,16 +5,19 @@ description: Use when an approved verid module is ready for implementation.
 
 # verid: build
 
-State assumptions and ask about ambiguity. Choose the smallest adequate solution.
-Keep edits focused on local style. Define success by observable tests.
+State assumptions, clarify ambiguity and keep edits local. Choose the smallest
+solution that meets observable tests.
 
 Read verid:tdd once for this build loop; use verid:debugging for unclear failures.
 Settle ambiguous ACs through verid:ba in the main conversation.
 
-Run `verid menu` for the open module and `verid peek` for uncovered ACs and cycle.
-Read `.verid/log/<module>.md` first when it exists: it is where the last session stopped.
-Read `.verid/manifest.yaml` with Read for role mappings, repo paths and globs.
-Read project rules in `.verid/rules/` when relevant; conventions are advisory.
+Use `verid menu` for the open module and `verid peek` for cycle and uncovered ACs.
+Read `.verid/log/<module>.md` first if present, then `.verid/manifest.yaml` for roles,
+repos and globs. Follow relevant `.verid/rules/` (advisory).
+
+Commit small, verified feature increments with their tests using Conventional
+Commits. Inspect `git diff --staged`; never mix unrelated work or commit broken
+TDD states. Details: `.verid/rules/git.md`.
 
 For each uncovered AC, dispatch one writer at a time because repos share one cycle:
 
@@ -42,11 +45,9 @@ The main conversation alone writes the log; agents report to it. One entry per A
 Never rewrite earlier entries, and keep source, test output, secrets and personal data
 out of the log.
 
-Dispatch paths and identifiers, rather than copied AC text, design excerpts or diffs;
-agents read the files themselves. For custom agents, name verid:tdd and its installed
-path if needed, their write responsibility, and the relevant public interfaces.
-With mapped tester and coder, the main conversation delegates both writes because
-the hook separates ownership. On Codex, or with unmapped roles, main handles them.
+Dispatch identifiers and paths; agents read the documents. Name verid:tdd (and its
+path for custom agents), write responsibility and relevant interfaces. Mapped
+tester/coder roles own their writes; on Codex or without mappings, main writes.
 
 Read UI source to derive Playwright selectors. Keep Playwright under `e2e/` and
 exclude `e2e/**` from the unit runner; another runner needs matching `e2e_globs`.
