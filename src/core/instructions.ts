@@ -164,7 +164,7 @@ export function renderInstructions(
     "- Inputs: the developer's documents in .verid/docs/ (agents read them, never write them).",
     "- Session log: .verid/log/<module>.md; read it at session start, and the main thread appends after each AC.",
     "- State: .verid/manifest.yaml; .verid/research.md, spec.md, design.md and plan.md; local evidence and audit in .verid/.state/.",
-    "- Conventions (advisory; audit warns without blocking): .verid/rules/git.md, architecture.md, workflow.md. Read them when relevant.",
+    "- Rules (advisory): .verid/rules/git.md, architecture.md, workflow.md. Keep commits small and feature-scoped; no unrelated changes.",
     "",
     // The defaults (verid:* and the roles above) need no list; only additions are worth the tokens.
     ...(extras

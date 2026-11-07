@@ -248,6 +248,29 @@ describe("rules and audit without relaxing TDD", () => {
     expect(readFileSync(file, "utf8")).toBe("my architecture rules");
   });
 
+  it("accepts several small feature commits without warning about their count", async () => {
+    put(".verid/research.md", "research");
+    put(".verid/spec.md", "- REQ-1: Add and subtract numbers\n");
+    put(".verid/design.md", "Pure calculator functions");
+    put(".verid/plan.md", "## Module: calc\n- AC-1: calculates (REQ-1)\n");
+    git("init", "-q", "-b", "main");
+    git("add", "-A");
+    git("commit", "-q", "-m", "chore: initialize calculator");
+    git("switch", "-q", "-c", "feat/calculator");
+    expect((await runCli(["order", "calc"], project)).code).toBe(0);
+    expect(state().modules.calc.work["."].base).toBeTruthy();
+    put("src/add.ts", "export const add = (a: number, b: number) => a + b;\n");
+    git("add", "src/add.ts");
+    git("commit", "-q", "-m", "feat(calc): add numbers");
+    put("src/subtract.ts", "export const subtract = (a: number, b: number) => a - b;\n");
+    git("add", "src/subtract.ts");
+    git("commit", "-q", "-m", "feat(calc): subtract numbers");
+    const result = await runCli(["menu"], project);
+    expect(result.code, result.stderr).toBe(0);
+    expect(result.stdout + result.stderr).not.toContain("GIT_COMMITS");
+    expect(result.stdout + result.stderr).not.toContain("GIT_COMMIT_MESSAGE");
+  });
+
   it("lets the main thread write verid's documents when source globs cover everything", async () => {
     put(
       ".verid/manifest.yaml",

@@ -354,7 +354,7 @@
   "serve.no_review": "no review of {module} since its last change: have the reviewer ({reviewer}) review it; verid records its final report when it stops; if Claude Code cannot find it, it is not installed (verid's own: `claude plugin marketplace add anhtranhai835/verid`, then `claude plugin install verid@verid`)",
   "serve.review": "Review by {agent}: {file}",
   "serve.review_stale": "{module} changed after its review (a new commit, an amended message or an uncommitted change): have the reviewer ({reviewer}) review it again",
-  "git.commits": "verid: repo {repo} has {count} commits since module {module} began. Prefer one complete commit, plus only the repairs a review asked for; the squash merge leaves one commit on main.",
+  "git.commits": "verid: repo {repo} has {count} commits since module {module} began. Several small, feature-scoped commits are valid. Keep each change coherent and verified; separate unrelated features. The squash merge leaves one commit on main.",
   "commits.none": "verid: no open module, so there is no module work to show.",
   "commits.no_record": "verid: where module {module}'s work began was not recorded, so its commits cannot be listed. In a human drive the developer runs `{verid} order {module}` again; an auto drive records it at the next stop.",
   "git.no_history": "verid: no Git history to check for module {module}: the project was not in Git when it was ordered.",

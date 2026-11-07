@@ -354,7 +354,7 @@
   "serve.no_review": "chưa có review nào của {module} kể từ lần sửa cuối: hãy nhờ reviewer ({reviewer}) xem nó; verid ghi lại báo cáo cuối của reviewer khi nó dừng; nếu Claude Code không tìm thấy nó thì nó chưa được cài (agent của verid: `claude plugin marketplace add anhtranhai835/verid`, rồi `claude plugin install verid@verid`)",
   "serve.review": "Review của {agent}: {file}",
   "serve.review_stale": "{module} đã thay đổi sau review (commit mới, message được sửa hoặc thay đổi chưa commit): nhờ reviewer ({reviewer}) review lại",
-  "git.commits": "verid: repo {repo} có {count} commit kể từ khi module {module} bắt đầu. Nên có một commit hoàn chỉnh, cộng với chỉ những bản sửa mà review yêu cầu; squash merge để lại một commit trên main.",
+  "git.commits": "verid: repo {repo} có {count} commit kể từ khi module {module} bắt đầu. Nhiều commit nhỏ theo từng feature là hợp lệ. Mỗi commit có một thay đổi rõ ràng đã được kiểm chứng; tách riêng feature không liên quan. Squash merge để lại một commit trên main.",
   "commits.none": "verid: không có module nào đang mở, nên không có công việc module để hiện.",
   "commits.no_record": "verid: chưa ghi điểm bắt đầu công việc của module {module}, nên không liệt kê được commit của nó. Ở drive human, developer chạy lại `{verid} order {module}`; drive auto ghi điểm đó ở lần dừng tiếp theo.",
   "git.no_history": "verid: không có lịch sử Git để kiểm cho module {module}: dự án chưa ở trong Git khi nó được order.",

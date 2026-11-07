@@ -49,7 +49,9 @@ When product is served last, hand over:
 1. Read `.verid/rules/git.md` for the project's handoff convention.
 2. Use the final evidence after the last change.
 3. Inspect changed files on the agreed branch.
-4. Commit the scoped change with the project's commit convention.
+4. Finish any remaining small, feature-scoped commits using the project's commit
+   convention. Verified feature increments may already have their own commits;
+   never bundle unrelated features into a large handoff commit.
 5. Push the branch.
 6. Open a PR describing behaviour, evidence and material limitations.
 7. Give the developer the PR and findings for their squash-merge.

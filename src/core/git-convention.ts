@@ -70,7 +70,8 @@ export type CloseProblem = {
 /**
  * What the module's Git history says at close: the first reason it cannot close (a base it
  * cannot trust, or a message that is not a Conventional Commit, oldest first), and the repos with
- * more than one commit, which only earns an advisory. A read that failed is never an empty range.
+ * more than one commit, as information only. Several small feature commits are valid; their count
+ * never earns a warning or blocks closure. A read that failed is never an empty range.
  */
 export function closeHistory(roots: readonly RootHistory[]): {
   problem: CloseProblem | null;

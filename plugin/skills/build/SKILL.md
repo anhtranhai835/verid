@@ -16,6 +16,12 @@ Read `.verid/log/<module>.md` first when it exists: it is where the last session
 Read `.verid/manifest.yaml` with Read for role mappings, repo paths and globs.
 Read project rules in `.verid/rules/` when relevant; conventions are advisory.
 
+Keep Git commits small and feature-scoped. After a coherent increment passes its
+relevant verification, inspect `git diff --staged` and commit only that increment
+with its tests using Conventional Commits. A task can have several small commits;
+never bundle unrelated features, formatting or broad refactors into one commit.
+Do not commit a broken intermediate TDD state.
+
 For each uncovered AC, dispatch one writer at a time because repos share one cycle:
 
 1. Give the mapped tester the module name, AC code, `.verid/plan.md` path,
