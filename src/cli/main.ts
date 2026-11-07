@@ -56,6 +56,7 @@ import { auditLines } from "../adapters/rule-audit.js";
 import { writeReviewPacket } from "../adapters/review-packet.js";
 import { initCommand, setupCodexCommand } from "./init.js";
 import { moduleCommand } from "./module.js";
+import { boardCommand } from "./board.js";
 import { baselineCommand, lastRefusal, testCommand, type CliResult } from "./test.js";
 
 /** `dist/cli.js`: the command line in, its output and exit code out. */
@@ -93,6 +94,10 @@ export async function runCli(args: readonly string[]): Promise<CliResult> {
     else if (cmd === "taste" && rest.length === 0) r = await testCommand(project);
     else if (cmd === "doctor" && rest.length === 0) r = await doctorCommand(project);
     else if (cmd === "module" && rest.length === 1) r = await moduleCommand(project, rest[0]!);
+    else if (cmd === "board")
+      r = await boardCommand(project, rest, (action, task) =>
+        action === "order" ? approve(project, task) : serve(project, task),
+      );
     else if (cmd === "peek" && rest.length === 0) r = await status(project);
     else if (cmd === "menu" && rest.length === 0) r = await menu(project);
     else if (
@@ -231,6 +236,7 @@ const ARGS: Record<string, number> = {
   stock: 0,
   order: 1,
   serve: 1,
+  board: 0,
 };
 
 /** What verid could not run in a command line: the command, or the words it did not expect. */
@@ -287,6 +293,12 @@ function usage(project: string, wrong: Misuse | null): CliResult {
     { emoji: "👅", command: `${v} taste`, what: say("usage.taste") },
     { emoji: "👀", command: `${v} peek`, what: say("usage.peek") },
     { emoji: "📋", command: `${v} menu [--commits [--file]]`, what: say("usage.menu") },
+    {
+      emoji: "▦",
+      command: `${v} board [--port <number>] [--no-open]`,
+      what: say("usage.board"),
+      who: dev,
+    },
     {
       emoji: "🧾",
       command: `${v} order [module]`,
