@@ -1,6 +1,9 @@
 {
+  "VERID_BURNT_TASK_SESSION": "Mỗi task một session AI. {target}",
+  "cook.workflow.kanban": "Kanban trên trình duyệt; người dùng chọn task; mỗi task một session AI",
+  "usage.board": "Mở bảng Kanban cục bộ (mỗi task một session AI)",
   "usage.module": "Tạo hồ sơ module từ template trong project",
-  "usage.cook_options": "Tùy chọn cook: --workflow <classic|modular> --resources <installed|repo>",
+  "usage.cook_options": "Tùy chọn cook: --workflow <classic|modular|kanban> --resources <installed|repo>",
   "doctor.resources_missing": "Tài nguyên repo bị thiếu hoặc là liên kết: {file}",
   "doctor.resources_fix": "khôi phục bản trong repo hoặc chạy verid cook để thêm file thiếu",
   "cook.workflow": "Chọn luồng cook",

@@ -211,7 +211,7 @@ export async function planCook(
   const settingsFile = join(project, ".claude", "settings.local.json");
   const existing = await loadManifest(project, { readOnly: true, checkPaths: false });
   if (flags.workflow !== undefined && !WORKFLOWS.some((value) => value === flags.workflow))
-    throw invalid("--workflow", "must be classic or modular");
+    throw invalid("--workflow", "must be classic, modular or kanban");
   if (flags.resources !== undefined && !RESOURCE_MODES.some((value) => value === flags.resources))
     throw invalid("--resources", "must be installed or repo");
   const resources = existing ? existing.resources : flags.resources;

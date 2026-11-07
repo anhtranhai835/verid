@@ -1,6 +1,9 @@
 {
+  "VERID_BURNT_TASK_SESSION": "One task per AI session. {target}",
+  "cook.workflow.kanban": "Browser task board; the developer chooses each task; one AI session per task",
+  "usage.board": "Open the local Kanban board (one task per AI session)",
   "usage.module": "Draft a module dossier from project templates",
-  "usage.cook_options": "cook options: --workflow <classic|modular> --resources <installed|repo>",
+  "usage.cook_options": "cook options: --workflow <classic|modular|kanban> --resources <installed|repo>",
   "doctor.resources_missing": "Repo resource is missing or linked: {file}",
   "doctor.resources_fix": "restore the repo copy or run verid cook to fill missing files",
   "cook.workflow": "Choose cook workflow",

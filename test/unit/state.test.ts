@@ -44,6 +44,7 @@ describe("parseState", () => {
         },
         architecture: {},
         halted: null,
+        kanban: { active: null, sessions: {} },
       },
     });
   });

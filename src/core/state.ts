@@ -243,6 +243,20 @@ const stateSchema = z.strictObject({
   architecture: z._default(z.record(z.string(), architectureResult), {}),
   /** Set by `verid halt`, cleared by `verid resume`: while set, every agent tool call is denied. */
   halted: z._default(z.nullable(z.strictObject({ at: z.string(), reason: z.string() })), null),
+  /** Kanban selection and session ownership survive restarts and context compaction. */
+  kanban: z._default(
+    z.strictObject({
+      active: z.nullable(
+        z.strictObject({
+          module: z.string(),
+          session: z.nullable(z.string()),
+          spec_sha256: z.string(),
+        }),
+      ),
+      sessions: z.record(z.string(), z.nullable(z.string())),
+    }),
+    { active: null, sessions: {} },
+  ),
 });
 
 export type State = z.infer<typeof stateSchema>;
