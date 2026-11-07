@@ -597,8 +597,7 @@ including installer tests. `npm test` omits the installer end-to-end suite.
 
 ## Credits
 
-The README structure and workspace presentation follow the example of
-[Haren](https://github.com/odarino/haren). verid's bundled workflows also draw on
+verid's bundled workflows draw on
 [superpowers](https://github.com/obra/superpowers) and
 [andrej-karpathy-skills](https://github.com/forrestchang/andrej-karpathy-skills).
 See each bundled skill's license for attribution.

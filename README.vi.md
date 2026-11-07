@@ -595,8 +595,7 @@ gồm kiểm thử installer. `npm test` bỏ qua bộ end-to-end của installe
 
 ## Ghi nhận
 
-Cấu trúc README và cách trình bày workspace tham khảo
-[Haren](https://github.com/odarino/haren). Workflow đóng gói trong verid còn tham khảo
+Workflow đóng gói trong verid tham khảo
 [superpowers](https://github.com/obra/superpowers) và
 [andrej-karpathy-skills](https://github.com/forrestchang/andrej-karpathy-skills).
 Nguồn ghi nhận chi tiết nằm trong license của từng skill.
