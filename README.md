@@ -155,14 +155,52 @@ These are independent choices:
 | ----------- | --------------------- | ------------------------------------------------------------------------------------------- |
 | `workflow`  | `classic` — default   | Shared research, spec, design and plan documents.                                           |
 | `workflow`  | `modular`             | Module dossiers and phase directories based on the repo structure template.                 |
+| `workflow`  | `kanban`              | Local browser task board, developer-selected priorities, and one AI session per task.       |
 | `resources` | `installed` — default | Skills and agents from the installed distribution or Claude plugin.                         |
 | `resources` | `repo`                | Agents, skills, templates, policies, translations and hook runtime copied into the project. |
 
-`modular` supports `prep` and `recipe`. `remix` uses the existing baseline workflow.
+`modular` and `kanban` support `prep` and `recipe`. `kanban` requires `drive: human`.
+`remix` uses the existing baseline workflow.
 
 Repo copies are the source read by the generated native provider entries. Cook creates
 missing files and keeps existing resource customizations. Updating the npm package does
 not replace pinned repo resources; review and replace those copies explicitly.
+
+### Kanban: one task per AI session
+
+```sh
+verid cook --mode prep --workflow kanban --provider codex --yes
+verid board
+# With repo resources: node .verid/verid.mjs board
+```
+
+The command opens a local browser board. Keep its terminal running. Use `--no-open`
+to open the printed URL yourself, or `--port 4318` to choose a port.
+
+1. Write requirements in `.verid/spec.md` as `- REQ-1: testable behaviour` (also
+   `NFR-1` and `SEC-1`). The board can edit spec and plan. Complete research and
+   design before selecting a task.
+2. Use **Tách task từ spec** to seed a draft task for each live requirement and a
+   final product task. Existing plans are kept. Refine task scope, ACs and
+   dependencies in **Kế hoạch task**, or let the planning agent write the plan.
+   Each `## Module: <name>` becomes a card; `Title:` supplies its display title.
+3. Select the task you want first. Selection uses `verid order` and keeps one task
+   open. Copy its session prompt, open a **new AI session** in the project and paste
+   it. The board prepares the handoff; the user starts the provider session.
+4. Follow TDD and independent review. **Duyệt & lên món** calls `verid serve` and
+   checks the same evidence as the CLI. Stop that session, select another task,
+   and open another new session.
+
+Hooks persist session ownership: a planning session, concurrent session or a
+session used for another task cannot take over. Resume and compaction keep the
+current task; clearing context does not let a used session take the next task.
+Changed spec, plan scope or design requires reapproval and a new task session.
+Nothing automatically selects or starts the next task.
+
+For an existing project, set `workflow: kanban` and `drive: human` in the
+developer-owned `.verid/manifest.yaml`, then run `verid upgrade --yes` to refresh
+the generated AI instructions. Update pinned repo runtime resources if using an
+older installed copy. See [the workflow guide](docs/kanban-workflow.md).
 
 ### Module dossiers
 
