@@ -43,6 +43,7 @@ import {
 import {
   languageOf,
   readState,
+  readFileHash,
   statePaths,
   VeridError,
   withLock,
@@ -318,9 +319,12 @@ async function menu(project: string): Promise<CliResult> {
   if (!manifest)
     throw new VeridError("VERID_BURNT_MANIFEST_MISSING", { path: manifestFile(project) });
   const state = readState(statePaths(project));
+  const lines = menuLines(project, manifest.mode, state, manifest.roles, manifest.drive, manifest);
+  if (manifest.workflow === "kanban" && !state.kanban.active)
+    lines[lines.length - 1] = "Next: chọn task trong verid board rồi mở session AI mới.";
   return {
     exit: 0,
-    stdout: `${menuLines(project, manifest.mode, state, manifest.roles, manifest.drive, manifest).join("\n")}\n`,
+    stdout: `${lines.join("\n")}\n`,
     stderr: "",
   };
 }
@@ -455,6 +459,44 @@ async function approve(project: string, wanted: string | undefined): Promise<Cli
     const state = readState(paths);
     const views = planViews(project, plan, state);
     const open = openModule(views);
+    const kanban = manifest?.workflow === "kanban";
+    const specHash = kanban ? readFileHash(specFile(project)) : null;
+    if (kanban && specHash === null)
+      throw new VeridError("VERID_BURNT_PLAN_NO_SPEC", { target: specFile(project) });
+    if (kanban && state.kanban.active && state.kanban.active.module !== name)
+      throw new VeridError("VERID_BURNT_MODULE_OPEN", { module: state.kanban.active.module });
+    const keepTask =
+      kanban &&
+      state.kanban.active?.module === name &&
+      state.kanban.active.spec_sha256 === specHash &&
+      state.modules[name]?.sha256 === sha256 &&
+      state.modules[name]?.design_sha256 === design;
+    const taskState = kanban
+      ? {
+          kanban: {
+            ...state.kanban,
+            active: keepTask
+              ? state.kanban.active
+              : { module: name, session: null, spec_sha256: specHash! },
+          },
+          ...(!keepTask
+            ? {
+                tdd: {
+                  ...state.tdd,
+                  state: "RAW" as const,
+                  last_run: null,
+                  failing: [],
+                  rev: state.tdd.rev + 1,
+                  dirty: false,
+                  passed_acs: [],
+                  passed_e2e_acs: [],
+                  stub: false,
+                  crashed: [],
+                },
+              }
+            : {}),
+        }
+      : {};
     // The product module says the whole product works, so every other module is done first.
     const waiting = views.filter((v) => v.name !== PRODUCT && v.phase !== "done");
     if (name === PRODUCT && waiting.length > 0)
@@ -483,6 +525,7 @@ async function approve(project: string, wanted: string | undefined): Promise<Cli
     );
     writeState(paths, {
       ...state,
+      ...taskState,
       modules: {
         ...Object.fromEntries(served),
         [name]: {
@@ -628,6 +671,17 @@ async function serve(project: string, wanted: string): Promise<CliResult> {
     const state = readState(paths);
     const views = planViews(project, plan, state);
     const view = views.find((v) => v.name === name) as ModuleView;
+    if (
+      manifest.workflow === "kanban" &&
+      (state.kanban.active?.module !== name ||
+        state.kanban.active.spec_sha256 !== readFileHash(specFile(project)) ||
+        state.modules[name]?.sha256 !== plan.hashes[name] ||
+        state.modules[name]?.design_sha256 !== readFileHash(designFile(project)))
+    )
+      throw new VeridError("VERID_BURNT_TASK_SESSION", {
+        target:
+          "Spec, plan hoặc design đã thay đổi. Duyệt lại task bằng verid board trước khi nghiệm thu.",
+      });
     // The reason is a message of its own, so it comes in the developer's language.
     const reviewers = (manifest.roles?.reviewer ?? []).join(", ");
     const notReady = (reason: MessageKey, acs = "") =>
@@ -657,7 +711,11 @@ async function serve(project: string, wanted: string): Promise<CliResult> {
       throw notReady("serve.no_security");
 
     const served = { ...(state.modules[name] as Approval), served_at: new Date().toISOString() };
-    const next = { ...state, modules: { ...state.modules, [name]: served } };
+    const next = {
+      ...state,
+      modules: { ...state.modules, [name]: served },
+      ...(manifest.workflow === "kanban" ? { kanban: { ...state.kanban, active: null } } : {}),
+    };
     // The next step is worked out before anything is written, so a file that cannot be read
     // fails the command without serving half of it.
     const after = planViews(project, plan, state, next.modules);
@@ -681,7 +739,9 @@ async function serve(project: string, wanted: string): Promise<CliResult> {
         : []),
       ...auditLines(project, manifest, state),
       ...questions,
-      bilingual(step.key, "module" in step ? { module: step.module } : {}),
+      manifest.workflow === "kanban"
+        ? "Next: dừng session này. Chọn task tiếp theo trong verid board và mở session AI mới."
+        : bilingual(step.key, "module" in step ? { module: step.module } : {}),
     ];
     return { exit: 0, stdout: `${lines.join("\n")}\n`, stderr: "" };
   });

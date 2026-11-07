@@ -27,6 +27,7 @@ import type { State } from "./core/state.js";
 import type { Manifest, Roles } from "./core/manifest.js";
 import { consumeOverride, handlePrompt, parseVeridPrompt, recordDenial } from "./core/override.js";
 import { openModule } from "./core/plan.js";
+import { claimTaskSession, taskSessionProblem } from "./core/kanban.js";
 import { decide, isUnder } from "./core/policy.js";
 import { matchesGlob } from "./core/glob.js";
 import { decideAgentContext, decideDispatch, decideKnownTool } from "./core/dispatch.js";
@@ -95,6 +96,7 @@ import {
   withLock,
   writeReview,
   writeState,
+  readFileHash,
   type StatePaths,
 } from "./adapters/state-store.js";
 
@@ -220,6 +222,33 @@ async function preToolUse(p: z.infer<typeof preToolUseSchema>): Promise<Result> 
   const writes = [...(action.kind === "file" ? [action] : []), ...files].filter(
     (f) => f.access === "write",
   );
+  // A broken manifest must still allow reads; existing write gates report its error in order.
+  const taskManifest = await loadManifest(project, { readOnly: true }).catch(() => null);
+  if (taskManifest?.workflow === "kanban") {
+    const key = `${CODEX ? "codex" : "claude-code"}:${p.session_id}`;
+    const problem = withLock(paths, () => {
+      const state = readState(paths);
+      const used = state.kanban.sessions[key];
+      // Planning may inspect the repo and write documents before a task is selected.
+      if (
+        !state.kanban.active &&
+        !used &&
+        !writes.some((w) => !isUnder(w.path, normalizePath(join(project, ".verid"))))
+      )
+        return null;
+      const problem = kanbanSessionProblem(project, state, key, taskManifest);
+      if (problem)
+        appendAudit(paths.audit, {
+          event: "denied",
+          session: p.session_id,
+          tool: p.tool_name,
+          rule: "VERID_BURNT_TASK_SESSION",
+          target: problem,
+        });
+      return problem;
+    });
+    if (problem) return deny("VERID_BURNT_TASK_SESSION", { target: problem });
+  }
   const base = policyContext(project, p.cwd);
   // A security review read the module as it was, dependency, config and .env files included, so
   // any write in the project outside .verid/ needs another. A folder linked from outside the
@@ -687,6 +716,26 @@ async function lifecycle(p: z.infer<typeof lifecycleSchema>): Promise<Result> {
   withLock(paths, () => appendAudit(paths.audit, { event, session: p.session_id }));
   const manifest = await loadManifest(project);
   if (!manifest) return { exit: 0 };
+  let taskContext: string[] = [];
+  if (manifest.workflow === "kanban") {
+    const key = `${CODEX ? "codex" : "claude-code"}:${p.session_id}`;
+    const kanban = withLock(paths, () => {
+      const state = readState(paths);
+      const kanban =
+        p.hook_event_name === "SessionStart"
+          ? claimTaskSession(state.kanban, key, p.source === "startup")
+          : state.kanban;
+      if (kanban !== state.kanban) writeState(paths, { ...state, kanban });
+      return kanban;
+    });
+    const problem = kanbanSessionProblem(project, { ...readState(paths), kanban }, key, manifest);
+    taskContext = [
+      problem
+        ? `verid: ${problem}`
+        : `verid: task ${kanban.active!.module}; ONE TASK PER SESSION. Read its plan section and log; TDD → review → developer serve → STOP. Never start another task in this session.`,
+    ];
+    if (p.hook_event_name === "Stop" && problem) return { exit: 0 };
+  }
   const { mode } = manifest;
   const line = (cycle: Cycle) => statusLine(mode, cycle, tdd.last_run);
   if (event === "stop") {
@@ -738,7 +787,11 @@ async function lifecycle(p: z.infer<typeof lifecycleSchema>): Promise<Result> {
   // A new conversation is a new task, and new behaviour needs a failing test first: a finished
   // cycle starts over in RAW. Resuming or compacting goes on with the same work.
   let cycle: Cycle = tdd;
-  if (tdd.state === "PLATED" && (p.source === "startup" || p.source === "clear")) {
+  if (
+    manifest.workflow !== "kanban" &&
+    tdd.state === "PLATED" &&
+    (p.source === "startup" || p.source === "clear")
+  ) {
     const event = { session: p.session_id, tool: "SessionStart", target: p.source };
     move(paths, event, { reopen: true, written: false });
     cycle = { state: "RAW", stub: false };
@@ -759,7 +812,10 @@ async function lifecycle(p: z.infer<typeof lifecycleSchema>): Promise<Result> {
   );
   // Session context is an index, not a second copy of the full menu or skill instructions.
   // Keep its size independent of the number of modules, questions and audit findings.
-  const next = standing.at(-1)!;
+  const next =
+    manifest.workflow === "kanban" && !readState(paths).kanban.active
+      ? "Next: người dùng chọn task trong verid board, sau đó mở session AI mới."
+      : standing.at(-1)!;
   const command = veridName();
   // The open module's log carries the last session's decisions into this one.
   const open = loggedModule(project, manifest, readState(paths));
@@ -769,13 +825,14 @@ async function lifecycle(p: z.infer<typeof lifecycleSchema>): Promise<Result> {
     const logged = log.map((text) => `${text}\n`).join("");
     return {
       exit: 0,
-      stdout: `${line(cycle)}\n${alias}${logged}${next.replaceAll(command, "verid")}\n`,
+      stdout: `${line(cycle)}\n${alias}${taskContext.map((text) => `${text}\n`).join("")}${logged}${next.replaceAll(command, "verid")}\n`,
     };
   }
   return {
     exit: 0,
     stdout: [
       line(cycle),
+      ...taskContext,
       ...(command === "verid" ? [] : [`verid = ${command}`]),
       // Which agent to dispatch for each role, read from the manifest now: the instruction block
       // carries the skill guide and the workflow, but only cook and upgrade rewrite it. The mode's
@@ -801,13 +858,38 @@ async function lifecycle(p: z.infer<typeof lifecycleSchema>): Promise<Result> {
       next,
       "",
     ]
-      .map((text, i) => (i === 1 && command !== "verid" ? text : text.replaceAll(command, "verid")))
+      .map((text) => (text.startsWith("verid = ") ? text : text.replaceAll(command, "verid")))
       .join("\n"),
   };
 }
 
 const statusLine = (mode: string, cycle: Cycle, lastRun: string | null) =>
   `verid: TDD ${cycleLabel(cycle)} · mode ${mode} · last run ${lastRun ?? "none"}`;
+
+function kanbanSessionProblem(
+  project: string,
+  state: State,
+  session: string,
+  manifest: Manifest,
+): string | null {
+  const problem = taskSessionProblem(
+    state.kanban,
+    session,
+    readFileHash(join(project, ".verid/spec.md")),
+  );
+  if (problem) return problem;
+  const name = state.kanban.active!.module;
+  const plan = readPlan(project, manifest.iterations !== undefined);
+  const approval = state.modules[name];
+  if (
+    !plan?.ok ||
+    !approval ||
+    approval.sha256 !== plan.hashes[name] ||
+    approval.design_sha256 !== readFileHash(join(project, ".verid/design.md"))
+  )
+    return "Plan hoặc design đã thay đổi. Người dùng cần duyệt lại task trên verid board rồi mở session mới.";
+  return null;
+}
 
 /**
  * Stop in an auto drive the developer signed; null before that, for the human holds. The open
@@ -1009,6 +1091,24 @@ async function subagentStop(p: z.infer<typeof lifecycleSchema>): Promise<Result>
   const manifest = await loadManifest(project);
   if (!manifest) return { exit: 0 };
   const paths = statePaths(project);
+  if (manifest.workflow === "kanban") {
+    const problem = kanbanSessionProblem(
+      project,
+      readState(paths),
+      `${CODEX ? "codex" : "claude-code"}:${p.session_id}`,
+      manifest,
+    );
+    if (problem) {
+      withLock(paths, () =>
+        appendAudit(paths.audit, {
+          event: "task_subagent_ignored",
+          session: p.session_id,
+          reason: problem,
+        }),
+      );
+      return { exit: 0 };
+    }
+  }
   const writer = writerFor(p.agent_id, p.agent_type, manifest.roles);
   const auto = manifest.drive === "auto";
   if (writer === "reviewer" || writer === "security") {
