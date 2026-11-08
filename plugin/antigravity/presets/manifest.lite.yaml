@@ -1,0 +1,23 @@
+# Preset 1: Lite / Low-Ceremony Mode (Recommended for Bugfixes, UI Tweaks & Small Features)
+# - Enforces deterministic TDD (RAW -> COOKING -> PLATED + JUnit XML via `verid taste`)
+# - Skips heavy ceremony (`spec.md`, `design.md`, `plan.md`, `verid order`, `verid serve`, subagent review)
+# - Single-writer on Antigravity main thread (0 subagent overhead)
+version: 1
+mode: remix
+drive: human
+workflow: classic
+resources: plugin
+repos:
+  - name: app
+    path: .
+    role: fullstack
+    test_cmd: npx vitest run --reporter=default --reporter=junit --outputFile=.verid/.state/junit.xml
+    junit_path: .verid/.state/junit.xml
+    source_globs:
+      - "src/**"
+    test_globs:
+      - "test/**"
+      - "tests/**"
+      - "**/*.test.*"
+      - "**/*.spec.*"
+

@@ -1,0 +1,31 @@
+# Preset 3: Strict + Security Audit Mode (Recommended for Auth, Payments & Critical Systems)
+# - Full EARS traceability + Abuse Cases + Data Classification
+# - Single-writer TDD on `main`
+# - Requires BOTH `verid-reviewer` (correctness) and `verid-security` (OWASP/STRIDE) subagents
+version: 1
+mode: strict
+drive: human
+workflow: classic
+resources: plugin
+roles:
+  reviewer:
+    - verid:reviewer
+  security:
+    - verid:security
+repos:
+  - name: app
+    path: .
+    role: fullstack
+    test_cmd: npx vitest run --reporter=default --reporter=junit --outputFile=.verid/.state/junit.xml
+    junit_path: .verid/.state/junit.xml
+    source_globs:
+      - "src/**"
+    test_globs:
+      - "test/**"
+      - "tests/**"
+      - "**/*.test.*"
+      - "**/*.spec.*"
+    e2e_globs:
+      - "e2e/**"
+      - "**/*.e2e.*"
+
