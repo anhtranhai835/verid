@@ -109,6 +109,7 @@ describe("Codex hook transport and policy", () => {
       encoding: "utf8",
     });
     expect(approved.status, approved.stderr).toBe(0);
+    await hook(envelope("SubagentStart", { agent_id: "review-1", agent_type: "verid_reviewer" }));
     const message = "AC-1 and design checked against the diff.\nVerdict: pass";
     const r = await hook(
       envelope("SubagentStop", {

@@ -28,7 +28,7 @@ Lightweight security scanner using Claude's reasoning + shell tools. No external
 
 | Category | Method | Speed | Reference |
 |----------|--------|-------|-----------|
-| Secrets | Grep regex patterns | Fast | `references/secret-patterns.md` |
+| Secrets | Grep regex patterns | Fast | `references/redaction-patterns.md` |
 | Dependencies | `npm audit` / `pip audit` | Medium | Built-in |
 | Code patterns | Grep + Claude analysis | Medium | `references/vulnerability-patterns.md` |
 
@@ -45,7 +45,7 @@ Lightweight security scanner using Claude's reasoning + shell tools. No external
 
 ### 2. Secret Scanning (Always runs first)
 
-Load `references/secret-patterns.md` for regex patterns.
+Load `references/redaction-patterns.md` for regex patterns.
 
 Use Grep tool to search for each pattern category:
 - API keys and tokens (AWS, GitHub, Stripe, etc.)

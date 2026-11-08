@@ -580,20 +580,24 @@ describe("workspace auto and doctor", () => {
     return { code: result.status, out: result.stdout, err: result.stderr };
   };
   // A reviewer passes the work as it is: a review counts for the commits it read.
-  const review = (agent = "verid:reviewer") =>
-    spawnSync(process.execPath, [HOOK], {
+  const review = (agent = "verid:reviewer") => {
+    const payload = {
+      session_id: "workspace",
       cwd: project,
-      env: { ...env(), CLAUDE_PROJECT_DIR: project },
-      encoding: "utf8",
-      input: JSON.stringify({
-        hook_event_name: "SubagentStop",
-        session_id: "workspace",
+      agent_id: agent,
+      agent_type: agent,
+      last_assistant_message: "Verdict: pass",
+    };
+    const invoke = (event: string) =>
+      spawnSync(process.execPath, [HOOK], {
         cwd: project,
-        agent_id: agent,
-        agent_type: agent,
-        last_assistant_message: "Verdict: pass",
-      }),
-    });
+        env: { ...env(), CLAUDE_PROJECT_DIR: project },
+        encoding: "utf8",
+        input: JSON.stringify({ ...payload, hook_event_name: event }),
+      });
+    invoke("SubagentStart");
+    return invoke("SubagentStop");
+  };
   const ready = async () => {
     makeRepo("api");
     makeRepo("web");

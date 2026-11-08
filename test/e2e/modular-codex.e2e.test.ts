@@ -129,6 +129,7 @@ it("runs the built repo hook on Codex through module order, RED/GREEN and a read
     tool_input: { command: "*** Begin Patch\n*** Add File: src/forged.ts\n+code\n*** End Patch" },
   });
   expect(reason(reviewerWrite)).toContain("VERID_BURNT_ROLE_READ_ONLY");
+  hook("SubagentStart", { agent_id: "review-1", agent_type: "verid_reviewer" });
   const reviewed = hook("SubagentStop", {
     agent_id: "review-1",
     agent_type: "verid_reviewer",

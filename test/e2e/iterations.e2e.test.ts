@@ -81,8 +81,8 @@ const productionWrite = () =>
     agent_id: "coder",
     agent_type: "verid:coder",
   });
-const reviewPlan = () =>
-  run(HOOK, [], {
+const reviewPlan = () => {
+  const payload = {
     hook_event_name: "SubagentStop",
     session_id: "iterations-session",
     cwd: project,
@@ -90,7 +90,10 @@ const reviewPlan = () =>
     agent_type: "verid:reviewer",
     last_assistant_message: "Verdict: pass",
     stop_hook_active: false,
-  });
+  };
+  run(HOOK, [], { ...payload, hook_event_name: "SubagentStart" });
+  return run(HOOK, [], payload);
+};
 function cooking() {
   const file = join(project, ".verid", ".state", "state.json");
   const state = JSON.parse(readFileSync(file, "utf8"));

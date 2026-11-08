@@ -14,7 +14,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { runCli, runHook } from "./in-process.js";
+import { runCli, runHook, runReview } from "./in-process.js";
 import { claudeFixture, type Payload } from "./helpers.js";
 
 // Runs the CLI and hook in process, on a prep project driven by auto. The manifest's
@@ -74,7 +74,10 @@ interface Run {
 
 // In process; hook.e2e and tdd.e2e spawn the built hook and CLI.
 const hook = (input: string, extra: Record<string, string> = {}): Promise<Run> =>
-  runHook(input, { CLAUDE_PROJECT_DIR: project, ...extra });
+  (JSON.parse(input).hook_event_name === "SubagentStop" ? runReview : runHook)(input, {
+    CLAUDE_PROJECT_DIR: project,
+    ...extra,
+  });
 const cliWith = (extra: Record<string, string>, ...args: string[]): Promise<Run> =>
   runCli(args, project, { CLAUDE_PROJECT_DIR: project, ...extra });
 const cli = (...args: string[]): Promise<Run> => cliWith({}, ...args);

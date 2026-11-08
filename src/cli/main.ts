@@ -552,6 +552,8 @@ async function approve(project: string, wanted: string | undefined): Promise<Cli
       ac_stop_session: null,
       review: null,
       security: null,
+      review_epoch: state.review_epoch + 1,
+      security_epoch: state.security_epoch + 1,
     });
     // Dependencies are advice: an order before them is recorded and said, never refused.
     const unserved = unservedDependencies(
@@ -626,6 +628,8 @@ function signAuto(project: string, manifest: Manifest, wanted: string | undefine
       ),
       review: null,
       security: null,
+      review_epoch: state.review_epoch + 1,
+      security_epoch: state.security_epoch + 1,
       auto: {
         ...FRESH_AUTO,
         signed: {

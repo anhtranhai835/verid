@@ -169,7 +169,7 @@ const report = z.strictObject({
   at: z.string(),
   /** Whether the report passed the module; a report written before verdicts counts as fail. */
   verdict: z._default(z.enum(["pass", "fail"]), "fail"),
-  /** The work it read: each Git root's HEAD and uncommitted changes; null outside Git. */
+  /** Fingerprint of the review's subject, input documents and hook-observed write epochs. */
   identity: z._default(z.nullable(z.string()), null),
 });
 
@@ -236,6 +236,21 @@ const stateSchema = z.strictObject({
    * review is. A module closes only on its pass when `roles.security` is mapped.
    */
   security: z._default(z.nullable(report), null),
+  /** Only writes/approvals advance these; running taste alone preserves a review's snapshot. */
+  review_epoch: count,
+  security_epoch: count,
+  /** Immutable snapshots captured by SubagentStart, keyed by provider/session/agent ID. */
+  review_jobs: z._default(
+    z.record(
+      z.string(),
+      z.strictObject({
+        kind: z.enum(["reviewer", "security"]),
+        subject: z.string(),
+        identity: z.string(),
+      }),
+    ),
+    {},
+  ),
   /** agent_id of each subagent let write code or a test that has not stopped since. */
   writers: z._default(z.array(z.string()), []),
   auto: z._default(autoState, FRESH_AUTO),

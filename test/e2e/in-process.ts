@@ -61,6 +61,14 @@ export function runHook(input: string, env: NodeJS.ProcessEnv = {}, args: string
   return withEnv(env, () => captured(() => run(input, args)));
 }
 
+/** A completed subagent lifecycle when a test only needs the resulting report. */
+export async function runReview(input: string, env: NodeJS.ProcessEnv = {}, args: string[] = []) {
+  const payload = JSON.parse(input);
+  if (payload.hook_event_name !== "SubagentStop") throw new Error("expected SubagentStop");
+  await runHook(JSON.stringify({ ...payload, hook_event_name: "SubagentStart" }), env, args);
+  return runHook(input, env, args);
+}
+
 /** The CLI as `dist/cli.js` runs it, started in `cwd`. */
 export function runCli(args: string[], cwd: string, env: NodeJS.ProcessEnv = {}) {
   return withEnv(env, async () => {

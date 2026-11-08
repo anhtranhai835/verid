@@ -233,6 +233,7 @@ describe("verid cook", () => {
       "PreToolUse",
       "SessionStart",
       "Stop",
+      "SubagentStart",
       "SubagentStop",
       "UserPromptSubmit",
     ]);

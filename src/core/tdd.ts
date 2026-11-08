@@ -347,8 +347,8 @@ export function classifyRuns(
 /**
  * The tests that count as end-to-end: all a Playwright run reports, since its classnames are
  * relative to its testDir, and elsewhere a test whose file matches e2e_globs. The file is the
- * classname, the part of the id before ` > `, with `\` read as `/`; a classname with no `/`
- * names a package (pytest, Java, .NET), whose dots are read as folders.
+ * classname, the part of the id before ` > `, with `\` read as `/`. Root filenames retain
+ * their dots; package-style classnames (pytest, Java, .NET) also match as folders.
  */
 export function e2eCases(
   runs: readonly { runner: string | null; cases: readonly TestCase[] }[],
@@ -358,8 +358,9 @@ export function e2eCases(
     const at = c.id.indexOf(" > ");
     if (at < 0) return false;
     const file = c.id.slice(0, at).replaceAll("\\", "/");
-    const path = file.includes("/") ? file : file.replaceAll(".", "/");
-    return e2eGlobs.some((g) => matchesGlob(path, g));
+    if (e2eGlobs.some((g) => matchesGlob(file, g))) return true;
+    if (file.includes("/") || /\.(?:[cm]?[jt]sx?|py|java|cs|go|rb|php)$/i.test(file)) return false;
+    return e2eGlobs.some((g) => matchesGlob(file.replaceAll(".", "/"), g));
   };
   return runs.flatMap(({ runner, cases }) =>
     runner === "playwright" ? [...cases] : cases.filter(inGlobs),

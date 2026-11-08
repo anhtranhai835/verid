@@ -1,4 +1,4 @@
-# Secrets: detection, severity and masking
+# Credentials: detection, severity and masking
 
 The only secret patterns and severity rules for `verid:security`.
 

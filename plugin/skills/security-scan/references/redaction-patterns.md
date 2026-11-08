@@ -1,4 +1,4 @@
-# Secret Detection Patterns
+# Credential Detection Patterns
 
 Grep patterns for detecting hardcoded secrets. Use with Grep tool, exclude test/example files.
 

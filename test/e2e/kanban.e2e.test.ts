@@ -7,7 +7,7 @@ import { boardSnapshot, saveBoardDocument } from "../../src/adapters/kanban.js";
 import { readState, statePaths } from "../../src/adapters/state-store.js";
 import { startBoard } from "../../src/cli/board.js";
 import { defaultRoles } from "../../src/core/manifest.js";
-import { runCli, runHook } from "./in-process.js";
+import { runCli, runHook, runReview } from "./in-process.js";
 
 let project: string;
 let server: Awaited<ReturnType<typeof startBoard>> | undefined;
@@ -59,7 +59,7 @@ afterEach(async () => {
 const state = () => readState(statePaths(project));
 const cli = (...args: string[]) => runCli(args, project);
 const hook = (event: string, session: string, extra = {}, provider = "codex") =>
-  runHook(
+  (event === "SubagentStop" ? runReview : runHook)(
     JSON.stringify({
       hook_event_name: event,
       cwd: project,

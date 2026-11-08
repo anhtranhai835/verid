@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { runCli, runHook } from "./in-process.js";
+import { runCli, runHook, runReview } from "./in-process.js";
 
 let project: string;
 const put = (file: string, text: string) => {
@@ -31,7 +31,7 @@ repos:
 `,
   );
 const hook = (event: string, extra: Record<string, unknown> = {}) =>
-  runHook(
+  (event === "SubagentStop" ? runReview : runHook)(
     JSON.stringify({
       hook_event_name: event,
       session_id: "rules",
@@ -226,6 +226,20 @@ describe("rules and audit without relaxing TDD", () => {
       events.find((event) => event.event === "module_served" && event.module === "calc").warnings,
     ).toEqual(expect.arrayContaining([expect.stringContaining("bad message")]));
     expect((await runCli(["doctor"], project)).stdout).toContain("bad message");
+  });
+
+  it("reports a missing Git audit base instead of silently recording an empty history", async () => {
+    manifest("drive: auto\n");
+    put(".verid/research.md", "research");
+    put(".verid/design.md", "design");
+    put(".verid/plan.md", "## Module: product\n- AC-1 (e2e): works\n");
+    // A repository without a commit has no usable main base, but Git remains advisory.
+    git("init", "-q", "-b", "main");
+    expect((await runCli(["order"], project)).code).toBe(0);
+    expect((await review()).code).toBe(0);
+    const log = readFileSync(join(project, ".verid/.state/audit.jsonl"), "utf8");
+    expect(log).toContain("GIT_WORK_BASE");
+    expect((await runCli(["doctor"], project)).stdout).toContain("GIT_WORK_BASE");
   });
 
   it("creates architecture rule profiles and preserves edited rules during upgrade", async () => {

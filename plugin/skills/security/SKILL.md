@@ -40,7 +40,7 @@ safe" claim is not evidence; evidence is code you read and artifacts with a name
    - manifests, lockfiles, install, build or CI scripts: `references/supply-chain.md`;
    - skills, agent prompts, MCP, tool schemas, memory, model output, LLM SDKs:
      `references/llm-agentic.md`;
-   - anything credential-shaped: `references/secrets.md`.
+   - anything credential-shaped: `references/credential-handling.md`.
 
    `references/personas.md` gives an attacker's questions per surface. Mark a surface that
    does not apply `not applicable` with the reason; a pure CLI needs no web checks.
@@ -89,7 +89,7 @@ The last line is exactly `Verdict: pass` or `Verdict: fail`, with nothing after 
 
 ## Secrets
 
-Follow `references/secrets.md`: give path:line, type and a masked form, never the value or
+Follow `references/credential-handling.md`: give path:line, type and a masked form, never the value or
 its line. Recommend rotation for a real credential.
 
 ## After the review

@@ -2,6 +2,16 @@
 
 [Back to README](../README.md)
 
+`SubagentStart` records the subject and input fingerprint for each mapped reviewer.
+Code/test writes and new approvals invalidate an in-progress correctness review;
+project writes outside `.verid/` invalidate an in-progress security review too.
+Changed planning inputs also invalidate the fingerprint. `SubagentStop` discards
+reports without a matching current snapshot and records `REVIEW_STALE` in the audit.
+Dispatch a fresh reviewer after changes; running `taste` alone preserves the snapshot.
+After upgrading, run `verid upgrade --yes` and `verid doctor` to register this hook;
+on Codex, trust the new handler through `/hooks`. Pinned repo resources require
+their runtime and definitions to be updated explicitly as described in the README.
+
 `VERID_BURNT_TASK_SESSION` is a non-overridable Kanban rule. The developer selects
 a task, then a fresh AI session owns it. Planning sessions, other sessions and
 sessions used for earlier tasks cannot act on it. Changed spec, plan or design

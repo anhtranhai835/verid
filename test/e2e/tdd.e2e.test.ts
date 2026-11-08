@@ -17,7 +17,7 @@ import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { verifyAuditChain } from "../../src/adapters/audit-log.js";
 import { MODES } from "../../src/core/manifest.js";
-import { runCli, runHook } from "./in-process.js";
+import { runCli, runHook, runReview } from "./in-process.js";
 import { developerEnv, claudeFixture, type Payload } from "./helpers.js";
 
 // Runs the CLI and hook in process, and the built CLI for a few runs. The test command is a fake runner
@@ -89,7 +89,10 @@ interface Run {
 
 // In process; the spawned runs in this file and hook.e2e prove the built CLI and hook run this code.
 const hook = (input: string, extra: Record<string, string> = {}): Promise<Run> =>
-  runHook(input, { CLAUDE_PROJECT_DIR: project, ...extra });
+  (JSON.parse(input).hook_event_name === "SubagentStop" ? runReview : runHook)(input, {
+    CLAUDE_PROJECT_DIR: project,
+    ...extra,
+  });
 const cliWith = (extra: Record<string, string>, ...args: string[]): Promise<Run> =>
   runCli(args, project, { CLAUDE_PROJECT_DIR: project, ...extra });
 const cli = (...args: string[]): Promise<Run> => cliWith({}, ...args);

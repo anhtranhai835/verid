@@ -8,6 +8,7 @@ const HOOK_EVENTS = [
   "PreToolUse",
   "UserPromptSubmit",
   "Stop",
+  "SubagentStart",
   "SubagentStop",
   "SessionStart",
 ] as const;
@@ -70,7 +71,7 @@ export function guardsToolCalls(settings: unknown, hook: string): boolean {
   );
 }
 
-/** All five events call this install; other handlers and their order do not matter. */
+/** All lifecycle events call this install; other handlers and their order do not matter. */
 export function hasCurrentVeridHooks(settings: unknown, hook: string): boolean {
   if (!isObject(settings) || !isObject(settings.hooks)) return false;
   const hooks = settings.hooks;

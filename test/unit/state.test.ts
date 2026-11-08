@@ -29,6 +29,9 @@ describe("parseState", () => {
         runners: [],
         review: null,
         security: null,
+        review_epoch: 0,
+        security_epoch: 0,
+        review_jobs: {},
         writers: [],
         auto: {
           signed: null,

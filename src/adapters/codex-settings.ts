@@ -7,6 +7,7 @@ export const CODEX_HOOK_EVENTS = [
   "PreToolUse",
   "UserPromptSubmit",
   "Stop",
+  "SubagentStart",
   "SubagentStop",
   "SessionStart",
 ] as const;

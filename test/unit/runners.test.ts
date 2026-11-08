@@ -183,6 +183,15 @@ describe("detectRunners", () => {
         ["maven@."],
       ],
       ["an empty root, Go in api/", [folder([]), folder(["go.mod"], { dir: "api" })], ["go@api"]],
+      [
+        "independent sibling packages using the same runner",
+        [
+          folder([]),
+          folder(["package.json"], { dir: "api", deps: ["vitest"] }),
+          folder(["package.json"], { dir: "web", deps: ["vitest"] }),
+        ],
+        ["vitest@api", "vitest@web"],
+      ],
     ];
     const got = rows.map(([name, folders]) => [
       name,

@@ -76,6 +76,7 @@ import {
   type FileAction,
 } from "./adapters/claude-code.js";
 import { captureWork } from "./adapters/git.js";
+import { reviewSnapshot } from "./adapters/review-snapshot.js";
 import { bilingual, inLanguage, setLanguage, t, veridName, type Lang } from "./adapters/i18n.js";
 import { loadManifest, tddLayouts } from "./adapters/manifest.js";
 import {
@@ -101,7 +102,7 @@ import {
 } from "./adapters/state-store.js";
 
 /**
- * Single entry for PreToolUse, UserPromptSubmit, Stop, SubagentStop and SessionStart.
+ * Single entry for tool, prompt, session and subagent lifecycle hooks.
  * exit 0 = allow, exit 2 = block (reason on stderr). PreToolUse fails closed;
  * UserPromptSubmit lets the prompt through on error but never creates an override;
  * Stop, SubagentStop and SessionStart never block on error.
@@ -112,7 +113,7 @@ interface Result {
   stderr?: string;
 }
 
-const LENIENT = new Set(["Stop", "SubagentStop", "SessionStart"]);
+const LENIENT = new Set(["Stop", "SubagentStart", "SubagentStop", "SessionStart"]);
 // Provider selection is an explicit invocation contract, never inferred from stdin.
 // ponytail: one module-wide flag set by each run(); overlapping runs in one process would race.
 let CODEX = false;
@@ -164,7 +165,7 @@ export async function run(raw: string, args: readonly string[]): Promise<Result>
 async function handle(payload: unknown): Promise<Result> {
   if (
     CODEX &&
-    ["PostToolUse", "SubagentStart", "SessionEnd"].includes(
+    ["PostToolUse", "SessionEnd"].includes(
       String((payload as { hook_event_name?: unknown })?.hook_event_name),
     )
   )
@@ -175,6 +176,7 @@ async function handle(payload: unknown): Promise<Result> {
     case "UserPromptSubmit":
       return userPrompt(inProject(parse(userPromptSchema, payload)));
     case "Stop":
+    case "SubagentStart":
     case "SubagentStop":
     case "SessionStart": {
       const p = inProject(parse(lifecycleSchema, payload));
@@ -421,7 +423,7 @@ async function preToolUse(p: z.infer<typeof preToolUseSchema>): Promise<Result> 
   if (first === undefined || "write" in first) {
     if (first) move(paths, event(first), change(first));
     // Only a pass to void is written, so other writes never wait on the state lock.
-    else if (voidsSecurity && readState(paths).security !== null)
+    else if (voidsSecurity)
       withLock(paths, () => writeState(paths, withoutSecurity(readState(paths))));
     return { exit: 0, ...(auditWarning && { stderr: auditWarning }) };
   }
@@ -637,11 +639,24 @@ function moved(paths: StatePaths, state: State, event: CycleEvent, change: Move)
       ? state.writers
       : [...state.writers, change.writer];
   // A review covers the code it read: a change after it needs another, and so does a security review.
-  return { ...state, tdd, writers, ...(change.written && { review: null, security: null }) };
+  return {
+    ...state,
+    tdd,
+    writers,
+    ...(change.written && {
+      review: null,
+      security: null,
+      review_epoch: state.review_epoch + 1,
+      security_epoch: state.security_epoch + 1,
+    }),
+  };
 }
 
-const withoutSecurity = (state: State): State =>
-  state.security === null ? state : { ...state, security: null };
+const withoutSecurity = (state: State): State => ({
+  ...state,
+  security: null,
+  security_epoch: state.security_epoch + 1,
+});
 
 async function userPrompt(p: z.infer<typeof userPromptSchema>): Promise<Result> {
   // Codex has no attended-input signal: a prompt never opens an exception there, and peek and
@@ -710,6 +725,7 @@ async function lifecycle(p: z.infer<typeof lifecycleSchema>): Promise<Result> {
     return p.hook_event_name === "SessionStart"
       ? { exit: 0, stdout: haltedLines(halted) }
       : { exit: 0 };
+  if (p.hook_event_name === "SubagentStart") return subagentStart(p);
   if (p.hook_event_name === "SubagentStop") return subagentStop(p);
   const { tdd } = readState(paths);
   const event = p.hook_event_name === "Stop" ? "stop" : "session_start";
@@ -1009,6 +1025,13 @@ function advance(
   const phase = autoPhase({ ...facts, auto: state.auto, approvals: state.modules });
   if (phase.kind !== "module" || state.auto.work?.module === phase.view.name) return state;
   const captured = captureWork(project, manifest);
+  if ("detail" in captured)
+    appendAudit(paths.audit, {
+      event: "warning",
+      code: "GIT_WORK_BASE",
+      target: captured.repo,
+      reason: captured.detail,
+    });
   const roots = "detail" in captured ? {} : captured;
   const work = { module: phase.view.name, roots };
   appendAudit(paths.audit, { event: "work_started", module: phase.view.name });
@@ -1086,6 +1109,30 @@ function tryClose(
  * shows its change; the mapped reviewer is never held, and its final report becomes the review.
  * In an auto drive the coder's stop that goes through also ends a round on the module it builds.
  */
+const reviewJobKey = (p: z.infer<typeof lifecycleSchema>): string =>
+  JSON.stringify([CODEX ? "codex" : "claude-code", p.session_id, p.agent_id]);
+
+async function subagentStart(p: z.infer<typeof lifecycleSchema>): Promise<Result> {
+  if (!p.agent_id) return { exit: 0 };
+  const project = projectDir(p.cwd);
+  const manifest = await loadManifest(project);
+  if (!manifest) return { exit: 0 };
+  const kind = writerFor(p.agent_id, p.agent_type, manifest.roles);
+  if (kind !== "reviewer" && kind !== "security") return { exit: 0 };
+  const paths = statePaths(project);
+  withLock(paths, () => {
+    const state = readState(paths);
+    const key = reviewJobKey(p);
+    // Repeated lifecycle delivery must never refresh an already-running review.
+    if (Object.hasOwn(state.review_jobs, key)) return;
+    const snapshot = reviewSnapshot(project, manifest, state, kind);
+    if (!snapshot) return;
+    appendAudit(paths.audit, { event: "review_started", agent_id: p.agent_id, ...snapshot });
+    writeState(paths, { ...state, review_jobs: { ...state.review_jobs, [key]: snapshot } });
+  });
+  return { exit: 0 };
+}
+
 async function subagentStop(p: z.infer<typeof lifecycleSchema>): Promise<Result> {
   const project = projectDir(p.cwd);
   const manifest = await loadManifest(project);
@@ -1199,9 +1246,30 @@ function recordReview(
   const report = p.last_assistant_message ?? "";
   const sha256 = createHash("sha256").update(report, "utf8").digest("hex");
   const verdict = parseVerdict(report);
-  const identity = null;
   withLock(paths, () => {
-    const read = readState(paths);
+    let read = readState(paths);
+    const key = reviewJobKey(p);
+    const started = read.review_jobs[key];
+    const current = reviewSnapshot(project, manifest, read, kind);
+    const { [key]: completed, ...remaining } = read.review_jobs;
+    read = { ...read, review_jobs: remaining };
+    if (
+      !started ||
+      !current ||
+      started.kind !== kind ||
+      started.subject !== current.subject ||
+      started.identity !== current.identity
+    ) {
+      appendAudit(paths.audit, {
+        event: "warning",
+        code: "REVIEW_STALE",
+        target: started?.subject ?? p.agent_type ?? kind,
+        reason: "Review inputs changed or SubagentStart is missing; dispatch a fresh reviewer.",
+      });
+      writeState(paths, read);
+      return;
+    }
+    const identity = started.identity;
     const known = auto
       ? autoFactsOf(
           project,

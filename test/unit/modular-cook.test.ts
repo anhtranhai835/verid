@@ -75,6 +75,10 @@ it("maps Claude local agents and skills to repo copies with no plugin dependency
   expect(manifest.roles.reviewer).toEqual(["verid-reviewer", "verid_reviewer"]);
   expect(read(".claude/agents/verid-coder.md")).toContain("name: verid-coder");
   expect(read(".claude/agents/verid-coder.md")).toContain("Read .verid/agents/coder.md");
+  const security = parse(read(".claude/agents/verid-security.md").split("---")[1]!);
+  expect(security.skills).toEqual(["verid-security"]);
+  for (const skill of security.skills)
+    expect(existsSync(join(project, `.claude/skills/${skill}/SKILL.md`))).toBe(true);
   expect(read(".claude/skills/verid-ba/SKILL.md")).toContain("Read .verid/skills/ba/SKILL.md");
   expect(decideDispatch("Skill", { skill: "verid-ba" }, manifest, new Set()).kind).toBe("allow");
   expect(

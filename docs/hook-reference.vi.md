@@ -2,6 +2,16 @@
 
 [Về README](../README.vi.md)
 
+`SubagentStart` ghi nhận đối tượng và dấu vân tay đầu vào của từng reviewer đã ánh xạ.
+Ghi code/test hoặc duyệt lại module làm mất hiệu lực review correctness đang chạy;
+ghi file project ngoài `.verid/` cũng làm mất hiệu lực security review đang chạy.
+Thay đổi đầu vào kế hoạch làm dấu vân tay không còn khớp. `SubagentStop` loại report
+không có snapshot hợp lệ và ghi `REVIEW_STALE` vào audit. Sau khi sửa, gọi reviewer
+mới; chỉ chạy lại `taste` thì giữ snapshot. Sau nâng cấp, chạy `verid upgrade --yes`
+và `verid doctor` để đăng ký hook này; trên Codex, tin cậy handler mới qua `/hooks`.
+Tài nguyên repo đã ghim phiên bản cần được cập nhật runtime và định nghĩa rõ ràng
+theo hướng dẫn nâng cấp trong README.
+
 `VERID_BURNT_TASK_SESSION` là rule Kanban không cho agent mở ngoại lệ. Người dùng
 chọn task, rồi một session AI mới nhận task đó. Session lập kế hoạch, session khác
 và session đã làm task trước không được nhận task này. Sửa spec, plan hoặc design

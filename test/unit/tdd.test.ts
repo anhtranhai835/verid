@@ -727,6 +727,15 @@ describe("decideTdd", () => {
 });
 
 describe("e2eCases", () => {
+  it("recognizes a root E2E filename when only the filename glob is configured", () => {
+    const test: TestCase = {
+      id: "checkout.e2e.test.ts > AC-9 checkout",
+      status: "passed",
+      message: "",
+    };
+    expect(e2eCases([{ runner: "vitest", cases: [test] }], ["**/*.e2e.*"])).toEqual([test]);
+    expect(e2eCases([{ runner: "vitest", cases: [test] }], ["**/e2e/**"])).toEqual([]);
+  });
   it("counts every test a Playwright run reports, and elsewhere a test whose file is in e2e_globs", () => {
     const rows: [string, string | null, string, boolean][] = [
       ["Playwright, testDir e2e", "playwright", "login.spec.ts > AC-3 logs in", true],
@@ -734,6 +743,8 @@ describe("e2eCases", () => {
       ["vitest, a unit test", "vitest", "src/calc.test.ts > AC-3 adds", false],
       ["test_cmd, a Windows path", null, "e2e\\login.spec.ts > AC-3", true],
       ["test_cmd, a .e2e. file", null, "web/login.e2e.ts > AC-4", true],
+      ["vitest, a root .e2e. file", "vitest", "login.e2e.test.ts > AC-4", true],
+      ["test_cmd, a root .e2e. file", null, "login.e2e.ts > AC-4", true],
       ["no classname", "vitest", "AC-5 no classname", false],
       ["pytest, an e2e package", "pytest", "tests.e2e.test_login > test_AC_6_logs_in", true],
       ["Java, an e2e package", "maven", "com.acme.e2e.LoginTest > AC_7_logsIn", true],

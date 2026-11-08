@@ -33,12 +33,12 @@ export const userPromptSchema = z.looseObject({
   agent_id: z.optional(z.string()),
 });
 export const lifecycleSchema = z.looseObject({
-  hook_event_name: z.enum(["Stop", "SubagentStop", "SessionStart"]),
+  hook_event_name: z.enum(["Stop", "SubagentStart", "SubagentStop", "SessionStart"]),
   session_id: z.string(),
   cwd: z.string(),
   stop_hook_active: z.optional(z.boolean()),
   source: z.optional(z.string()),
-  // SubagentStop only.
+  // SubagentStart and SubagentStop.
   agent_id: z.optional(z.string()),
   agent_type: z.optional(z.string()),
   last_assistant_message: z.optional(z.string()),

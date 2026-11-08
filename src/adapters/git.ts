@@ -240,10 +240,13 @@ export function workRoots(
   manifest: Pick<Manifest, "layout" | "repos">,
   deadline = Infinity,
 ): WorkRoot[] | { repo: string; error: string } {
-  const paths =
-    manifest.layout === "workspace"
-      ? [...manifest.repos.map((r) => r.path), ".verid"]
-      : [".", ...manifest.repos.map((r) => r.path)];
+  const paths = [
+    ...new Set(
+      manifest.layout === "workspace"
+        ? [...manifest.repos.map((r) => r.path), ".verid"]
+        : [".", ...manifest.repos.map((r) => r.path)],
+    ),
+  ];
   const roots: WorkRoot[] = [];
   const seen = new Set<string>();
   for (const path of paths) {
@@ -266,7 +269,7 @@ export type Work = NonNullable<AutoState["work"]>["roots"];
 export function captureWork(
   project: string,
   manifest: Pick<Manifest, "layout" | "repos" | "git">,
-  deadline = Date.now() + 2_000,
+  deadline = Date.now() + 4_000,
 ): Work | { repo: string; detail: string } {
   const roots = workRoots(project, manifest, deadline);
   if (!Array.isArray(roots)) return { repo: roots.repo, detail: roots.error };

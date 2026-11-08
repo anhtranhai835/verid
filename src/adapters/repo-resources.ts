@@ -43,7 +43,11 @@ export function repoResources(project: string, providers: Manifest["providers"])
     const text = effective(file);
     const frontmatter = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text)?.[1];
     if (!frontmatter) throw new Error(`Missing frontmatter: ${file.rel}`);
-    const header = frontmatter.replace(/^name:.*$/m, `name: verid-${name}`);
+    const header = frontmatter
+      .replace(/^name:.*$/m, `name: verid-${name}`)
+      .replace(/^(skills:[\s\S]*?)(?=^[\w-]+:|$(?![\s\S]))/m, (field) =>
+        field.replace(/\bverid:([a-z][a-z-]*)\b/g, "verid-$1"),
+      );
     const body = `Read ${file.rel} from the project root and follow its instructions. Resolve supporting files relative to that file's folder. In this repo, calls named verid:<name> use the local verid-<name> skill or agent. Run verid commands as node .verid/verid.mjs <command> from the project root. Read AGENTS.md and .verid/workflow.md when present before starting.\n`;
     if (providers.includes("claude-code"))
       files.push({

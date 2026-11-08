@@ -11,6 +11,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -154,20 +155,17 @@ class BackupManager:
             cmd = ["pg_dump", uri]
 
             if compress:
-                # Use pg_dump with gzip
-                with open(backup_path, "wb") as f:
-                    dump_proc = subprocess.Popen(cmd, stdout=subprocess.PIPE)
-                    gzip_proc = subprocess.Popen(
-                        ["gzip"],
-                        stdin=dump_proc.stdout,
-                        stdout=f
-                    )
-                    dump_proc.stdout.close()
-                    gzip_proc.communicate()
-
-                    if dump_proc.returncode != 0:
-                        print("Error: pg_dump failed")
-                        return None
+                # Compress in Python, including on Windows without a gzip executable.
+                # A file for stderr avoids deadlocking on a full stderr pipe.
+                with tempfile.TemporaryFile() as errors, gzip.open(backup_path, "wb") as f:
+                    with subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=errors) as dump_proc:
+                        shutil.copyfileobj(dump_proc.stdout, f)
+                        dump_proc.stdout.close()
+                        exit_code = dump_proc.wait()
+                if exit_code != 0:
+                    backup_path.unlink(missing_ok=True)
+                    print("Error: pg_dump failed")
+                    return None
             else:
                 with open(backup_path, "w") as f:
                     result = subprocess.run(cmd, stdout=f, stderr=subprocess.PIPE, text=True)
@@ -218,7 +216,7 @@ class BackupManager:
             return False
 
         # Load metadata
-        metadata_path = backup_path.with_suffix(".json")
+        metadata_path = self.backup_dir / f"{filename}.json"
         if metadata_path.exists():
             with open(metadata_path) as f:
                 metadata = json.load(f)
@@ -278,9 +276,12 @@ class BackupManager:
         """Restore PostgreSQL backup using psql."""
         try:
             if backup_path.suffix == ".gz":
-                # Decompress and restore
-                with gzip.open(backup_path, "rb") as f:
-                    cmd = ["psql", uri]
+                # Subprocess stdin uses fileno(), which on a GzipFile exposes compressed
+                # bytes. Materialize plain SQL in a temporary file before passing its fd.
+                with gzip.open(backup_path, "rb") as compressed, tempfile.TemporaryFile() as f:
+                    shutil.copyfileobj(compressed, f)
+                    f.seek(0)
+                    cmd = ["psql", "--set", "ON_ERROR_STOP=1", "--dbname", uri]
                     result = subprocess.run(
                         cmd,
                         stdin=f,
@@ -289,7 +290,7 @@ class BackupManager:
                     )
             else:
                 with open(backup_path) as f:
-                    cmd = ["psql", uri]
+                    cmd = ["psql", "--set", "ON_ERROR_STOP=1", "--dbname", uri]
                     result = subprocess.run(
                         cmd,
                         stdin=f,
@@ -362,7 +363,7 @@ class BackupManager:
                     print(f"Removing: {backup_file.name}")
                     backup_file.unlink()
                     # Remove metadata
-                    metadata_file = backup_file.with_suffix(".json")
+                    metadata_file = self.backup_dir / f"{backup_file.name}.json"
                     if metadata_file.exists():
                         metadata_file.unlink()
                 removed += 1

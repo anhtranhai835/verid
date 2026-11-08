@@ -59,7 +59,7 @@ type AuthFixtures = {
 };
 
 export const test = base.extend<AuthFixtures>({
-  authenticatedPage: async ({ browser, request }, use, testInfo) => {
+  authenticatedPage: async ({ browser, request, baseURL }, use) => {
     // API-based authentication (faster than UI login)
     const response = await request.post('/api/auth/login', {
       data: {
@@ -73,14 +73,14 @@ export const test = base.extend<AuthFixtures>({
     }
 
     const { token } = await response.json();
-    const context = await browser.newContext();
+    const context = await browser.newContext({ baseURL });
 
     // Set auth cookie/header
     await context.addCookies([
       {
         name: 'auth-token',
         value: token,
-        domain: 'localhost',
+        domain: new URL(baseURL || 'http://localhost:3000').hostname,
         path: '/',
       },
     ]);
@@ -119,7 +119,7 @@ test.describe('Accessibility', () => {
 });
 `;
 
-const authTest = `import { test, expect } from '../fixtures/auth';
+const authTest = `import { test, expect } from './fixtures/auth';
 
 test.describe('Authenticated User', () => {
   test('can access dashboard', async ({ authenticatedPage: page }) => {

@@ -187,6 +187,7 @@ describe("setup commands", () => {
       "PreToolUse",
       "UserPromptSubmit",
       "Stop",
+      "SubagentStart",
       "SubagentStop",
       "SessionStart",
     ]) {

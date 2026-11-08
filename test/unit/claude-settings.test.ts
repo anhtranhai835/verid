@@ -19,12 +19,13 @@ const veridHooks = (path = HOOK) => ({
   PreToolUse: [{ matcher: "*", hooks: [handler("PreToolUse", path)] }],
   UserPromptSubmit: [{ hooks: [handler("UserPromptSubmit", path)] }],
   Stop: [{ hooks: [handler("Stop", path)] }],
+  SubagentStart: [{ hooks: [handler("SubagentStart", path)] }],
   SubagentStop: [{ hooks: [handler("SubagentStop", path)] }],
   SessionStart: [{ hooks: [handler("SessionStart", path)] }],
 });
 
 describe("withVeridHooks", () => {
-  it("adds the five handlers to empty settings", () => {
+  it("adds tool and lifecycle handlers to empty settings", () => {
     expect(withVeridHooks({}, HOOK)).toEqual({
       settings: { hooks: veridHooks() },
       changed: true,

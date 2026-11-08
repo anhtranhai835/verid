@@ -34,6 +34,9 @@ review and mapped roles; read the manifest with Read if a mapping is needed.
 verid records final reports under `.verid/.state/reviews/`. Later code/test writes
 or a new module order invalidate a module review; any project write outside
 `.verid/` invalidates security review. Running taste alone invalidates neither.
+`SubagentStart` binds each review to its subject, input documents and write history.
+Changes during review discard its result as `REVIEW_STALE`; dispatch a fresh reviewer.
+After upgrading hooks, run `verid doctor` and trust the new hook through Codex `/hooks`.
 The final line is exactly `Verdict: pass` or `Verdict: fail`, because the hook
 reads it; a missing verdict fails.
 

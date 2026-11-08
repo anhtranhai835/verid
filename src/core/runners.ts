@@ -165,9 +165,16 @@ export function detectRunners(
   windows: boolean,
 ): { runners: Runner[]; unsupported: string[] } {
   const runners: Runner[] = [];
+  const atRoot = new Set(
+    folders.filter((f) => f.dir === ".").flatMap((f) => runnersOf(f, windows).map((r) => r.name)),
+  );
   for (const f of folders)
     for (const r of runnersOf(f, windows))
-      if (!runners.some((x) => x.name === r.name)) runners.push({ ...r, dir: f.dir });
+      if (
+        (f.dir === "." || !atRoot.has(r.name)) &&
+        !runners.some((x) => x.name === r.name && x.dir === f.dir)
+      )
+        runners.push({ ...r, dir: f.dir });
   const unsupported = folders.flatMap((f) =>
     UNSUPPORTED.filter((n) => has(f, n)).map((n) => (f.dir === "." ? n : `${f.dir}/${n}`)),
   );
