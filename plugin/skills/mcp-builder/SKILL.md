@@ -5,7 +5,10 @@ description: Use when building a Model Context Protocol server or tool integrati
 
 # verid:mcp-builder
 
-This optional skill brings ClaudeKit's mcp-builder reference material into the verid plugin. Read `claudekit-original.md` for its topic index, then open only the matching bundled reference or script. Paths in that original file are relative to this skill directory.
+Start with matching filenames and headings under `references/` or the bundled
+resource/script folders. Open only the material needed for the current question.
+`claudekit-original.md` is an optional broader topic index; resolve its paths from
+this skill directory.
 
 Design tools around user workflows, clear errors, scoped credentials, and testable contracts.
 

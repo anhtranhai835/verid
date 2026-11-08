@@ -118,6 +118,29 @@ it("keeps security credential guides readable while protecting actual secrets", 
 
 const python = spawnSync("python", ["--version"], { encoding: "utf8", windowsHide: true });
 it.skipIf(python.error || python.status !== 0)(
+  "reads bounded document excerpts with source provenance",
+  () => {
+    const result = spawnSync(
+      "python",
+      [
+        "-X",
+        "utf8",
+        "-B",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        join(root, "plugin/skills/context-engineering/scripts/tests"),
+        "-p",
+        "test_document_reader.py",
+      ],
+      { encoding: "utf8", windowsHide: true },
+    );
+    expect(result.status, result.stdout + result.stderr).toBe(0);
+    expect(result.stderr).toContain("Ran 8 tests");
+  },
+);
+it.skipIf(python.error || python.status !== 0)(
   "runs the database backup and restore regression suite",
   () => {
     const folder = project();

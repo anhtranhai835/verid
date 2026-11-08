@@ -243,7 +243,7 @@ describe("provider instruction blocks", () => {
     for (const line of [
       "- Never bypass or work around a denial: read its reason and follow it.",
       "- (Claude Code) Research, then spec: verid:ba in the main conversation.",
-      "- (Codex) Research, then spec: verid:ba → S/ba/SKILL.md (main agent).",
+      "- (Codex) Research/spec: verid:ba → S/ba/SKILL.md.",
     ])
       expect(
         lines.filter((l) => l === line),
@@ -260,7 +260,7 @@ describe("provider instruction blocks", () => {
     });
     if (!parsed.ok) throw new Error(parsed.detail);
     const note =
-      "- Codex spawns only agents defined in its config, such as verid_reviewer; the verid:* agents belong to the Claude Code plugin.";
+      "- Codex spawns configured agents only; verid:* agents are Claude Code plugin entries.";
     expect(
       (["claude-code", "codex"] as const).map((provider) =>
         renderInstructions(parsed.manifest, provider).split("\n").includes(note),
@@ -276,7 +276,7 @@ describe("provider instruction blocks", () => {
     });
     if (!parsed.ok) throw new Error(parsed.detail);
     const line =
-      "- On friction with verid itself (a confusing denial, an unclear skill, a stuck drive, a workaround), the main thread appends a dated entry to .verid/feedback.md: friction, gap or bug; the skill, code or command; what happened; a suggestion. Subagents report it to main. Never edit or remove entries or copy source, test output, transcripts or secrets into it; project bugs belong elsewhere.";
+      "- For verid friction, main appends date, kind (friction/gap/bug), skill/code/command, problem and suggestion to .verid/feedback.md; helpers report to main. Never edit/remove entries or copy source, test output, transcripts or secrets. Project bugs belong elsewhere.";
     expect(
       (["claude-code", "codex"] as const).map((provider) =>
         renderInstructions(parsed.manifest, provider).split("\n").includes(line),

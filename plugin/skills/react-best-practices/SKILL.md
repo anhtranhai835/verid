@@ -5,7 +5,13 @@ description: Use for React and Next.js performance reviews and implementation.
 
 # verid:react-best-practices
 
-This optional skill brings ClaudeKit's react-best-practices reference material into the verid plugin. Read `claudekit-original.md` for its topic index, then open only the matching bundled reference or script. Paths in that original file are relative to this skill directory.
+Select matching files under `rules/`: async-* for waterfalls, bundle-* for bundle
+size, server-* for server work, client-* for client fetching, rerender-* for React
+updates, rendering-* for rendering, js-* for hot JavaScript paths and advanced-*
+for specialized patterns. Use `rules/_sections.md` if the category is unclear.
+Open only relevant rules and verify their assumptions against actual code.
+`AGENTS.md` is the compiled full catalog; use it for a full audit only.
+`claudekit-original.md` remains optional background.
 
 Read only the relevant rules; measure the actual bottleneck before applying an optimization.
 

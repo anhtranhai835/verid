@@ -4,9 +4,11 @@ Based on the supplied 10-repo-structure.md, adapted to verid's providers and TDD
 The project workspace is .verid/; runtime evidence stays in .verid/.state/.
 With resources: repo, run the verid commands below as `node .verid/verid.mjs <command>`
 from the project root. The local CLI and its runtime dependencies are bundled.
+For each request or new symptom, use `.verid/templates/skill-routing.md` to select
+the matching skills and agents. Load only the relevant branch, then resume this flow.
 
 1. Baseline: inventory repos, existing code, runners and risks in artifacts/00-baseline/. For an existing project, record adoption scope before proposing changes.
-2. Research: read .verid/docs/; write research evidence in artifacts/01-research/ and the agreed summary in .verid/research.md.
+2. Research: inventory .verid/docs/ read-only. For DOCX/PDF or large inputs follow verid:context-engineering's document-reading guide: outline, search, then read exact source sections. Account for all sections/pages as read and mapped to requirements, irrelevant with a reason, or unresolved; record source versions and coverage in .verid/research.md, with longer evidence in artifacts/01-research/. Resolve missing evidence affecting scope before approval.
 3. Discovery: map users, scope, dependencies and delivery modules in artifacts/02-discovery/.
 4. Module dossiers: run `verid module <kebab-name>` for every module. Fill ba/, ui/, spec/, tests/ and security/ using .verid/templates/module/. Every statement needs a source or an explicit clarification. For inapplicable UI/security items record the reason.
 5. Specification: publish all agreed REQ-n, NFR-n and SEC-n lines with globally unique IDs in .verid/spec.md. Link each to the module dossier. Include contracts, data, errors and observable boundaries.
@@ -19,6 +21,15 @@ from the project root. The local CLI and its runtime dependencies are bundled.
 
 Templates are drafts. Do not claim an approval, HMAC signature, scan, test run or review merely because a folder/file exists.
 The approvals/ folder is reserved for human-readable decision records; verid's actual approvals are in .state/, not signed exports.
+
+## Context between stages
+
+Load applicable instructions once per context and reload changed or missing parts.
+Pass module/AC IDs, paths, exact sections, source versions and evidence gaps between
+stages; read cited sources and expand through relevant contracts and exceptions.
+Use verid:context-engineering's flow-context guide for large handoffs. Initial BA and
+product review still cover their full scope. Keep reviewer contexts fresh, all gates
+and role boundaries, and the complete review evidence. Use peek within the TDD loop.
 
 ## Resources
 

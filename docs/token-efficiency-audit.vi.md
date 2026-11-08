@@ -16,7 +16,8 @@ Cần phân biệt hai yêu cầu:
 - Đổi context của AI không bảo đảm câu trả lời giống nguyên văn. Mục tiêu cần kiểm
   chứng là cùng AC, chất lượng code, khả năng phát hiện lỗi và quy tắc an toàn.
 
-Các tối ưu bên dưới là đề xuất sau đo đạc, chưa phải thay đổi prompt đã áp dụng.
+Các số liệu và đề xuất bên dưới là baseline ngày 2026-11-08. Phần cập nhật ở cuối
+ghi rõ những thay đổi đã triển khai sau đó; các đề xuất còn lại chưa được áp dụng.
 
 ## Số liệu hiện tại
 
@@ -165,3 +166,41 @@ paths, trạng thái evidence, findings và bước tiếp theo. Người dùng 
 Nên bắt đầu với index của UI/edge-cases, đọc instruction một lần trong mỗi context,
 và status/module packet ngắn. Sau đó mới thử thay đổi cách dispatch writer và cách
 chia review packet. Chưa có benchmark usage để cam kết mức giảm token tổng thể.
+
+## Cập nhật triển khai 2026-11-09
+
+- Thêm `plugin/templates/skill-routing.md`: mỗi skill trong 25 skills và mỗi agent
+  trong 14 agents đều có tình huống kích hoạt và đường trở lại flow chính. Generated
+  instructions dẫn tới index này cho cả classic/modular/kanban, cả hai providers và
+  hai chế độ resources. Tìm trigger/heading rồi chỉ nạp nhánh liên quan; dùng lại
+  phần routing còn trong context, chỉ mở toàn bộ index khi chưa rõ nhánh cần chọn.
+- Khi user báo lỗi, vào debugging trước; khi điều tra bế tắc hoặc các cách thử liên tục
+  thất bại, dùng một kỹ thuật problem-solving. Helper chỉ phục vụ một câu hỏi cụ thể;
+  Codex main xử lý vai trò chưa cấu hình. Không gọi toàn bộ catalog để tiết kiệm token.
+- Native entries cho phép dùng lại instructions đang có trong context. Vẫn đọc lại khi
+  thay đổi hoặc mất context, và vẫn nạp đủ quy tắc cho agent mới. Rút gọn cách diễn đạt
+  của generated instructions, giữ quy tắc feedback, vai trò và gates.
+- Context-engineering có guide đọc tài liệu và handoff riêng; không còn yêu cầu mở
+  original để tìm topic. BA ghi coverage và version/hash nguồn; design và agents dùng
+  source map rồi mở đúng section, mở rộng khi kiểm tra phụ thuộc và ngoại lệ.
+- `document_reader.py` trích DOCX/PDF/Markdown/TXT cục bộ, trả outline/search/đoạn đọc
+  theo block ID, SHA-256 và locator. Mặc định tối đa 6.000 ký tự **nội dung excerpt**,
+  chưa tính JSON metadata. Có phân trang, offset và báo phần cắt rõ ràng; không ghi
+  file, không có persistent cache, không tự cài dependency. PDF dùng pypdf nếu có;
+  trang không có chữ, lỗi trích xuất và nội dung DOCX chưa xử lý đều cần theo dõi.
+- UI dùng script tìm dữ liệu theo câu hỏi; React mở nhóm rule phù hợp. Bản original
+  UI có 44.293 Unicode code points sau chuẩn hóa LF, nay là background tùy nhu cầu.
+  Bốn lệnh tìm UI mẫu trả 1.129–1.508 ký tự JSON mỗi lệnh; vẫn phải cộng wrapper,
+  routing, nguồn được mở thêm và lịch sử context khi đánh giá chi phí cả task.
+- Chín wrapper domain còn lại tìm tên file/heading phù hợp trước; original là index
+  mở khi cần, thay cho bước đọc toàn bộ bắt buộc. Giữ nguyên các bản tham khảo, license,
+  hướng dẫn chuyên biệt và TDD/permission rules.
+
+Đã thêm kiểm tra graph phân phối để phát hiện skill/agent thiếu route hoặc link hỏng,
+và kiểm thử reader bằng DOCX, PDF thật được tạo với dữ liệu tổng hợp, Unicode, bảng,
+phần đọc tiếp và nguồn thay đổi. Không thay TDD gates, review freshness hay cơ chế
+phân quyền. Chưa có provider usage để công bố phần trăm tiết kiệm token hay chi phí.
+
+Với resources repo, cook vẫn giữ nguyên các bản skill/agent/workflow đã tùy chỉnh.
+File mới được bổ sung, nhưng nội dung cũ cần được đồng bộ có chọn lọc để dùng đầy đủ
+flow mới; không có migration ghi đè tùy chỉnh tự động.

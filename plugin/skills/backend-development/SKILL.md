@@ -5,7 +5,10 @@ description: Use for API, authentication, service, and backend architecture work
 
 # verid:backend-development
 
-This optional skill brings ClaudeKit's backend-development reference material into the verid plugin. Read `claudekit-original.md` for its topic index, then open only the matching bundled reference or script. Paths in that original file are relative to this skill directory.
+Start with matching filenames and headings under `references/` or the bundled
+resource/script folders. Open only the material needed for the current question.
+`claudekit-original.md` is an optional broader topic index; resolve its paths from
+this skill directory.
 
 Read the technology or API reference that matches the repository stack; check boundaries and persistence paths before editing.
 

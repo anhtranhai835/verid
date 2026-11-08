@@ -5,7 +5,10 @@ description: Use for browser, accessibility, visual, load, and integration test 
 
 # verid:web-testing
 
-This optional skill brings ClaudeKit's web-testing reference material into the verid plugin. Read `claudekit-original.md` for its topic index, then open only the matching bundled reference or script. Paths in that original file are relative to this skill directory.
+Start with matching filenames and headings under `references/` or the bundled
+resource/script folders. Open only the material needed for the current question.
+`claudekit-original.md` is an optional broader topic index; resolve its paths from
+this skill directory.
 
 Choose a test layer that verifies the AC without duplicating implementation details; record a real run through verid taste.
 

@@ -5,13 +5,12 @@ description: Use when an approved verid module is ready for implementation.
 
 # verid: build
 
-State assumptions, clarify ambiguity and keep edits local. Choose the smallest
-solution that meets observable tests.
+Clarify assumptions; keep edits local and meet the AC with observable tests.
 
 Read verid:tdd once for this build loop; use verid:debugging for unclear failures.
 Settle ambiguous ACs through verid:ba in the main conversation.
 
-Use `verid menu` for the open module and `verid peek` for cycle and uncovered ACs.
+Use `verid peek` for cycle and uncovered ACs; `verid menu` when module-wide status is needed.
 Read `.verid/log/<module>.md` first if present, then `.verid/manifest.yaml` for roles,
 repos and globs. Follow relevant `.verid/rules/` (advisory).
 
@@ -45,7 +44,9 @@ The main conversation alone writes the log; agents report to it. One entry per A
 Never rewrite earlier entries, and keep source, test output, secrets and personal data
 out of the log.
 
-Dispatch identifiers and paths; agents read the documents. Name verid:tdd (and its
+Dispatch identifiers, paths and exact sections; agents read those and expand through
+relevant dependencies. Use verid:context-engineering's `references/flow-context.md`
+for large handoffs. Name verid:tdd (and its
 path for custom agents), write responsibility and relevant interfaces. Mapped
 tester/coder roles own their writes; on Codex or without mappings, main writes.
 

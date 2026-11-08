@@ -48,7 +48,7 @@ export function repoResources(project: string, providers: Manifest["providers"])
       .replace(/^(skills:[\s\S]*?)(?=^[\w-]+:|$(?![\s\S]))/m, (field) =>
         field.replace(/\bverid:([a-z][a-z-]*)\b/g, "verid-$1"),
       );
-    const body = `Read ${file.rel} from the project root and follow its instructions. Resolve supporting files relative to that file's folder. In this repo, calls named verid:<name> use the local verid-<name> skill or agent. Run verid commands as node .verid/verid.mjs <command> from the project root. Read AGENTS.md and .verid/workflow.md when present before starting.\n`;
+    const body = `Read ${file.rel} unless already current in context; follow it and resolve supporting files from its folder. verid:<name> means local verid-<name>. Run CLI commands as node .verid/verid.mjs <command> from the project root. Load AGENTS.md and .verid/workflow.md if present and not already in this context; reread changed or lost instructions.\n`;
     if (providers.includes("claude-code"))
       files.push({
         rel: skill ? `.claude/skills/verid-${name}/SKILL.md` : `.claude/agents/verid-${name}.md`,

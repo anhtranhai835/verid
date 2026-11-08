@@ -96,6 +96,7 @@ export function renderInstructions(
 ): string {
   const agents = (role: RoleName): string => manifest.roles?.[role]?.join(", ") ?? "main";
   const skill = (name: string): string => `${skillsRoot.replaceAll("\\", "/")}/${name}/SKILL.md`;
+  const routing = `${skillsRoot.replaceAll("\\", "/")}/../templates/skill-routing.md`;
   const codex = provider === "codex";
   const extras =
     [...(manifest.allowed_skills ?? []), ...(manifest.allowed_agents ?? [])].length > 0;
@@ -128,6 +129,7 @@ export function renderInstructions(
     "- PLATED: all tests pass. Refactor without new behaviour; the next test starts RAW.",
     "",
     "### Workflow",
+    `- For each new request or symptom, follow ${routing}: choose matching skills and mapped agents; load only relevant branches.`,
     ...(manifest.workflow === "kanban"
       ? [
           "- Kanban: spec → task plan → developer selection in verid board → a fresh AI session for exactly one task → TDD → independent review → developer serve → stop. Never select, approve or start the next task yourself.",
@@ -145,13 +147,13 @@ export function renderInstructions(
     `- New developer or workspace: verid:onboard${codex ? ` → ${skill("onboard")}` : ""} reads repos, health and status, and writes nothing.`,
     ...(codex
       ? [
-          `- Research, then spec: verid:ba → ${skill("ba")} (main agent).`,
-          `- Design: verid:design → ${skill("design")} (main agent).`,
-          `- Plan: verid:plan → ${skill("plan")} (main agent).`,
+          `- Research/spec: verid:ba → ${skill("ba")}.`,
+          `- Design: verid:design → ${skill("design")}.`,
+          `- Plan: verid:plan → ${skill("plan")}.`,
           `- Build: verid:build → ${skill("build")}; the main agent writes tests and code under the TDD gate.`,
           `- TDD: verid:tdd → ${skill("tdd")}; debugging: verid:debugging → ${skill("debugging")}.`,
           `- Review/serve: verid:review → ${skill("review")}; spawn verid_reviewer with agent_type and fork_turns: "none", module/AC identifiers, plan/design paths and .verid/review/work.md from verid menu --commits --file. Reviewer mappings: ${agents("reviewer")}.`,
-          "- Codex spawns only agents defined in its config, such as verid_reviewer; the verid:* agents belong to the Claude Code plugin.",
+          "- Codex spawns configured agents only; verid:* agents are Claude Code plugin entries.",
         ]
       : [
           "- Research, then spec: verid:ba in the main conversation.",
@@ -195,7 +197,7 @@ export function renderInstructions(
         ]
       : []),
     "### Feedback on verid",
-    "- On friction with verid itself (a confusing denial, an unclear skill, a stuck drive, a workaround), the main thread appends a dated entry to .verid/feedback.md: friction, gap or bug; the skill, code or command; what happened; a suggestion. Subagents report it to main. Never edit or remove entries or copy source, test output, transcripts or secrets into it; project bugs belong elsewhere.",
+    "- For verid friction, main appends date, kind (friction/gap/bug), skill/code/command, problem and suggestion to .verid/feedback.md; helpers report to main. Never edit/remove entries or copy source, test output, transcripts or secrets. Project bugs belong elsewhere.",
     END,
   ].join("\n");
   return manifest.resources === "repo"

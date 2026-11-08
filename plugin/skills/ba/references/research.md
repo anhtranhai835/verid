@@ -24,6 +24,11 @@ under a minute", not "fast checkout".
 The documents, code and conversations this research rests on, one line each, with what
 each one settled.
 
+For supplied documents, include source hash/version, section/page ranges and coverage:
+read → requirement IDs, irrelevant → reason, or unresolved → missing evidence.
+Link a longer inventory from artifacts/01-research/ when needed. An extraction warning
+or unread page stays unresolved; a search hit or file hash does not prove full coverage.
+
 ## Scope
 
 In scope and out of scope, as two short lists. Anything unclear goes to Open questions.

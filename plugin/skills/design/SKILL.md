@@ -6,7 +6,8 @@ description: Use when a verid project needs an agreed design before planning mod
 # verid: design
 
 Start with verid:ba in the main conversation; let the developer describe the idea first.
-Read `.verid/research.md`, `.verid/spec.md` and `.verid/docs/` first. When the request
+Read agreed research/spec and their source map; open cited `.verid/docs/` sections as
+needed, checking source versions. When the request
 leaves nothing open, open with a short design to approve; otherwise lay out 2–3 approaches
 with tradeoffs and your pick, and let the developer choose.
 
@@ -23,8 +24,3 @@ Document writers run one at a time.
 
 In auto drive, the developer reads research/spec/design and runs `verid order` to sign them.
 Design changes are audited; module plan signatures still apply. Continue with verid:plan.
-
-State assumptions and ask about ambiguity.
-Choose the simplest adequate design.
-Keep changes focused on the agreed scope.
-Define success in observable terms.

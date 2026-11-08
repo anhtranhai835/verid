@@ -3,7 +3,7 @@ export type Architecture = (typeof ARCHITECTURES)[number];
 
 /** Cook's note in `.verid/docs/`, the folder for the developer's own requirement documents. */
 export const DOCS_NOTE =
-  "# Project documents\n\nPut the documents you already have here: requirements, BRD/PRD, specifications, designs, exported PDFs. verid:ba reads them before asking questions and cites them in .verid/research.md and .verid/spec.md. Agents may only read this folder; only the developer adds or edits files in it. Prefer Markdown or PDF; export other formats.\n";
+  "# Project documents\n\nPut your requirements, BRD/PRD, specifications and designs here. verid:ba inventories them before asking questions and cites their sections/pages in .verid/research.md and .verid/spec.md. Agents only read this folder; only the developer adds or edits files. For DOCX, text PDF and Markdown/TXT, verid:context-engineering provides a local outline/search/section reader. PDF needs an available pypdf installation; scans need OCR or visual inspection. Export other formats outside this folder with source provenance. Track every section as read, irrelevant with a reason, or unresolved; summaries never replace missing source evidence.\n";
 
 /** Project-owned guidance. Hooks protect TDD and their own integrity; these rules are audited. */
 export function projectRules(architecture: Architecture): Record<string, string> {

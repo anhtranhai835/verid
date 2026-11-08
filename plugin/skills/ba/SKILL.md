@@ -5,9 +5,10 @@ description: Use when verid requirements or scope need research, clarification o
 
 # verid: understand the work
 
-Read the developer's `.verid/docs/` first (read-only), then the request, existing
-code and tests. Separate evidence, assumptions and open choices. Talk with the developer in
-the main thread.
+Inventory `.verid/docs/` first (read-only), then the request, code and tests. For
+DOCX/PDF or large inputs use verid:context-engineering's `references/document-reading.md`:
+outline, search, read cited sections, and account for every source section before spec.
+Separate evidence, assumptions and open choices. Talk in the main thread.
 
 Ask only when the answer changes what gets built and nothing read answers it; otherwise
 state your call and reason as a proposal the developer can correct. Until you know why they
@@ -33,7 +34,4 @@ Route agreed AC changes through verid:plan; the developer orders modules.
 During build, settle ambiguous ACs here first; in signed auto drive, put a question for the
 developer in `.verid/blocked.md` and stop.
 
-State uncertainty and ask about ambiguity.
-Choose the smallest useful scope.
-Change only what the request needs.
-Agree observable success before implementation.
+Keep scope minimal and agree observable success before implementation.

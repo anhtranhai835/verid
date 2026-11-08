@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { decideDispatch } from "../../src/core/dispatch.js";
 import { renderInstructions } from "../../src/core/instructions.js";
@@ -11,6 +11,45 @@ const read = (file: string) => readFileSync(join(root, file), "utf8").replaceAll
 const repo = { path: ".", source_globs: ["src/**"], test_globs: ["test/**"] };
 
 describe("self-contained verid skills", () => {
+  it("routes every distributed skill and agent through an existing workflow entry", () => {
+    const routing = read("plugin/templates/skill-routing.md");
+    const links = [
+      ...routing.matchAll(/\]\((\.\.\/(skills|agents)\/([^/)]+)(?:\/SKILL\.md|\.md))\)/g),
+    ];
+    for (const [, path] of links)
+      expect(existsSync(resolve(root, "plugin/templates", path!)), path).toBe(true);
+    const skills = readdirSync(join(root, "plugin/skills")).filter((name) =>
+      existsSync(join(root, "plugin/skills", name, "SKILL.md")),
+    );
+    const agents = readdirSync(join(root, "plugin/agents"))
+      .filter((name) => name.endsWith(".md"))
+      .map((name) => name.slice(0, -3));
+    for (const [kind, names] of [
+      ["skills", skills],
+      ["agents", agents],
+    ] as const)
+      expect(
+        [...new Set(links.filter((link) => link[2] === kind).map((link) => link[3]))].sort(),
+        kind,
+      ).toEqual([...names].sort());
+    for (const provider of ["claude-code", "codex"] as const)
+      for (const workflow of ["classic", "modular", "kanban"] as const)
+        for (const resources of ["installed", "repo"] as const) {
+          const parsed = parseManifest({
+            schemaVersion: 1,
+            mode: "prep",
+            providers: [provider],
+            workflow,
+            resources,
+            repos: [repo],
+          });
+          if (!parsed.ok) throw new Error(parsed.detail);
+          const skillsRoot = resources === "repo" ? ".verid/skills" : "C:/installed/plugin/skills";
+          const instructions = renderInstructions(parsed.manifest, provider, skillsRoot);
+          expect(instructions).toContain(`${skillsRoot}/../templates/skill-routing.md`);
+        }
+  });
+
   it("distributes MIT provenance with each skill derived from superpowers", () => {
     const rows = ["tdd", "debugging", "design", "plan", "review"];
     for (const name of rows) {

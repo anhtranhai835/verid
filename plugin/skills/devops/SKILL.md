@@ -5,7 +5,10 @@ description: Use for CI, containers, cloud infrastructure, and deployment design
 
 # verid:devops
 
-This optional skill brings ClaudeKit's devops reference material into the verid plugin. Read `claudekit-original.md` for its topic index, then open only the matching bundled reference or script. Paths in that original file are relative to this skill directory.
+Start with matching filenames and headings under `references/` or the bundled
+resource/script folders. Open only the material needed for the current question.
+`claudekit-original.md` is an optional broader topic index; resolve its paths from
+this skill directory.
 
 Use only the platform relevant to the project; keep deployment actions under the developer's explicit authorization.
 
