@@ -1,7 +1,9 @@
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import { repoResources } from "../../src/adapters/repo-resources.js";
 import { decideDispatch } from "../../src/core/dispatch.js";
 import { renderInstructions } from "../../src/core/instructions.js";
 import { defaultRoles, parseManifest, renderManifest } from "../../src/core/manifest.js";
@@ -48,6 +50,30 @@ describe("self-contained verid skills", () => {
           const instructions = renderInstructions(parsed.manifest, provider, skillsRoot);
           expect(instructions).toContain(`${skillsRoot}/../templates/skill-routing.md`);
         }
+  });
+
+  it("reaches every distributed skill on Antigravity through a wrapper or the router", () => {
+    const router = read("plugin/antigravity/skills/verid-router/SKILL.md");
+    const wrapped = readdirSync(join(root, "plugin/antigravity/skills"));
+    const routed = new Set([...router.matchAll(/<SKILLS_ROOT>\/([\w-]+)\//g)].map((m) => m[1]));
+    for (const name of routed)
+      expect(existsSync(join(root, "plugin/skills", name!, "SKILL.md")), name).toBe(true);
+    const skills = readdirSync(join(root, "plugin/skills")).filter((name) =>
+      existsSync(join(root, "plugin/skills", name, "SKILL.md")),
+    );
+    expect(
+      skills.filter((name) => !routed.has(name) && !wrapped.includes(`verid-${name}`)),
+    ).toEqual([]);
+  });
+
+  it("keeps skill script tests and coverage artifacts out of distributed resources", () => {
+    const files = repoResources(mkdtempSync(join(tmpdir(), "verid-res-")), ["claude-code"]);
+    const rels = files.map((f) => f.rel);
+    expect(rels.filter((rel) => /\/scripts\/tests\/|\.coverage$|__pycache__/.test(rel))).toEqual(
+      [],
+    );
+    expect(rels).toContain(".verid/skills/databases/scripts/db_migrate.py");
+    expect(rels).toContain(".verid/templates/module/tests/test-plan.md");
   });
 
   it("distributes MIT provenance with each skill derived from superpowers", () => {

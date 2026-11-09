@@ -5,6 +5,7 @@ import { checkSetupPath } from "./workspace.js";
 import type { Manifest } from "../core/manifest.js";
 
 export type ResourceFile = { rel: string; content: Buffer | string };
+const DEV_ONLY = new Set([".coverage", "__pycache__", "node_modules"]);
 export const skillsFor = (manifest: Pick<Manifest, "resources">): string =>
   manifest.resources === "repo" ? ".verid/skills" : installedSkills();
 
@@ -14,6 +15,9 @@ export function resourceTree(source: string, target: string): ResourceFile[] {
     .sort((a, b) => a.name.localeCompare(b.name))
     .flatMap((entry): ResourceFile[] => {
       if (entry.isSymbolicLink()) throw new Error(`Linked resource: ${join(source, entry.name)}`);
+      // A skill script's own test suite and coverage output are verid's, never the agent's.
+      if (DEV_ONLY.has(entry.name) || (entry.name === "tests" && source.endsWith("scripts")))
+        return [];
       if (entry.isDirectory())
         return resourceTree(join(source, entry.name), `${target}/${entry.name}`);
       return [{ rel: `${target}/${entry.name}`, content: readFileSync(join(source, entry.name)) }];

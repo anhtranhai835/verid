@@ -30,6 +30,7 @@
     "dist",
     "i18n",
     "plugin/skills",
+    "!plugin/skills/*/scripts/tests",
     "plugin/agents",
     "plugin/codex",
     "plugin/antigravity",

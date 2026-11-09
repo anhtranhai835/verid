@@ -29,3 +29,7 @@ coverage/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# python coverage artifacts
+.coverage
+__pycache__/
