@@ -69,6 +69,7 @@ import {
   writeState,
 } from "../adapters/state-store.js";
 import { repoResources, resourceTree, skillsFor } from "../adapters/repo-resources.js";
+import { antigravityPluginDir, antigravityPluginFiles } from "../adapters/antigravity-settings.js";
 
 import type { CliResult } from "./test.js";
 
@@ -155,7 +156,7 @@ export async function initCommand(
 export async function servedLine(project: string): Promise<string> {
   const manifest = await loadManifest(project, { readOnly: true });
   if (manifest && !manifest.providers.includes("claude-code"))
-    return `🍽️  ${bilingual("cook.codex_served", {})}`;
+    return `🍽️  ${bilingual(manifest.providers.includes("codex") ? "cook.codex_served" : "cook.antigravity_served", {})}`;
   const remix = manifest?.mode === "remix";
   const first = remix && readState(statePaths(project)).baseline === null;
   return `🍽️  ${bilingual(first ? "cook.served_remix" : "cook.served", {})}`;
@@ -168,9 +169,13 @@ export function setupDoneLine(layout: Layout, providers: readonly Provider[]): s
       ? layout === "workspace"
         ? "workspace.done"
         : "init.done"
-      : layout === "workspace"
-        ? "workspace.codex_done"
-        : "init.codex_done",
+      : providers.includes("codex")
+        ? layout === "workspace"
+          ? "workspace.codex_done"
+          : "init.codex_done"
+        : layout === "workspace"
+          ? "workspace.antigravity_done"
+          : "init.antigravity_done",
     { instructions: providers.includes("claude-code") ? "AGENTS.md  CLAUDE.md" : "AGENTS.md" },
   );
 }
@@ -224,7 +229,7 @@ export async function planCook(
   const language = flags.lang === undefined ? undefined : LANGS.find((l) => l === flags.lang);
   if (flags.lang !== undefined && !language) throw invalid("--lang", "must be vi or en");
   if (flags.providers?.some((provider) => !PROVIDERS.some((known) => known === provider)))
-    throw invalid("--provider", "must be claude-code or codex");
+    throw invalid("--provider", "must be claude-code, codex or antigravity");
   const providers: Provider[] =
     existing?.providers ??
     (flags.providers?.length ? ([...new Set(flags.providers)] as Provider[]) : ["claude-code"]);
@@ -768,6 +773,40 @@ export function setupCodexCommand(): CliResult {
   return {
     exit: 0,
     stdout: `${setupPreview(plan.files, [bilingual("cook.codex_trust", {})]).join("\n")}\n`,
+    stderr: "",
+  };
+}
+
+/**
+ * Installs verid's Antigravity plugin for this user: hook entries, skills, agents and the bundle
+ * they run. Files it wrote before are replaced; nothing else in the folder is touched.
+ */
+export function setupAntigravityCommand(): CliResult {
+  if (inAgentShell()) throw new VeridError("VERID_BURNT_INIT_IN_AGENT");
+  const dir = antigravityPluginDir();
+  const files = antigravityPluginFiles();
+  for (const file of files) checkSetupPath(dir, file.rel);
+  const count = { created: 0, updated: 0, kept: 0 };
+  for (const file of files) {
+    const path = join(dir, file.rel);
+    const content = Buffer.from(file.content);
+    const before = existsSync(path) ? readFileSync(path) : null;
+    if (before !== null && before.equals(content)) {
+      count.kept++;
+      continue;
+    }
+    count[before === null ? "created" : "updated"]++;
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, content);
+  }
+  return {
+    exit: 0,
+    stdout: `${bilingual("setup.antigravity_done", {
+      dir: dir.replaceAll("\\", "/"),
+      created: String(count.created),
+      updated: String(count.updated),
+      kept: String(count.kept),
+    })}\n`,
     stderr: "",
   };
 }

@@ -353,6 +353,7 @@ Cách viết gọn `verid` bên dưới dùng được khi chọn cài global.
 | `verid garnish`                       | Bắt đầu phiên chỉ refactor.                                               |
 | `verid halt [lý-do]` / `verid resume` | Dừng lệnh gọi tool của agent hoặc tiếp tục.                               |
 | `verid setup-codex`                   | Thiết lập reviewer đã cài trong config Codex của user.                    |
+| `verid setup-antigravity`             | Cài hoặc cập nhật plugin Antigravity của verid cho user này.              |
 
 Cook, upgrade, stock, order, serve, garnish, halt và resume do developer chạy ở
 terminal của mình. Agent dùng taste, menu, peek và doctor. Với auto drive đã ký,
@@ -369,7 +370,7 @@ verid cook --mode prep --workflow modular --resources repo --provider codex --la
 | `--mode`                                     | `prep`, `recipe` hoặc `remix`.                                           |
 | `--workflow`                                 | `classic` hoặc `modular`.                                                |
 | `--resources`                                | `installed` hoặc `repo`.                                                 |
-| `--provider`                                 | `claude-code` hoặc `codex`; lặp flag để chọn cả hai.                     |
+| `--provider`                                 | `claude-code`, `codex` hoặc `antigravity`; lặp flag để chọn nhiều.       |
 | `--drive`                                    | `human` hoặc `auto` cho prep/recipe.                                     |
 | `--architecture`                             | `ddd`, `clean`, `layered` hoặc `none`.                                   |
 | `--layout`                                   | `monorepo` hoặc `workspace`; bỏ trống để tự nhận diện.                   |
@@ -497,6 +498,19 @@ Hook trong repo có test tích hợp cho order, RED/GREEN, review chỉ đọc v
 lực approval sau khi sửa spec module. Kiểm tra offline với Codex CLI `0.166.0`
 cũng xác nhận input mà model nhìn thấy có chỉ dẫn project và skills repo.
 Xem [ghi chú kiểm chứng](docs/modular-cook.md#dùng-với-codex).
+
+### Thiết lập Antigravity
+
+1. Chạy `verid setup-antigravity` một lần trên mỗi máy, và chạy lại sau mỗi lần cập nhật
+   verid. Lệnh cài plugin vào `~/.gemini/config/plugins/verid/`. Khởi động lại Antigravity.
+2. Chạy cook với `--provider antigravity` (thêm `--provider claude-code` nếu dùng cả hai).
+3. Chạy `verid doctor` và xử lý các phát hiện.
+4. Để main viết test/code; gọi `verid-reviewer` (và `verid-security`) bằng
+   `invoke_subagent` để review. Gõ `/verid peek`, `/verid tip`, `/verid confirm` trong chat.
+
+Lõi verid tự đọc payload hook của Antigravity, nên cùng một bộ luật, cổng TDD và ràng buộc
+review áp dụng như trên Claude Code và Codex. Định dạng payload chưa được đối chiếu với
+fixture ghi lại từ Antigravity thật. Xem [ghi chú tích hợp](docs/antigravity-integration.vi.md).
 
 ### Bảo vệ và audit
 

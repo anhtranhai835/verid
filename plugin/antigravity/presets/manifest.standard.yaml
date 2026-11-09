@@ -1,28 +1,17 @@
-# Preset 2: Standard Antigravity Mode (Recommended for Medium Features & New Modules)
-# - Full EARS traceability (`spec.md` -> `design.md` -> `plan.md` -> `AC-n` JUnit tests)
-# - Single-writer TDD on `main` (no split tester/coder subagents per AC — saves ~70% tokens)
-# - Independent read-only review via `verid-reviewer` subagent before `verid serve`
-version: 1
-mode: strict
-drive: human
-workflow: classic
-resources: plugin
+# Standard (new modules and medium features). Prefer generating it:
+#   verid cook --provider antigravity --mode prep
+# Copy to .verid/manifest.yaml, then run verid cook in your own terminal.
+# - Research, spec, design and plan, then verid order for each module.
+# - The main agent is the single writer under the TDD gate: no tester/coder subagent per AC.
+# - One read-only verid-reviewer subagent before verid serve.
+schemaVersion: 1
+mode: prep
+providers: ["antigravity"]
+architecture: ddd
 roles:
-  reviewer:
-    - verid:reviewer
+  reviewer: ["verid-reviewer"]
 repos:
-  - name: app
-    path: .
-    role: fullstack
-    test_cmd: npx vitest run --reporter=default --reporter=junit --outputFile=.verid/.state/junit.xml
-    junit_path: .verid/.state/junit.xml
-    source_globs:
-      - "src/**"
-    test_globs:
-      - "test/**"
-      - "tests/**"
-      - "**/*.test.*"
-      - "**/*.spec.*"
-    e2e_globs:
-      - "e2e/**"
-      - "**/*.e2e.*"
+  - path: "."
+    source_globs: ["src/**"]
+    test_globs: ["**/test/**", "**/tests/**", "**/__tests__/**", "**/*.test.*", "**/*.spec.*"]
+    e2e_globs: ["**/e2e/**", "**/*.e2e.*"]

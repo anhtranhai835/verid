@@ -1,30 +1,16 @@
-# Preset 3: Strict + Security Audit Mode (Recommended for Auth, Payments & Critical Systems)
-# - Full EARS traceability + Abuse Cases + Data Classification
-# - Single-writer TDD on `main`
-# - Requires BOTH `verid-reviewer` (correctness) and `verid-security` (OWASP/STRIDE) subagents
-version: 1
-mode: strict
-drive: human
-workflow: classic
-resources: plugin
+# Strict (auth, payments, critical systems). Prefer generating it:
+#   verid cook --provider antigravity --mode prep
+# Copy to .verid/manifest.yaml, then run verid cook in your own terminal.
+# - Everything in standard, plus a read-only verid-security review before verid serve.
+schemaVersion: 1
+mode: prep
+providers: ["antigravity"]
+architecture: ddd
 roles:
-  reviewer:
-    - verid:reviewer
-  security:
-    - verid:security
+  reviewer: ["verid-reviewer"]
+  security: ["verid-security"]
 repos:
-  - name: app
-    path: .
-    role: fullstack
-    test_cmd: npx vitest run --reporter=default --reporter=junit --outputFile=.verid/.state/junit.xml
-    junit_path: .verid/.state/junit.xml
-    source_globs:
-      - "src/**"
-    test_globs:
-      - "test/**"
-      - "tests/**"
-      - "**/*.test.*"
-      - "**/*.spec.*"
-    e2e_globs:
-      - "e2e/**"
-      - "**/*.e2e.*"
+  - path: "."
+    source_globs: ["src/**"]
+    test_globs: ["**/test/**", "**/tests/**", "**/__tests__/**", "**/*.test.*", "**/*.spec.*"]
+    e2e_globs: ["**/e2e/**", "**/*.e2e.*"]

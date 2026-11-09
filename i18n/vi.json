@@ -374,5 +374,13 @@
   "mode.recipe": "Mode recipe: đọc đặc tả sẵn có bằng verid:ba; chốt chỗ thiếu bằng verid:design và verid:plan trước verid:build.",
   "mode.remix": "Mode remix: giữ hành vi hiện có. Developer ghi lỗi cũ bằng `{verid} stock`; viết test đặc tả code chưa có test trước khi sửa (verid:tdd).",
   "session.log": "Đọc nó trước để nối tiếp chỗ phiên trước dừng. Sau mỗi AC, luồng chính ghi thêm một mục có ngày: AC, quyết định và lý do, chỗ lệch kế hoạch, commit và việc tiếp theo. Subagent báo lại cho luồng chính.",
-  "session.menu": "Trạng thái, câu hỏi và audit đầy đủ: `{verid} menu`; chu kỳ: `{verid} peek`."
+  "session.menu": "Trạng thái, câu hỏi và audit đầy đủ: `{verid} menu`; chu kỳ: `{verid} peek`.",
+  "session.single_writer_antigravity": "Antigravity: luồng chính viết test và code dưới cổng TDD; gọi review bằng invoke_subagent tới {reviewer} (security: {security}). Gõ /verid tip và /verid confirm trong ô chat khi cần ngoại lệ.",
+  "cook.antigravity_served": "AGENTS.md đã sẵn sàng cho Antigravity. Cài plugin verid một lần trên mỗi máy bằng `{verid} setup-antigravity`, khởi động lại Antigravity rồi chạy verid doctor.",
+  "init.antigravity_done": "Đã lưu hướng dẫn Antigravity. Commit .verid/manifest.yaml, .verid/.gitignore và {instructions}. Mỗi người chạy `{verid} setup-antigravity` một lần, và `{verid} cook` sau khi clone.",
+  "workspace.antigravity_done": "Đã lưu hướng dẫn workspace cho Antigravity. Commit file dùng chung bên trong .verid/ bằng `git -C .verid`; {instructions} ở gốc workspace thuộc từng máy, cook tạo lại block verid trong đó. Mỗi người chạy `{verid} setup-antigravity` một lần, và `{verid} cook` sau khi clone.",
+  "setup.antigravity_done": "Plugin Antigravity của verid đã nằm ở {dir} ({created} tạo mới, {updated} cập nhật, {kept} giữ nguyên). Khởi động lại Antigravity rồi chạy verid doctor trong từng project.",
+  "doctor.antigravity.plugin_missing": "Plugin Antigravity của verid thiếu hoặc đã cũ trên máy này",
+  "doctor.antigravity.plugin_fix": "chạy verid setup-antigravity trong terminal của bạn rồi khởi động lại Antigravity",
+  "doctor.antigravity.plugin_ok": "= Plugin Antigravity của verid đã được cài"
 }

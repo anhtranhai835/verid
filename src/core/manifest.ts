@@ -112,8 +112,16 @@ export const DEFAULT_TIMEOUT_SEC = 100;
 
 export const MODES = ["prep", "recipe", "remix"] as const;
 export type Mode = (typeof MODES)[number];
-export const PROVIDERS = ["claude-code", "codex"] as const;
+export const PROVIDERS = ["claude-code", "codex", "antigravity"] as const;
 export type Provider = (typeof PROVIDERS)[number];
+/** Hosts whose main thread writes tests and code: subagents are only the read-only roles. */
+export const SINGLE_WRITER_PROVIDERS: readonly Provider[] = ["codex", "antigravity"];
+/** Every provider is a single-writer host: messages name main for the writing roles. */
+export const singleWriterOnly = (providers: readonly Provider[] | undefined): boolean =>
+  !!providers?.length && providers.every((p) => SINGLE_WRITER_PROVIDERS.includes(p));
+/** Codex alone has no security agent: its reviewer also checks security. */
+const hasSecurityAgent = (providers: readonly Provider[]): boolean =>
+  providers.some((p) => p !== "codex");
 
 const allowedName = z.string().check(
   z.minLength(1, nonEmpty),
@@ -245,7 +253,7 @@ const manifestSchema = z
     // A manifest written before modes existed gets told what to add, not "Invalid input".
     mode: z.enum(MODES, { error: "must be prep, recipe or remix" }),
     providers: z._default(
-      z.array(z.enum(PROVIDERS, { error: "must be claude-code or codex" })).check(
+      z.array(z.enum(PROVIDERS, { error: "must be claude-code, codex or antigravity" })).check(
         z.minLength(1, nonEmpty),
         z.refine((values) => new Set(values).size === values.length, {
           error: "must not repeat a provider",
@@ -346,7 +354,7 @@ export const DEFAULT_ROLES: Roles = {
 /** What cook maps for these providers. On Codex alone the reviewer also checks security. */
 export function defaultRoles(providers: readonly Provider[]): Roles {
   const { security: _, ...codexOnly } = DEFAULT_ROLES;
-  return providerRoles(providers.includes("claude-code") ? DEFAULT_ROLES : codexOnly, providers)!;
+  return providerRoles(hasSecurityAgent(providers) ? DEFAULT_ROLES : codexOnly, providers)!;
 }
 
 export function resourceRoles(roles: Roles, resources?: string): Roles {
@@ -354,19 +362,31 @@ export function resourceRoles(roles: Roles, resources?: string): Roles {
     ? Object.fromEntries(
         Object.entries(roles).map(([role, names]) => [
           role,
-          names?.map((name) => name.replace(/^verid:/, "verid-")),
+          names && [...new Set(names.map((name) => name.replace(/^verid:/, "verid-")))],
         ]),
       )
     : roles;
 }
 
-/** Keep Claude mappings while registering the user-layer Codex reviewer. */
+/**
+ * Keep Claude mappings while registering each host's own read-only agents: Codex's user-layer
+ * reviewer, and the reviewer and security agents of verid's Antigravity plugin.
+ */
 export function providerRoles(
   roles: Roles | undefined,
   providers: readonly Provider[],
 ): Roles | undefined {
-  if (!providers.includes("codex")) return roles;
-  return { ...roles, reviewer: [...new Set([...(roles?.reviewer ?? []), "verid_reviewer"])] };
+  const add = (names: string[] | undefined, name: string) => [...new Set([...(names ?? []), name])];
+  let mapped = roles;
+  if (providers.includes("codex"))
+    mapped = { ...mapped, reviewer: add(mapped?.reviewer, "verid_reviewer") };
+  if (providers.includes("antigravity"))
+    mapped = {
+      ...mapped,
+      reviewer: add(mapped?.reviewer, "verid-reviewer"),
+      ...(mapped?.security ? { security: add(mapped.security, "verid-security") } : {}),
+    };
+  return mapped;
 }
 
 export type ParseManifestResult = { ok: true; manifest: Manifest } | { ok: false; detail: string };
@@ -572,7 +592,7 @@ export function renderManifest(
     "# verid manifest: only the developer edits this file. Commit it with the project.",
     "schemaVersion: 1",
     `mode: ${JSON.stringify(mode)} # ${MODES.join(" | ")}`,
-    `providers: ${JSON.stringify(providers)} # claude-code | codex`,
+    `providers: ${JSON.stringify(providers)} # ${PROVIDERS.join(" | ")}`,
     `architecture: ${architecture} # ddd | clean | layered | none`,
     ...(options.workflow ? [`workflow: ${options.workflow} # classic | modular | kanban`] : []),
     ...(options.resources ? [`resources: ${options.resources} # installed | repo`] : []),
@@ -639,17 +659,17 @@ export function manifestUpgrade(
   // Test globs the developer chose (--tests) share none with the defaults: they stay as chosen.
   const ownTests = !repo.test_globs.some((g) => TEST_GLOBS.includes(g));
   const used = new Set(Object.values(roles ?? {}).flat());
-  const claude = providers.includes("claude-code");
+  const security = hasSecurityAgent(providers);
   const defaults = resourceRoles(DEFAULT_ROLES, resources);
   const { security: _, ...codexOnly } = defaults;
   const added: Roles =
     roles === undefined
-      ? claude
+      ? security
         ? defaults
         : codexOnly
       : Object.fromEntries(
           (
-            ["architect", "planner", "qa", ...(claude ? (["security"] as const) : [])] as const
+            ["architect", "planner", "qa", ...(security ? (["security"] as const) : [])] as const
           ).flatMap((role) => {
             const agents = defaults[role];
             return !roles[role] && agents && !agents.some((name) => used.has(name))

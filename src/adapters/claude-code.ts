@@ -149,6 +149,8 @@ export function policyContext(project: string, cwd = project): PolicyContext {
     protectedWriteDirs: spellings([
       ...codexHomes,
       join(homedir(), ".agents", "skills"),
+      // Antigravity's user plugins (verid's hooks among them) and settings.
+      join(homedir(), ".gemini", "config"),
       // verid's plugin folder: the skills AGENTS.md sends Codex to, and the reviewer template.
       join(dirname(fileURLToPath(import.meta.url)), "..", "plugin"),
     ]),

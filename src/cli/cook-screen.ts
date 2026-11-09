@@ -54,6 +54,14 @@ function problemWith(repo: Partial<Repo>): string | null {
   return r.ok ? null : r.detail.replace(/^[\w.]+: /, "");
 }
 
+const PROVIDER_CHOICES = [
+  { label: "Claude Code", providers: ["claude-code"] },
+  { label: "Codex", providers: ["codex"] },
+  { label: "Claude Code + Codex", providers: ["claude-code", "codex"] },
+  { label: "Antigravity", providers: ["antigravity"] },
+  { label: "Claude Code + Antigravity", providers: ["claude-code", "antigravity"] },
+] as const;
+
 /**
  * `verid cook` in the developer's own terminal: the banner, the language, and for a new project
  * the mode and the test runner verid could not see, each picked with the arrow keys. Then the
@@ -191,12 +199,11 @@ export async function interactiveCook(
     const provider = await select(
       io,
       say("cook.providers"),
-      [{ label: "Claude Code" }, { label: "Codex" }, { label: "Claude Code + Codex" }],
+      PROVIDER_CHOICES.map(({ label }) => ({ label })),
       0,
     );
     if (provider === null) return cancelled();
-    flags.providers =
-      provider === 0 ? ["claude-code"] : provider === 1 ? ["codex"] : ["claude-code", "codex"];
+    flags.providers = [...PROVIDER_CHOICES[provider]!.providers];
     const workflow = await select(
       io,
       say("cook.workflow"),

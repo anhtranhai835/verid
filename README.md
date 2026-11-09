@@ -354,6 +354,7 @@ project root. The `verid` shorthand below also works with an optional global ins
 | `verid garnish`                        | Start a refactor-only session.                                                |
 | `verid halt [reason]` / `verid resume` | Pause agent tool use or resume it.                                            |
 | `verid setup-codex`                    | Set up the installed reviewer in the Codex user config.                       |
+| `verid setup-antigravity`              | Install or update verid's Antigravity plugin for this user.                   |
 
 Cook, upgrade, stock, order, serve, garnish, halt and resume are developer commands,
 run in your own terminal. Agents use taste, menu, peek and doctor. In signed auto
@@ -370,7 +371,7 @@ verid cook --mode prep --workflow modular --resources repo --provider codex --la
 | `--mode`                                     | `prep`, `recipe` or `remix`.                                              |
 | `--workflow`                                 | `classic` or `modular`.                                                   |
 | `--resources`                                | `installed` or `repo`.                                                    |
-| `--provider`                                 | `claude-code` or `codex`; repeat for both.                                |
+| `--provider`                                 | `claude-code`, `codex` or `antigravity`; repeat for several.              |
 | `--drive`                                    | `human` or `auto` for prep/recipe.                                        |
 | `--architecture`                             | `ddd`, `clean`, `layered` or `none`.                                      |
 | `--layout`                                   | `monorepo` or `workspace`; otherwise detected.                            |
@@ -498,6 +499,20 @@ The repo hook has an integration test for Codex order, RED/GREEN, read-only revi
 and invalidation after a module spec change. An offline check with Codex CLI
 `0.166.0` also confirmed that its model-visible input includes the project
 instructions and repo skills. See the [validation notes](docs/modular-cook.md#dùng-với-codex).
+
+### Antigravity setup
+
+1. Run `verid setup-antigravity` once per machine, and again after each verid update.
+   It installs verid's plugin in `~/.gemini/config/plugins/verid/`. Restart Antigravity.
+2. Run cook with `--provider antigravity` (add `--provider claude-code` for both).
+3. Run `verid doctor` and resolve setup findings.
+4. Let main write tests/code; dispatch `verid-reviewer` (and `verid-security`) with
+   `invoke_subagent` for review. Type `/verid peek`, `/verid tip` and `/verid confirm`
+   in the chat.
+
+verid's core reads Antigravity's hook payloads itself, so the same rules, TDD gate and
+review binding apply as on Claude Code and Codex. The payload shapes are not yet checked
+against recorded Antigravity fixtures. See [the integration notes](docs/antigravity-integration.vi.md).
 
 ### Protection and audit
 

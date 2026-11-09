@@ -117,26 +117,41 @@ export function codexAction(p: PreToolUse): CodexAction {
   const action = toAction(p);
   if ("invalid" in action) throw new VeridError("VERID_BURNT_PAYLOAD", { detail: action.invalid });
   if (action.kind === "bash") {
-    const ps = powershellWriteTargets(action.command);
+    const shell = shellFiles(action.command, p.cwd);
     const unverified = ["shell", "workdir", "cwd"].find(
       (field) => p.tool_input[field] !== undefined,
     );
-    const unsupported = unverified ?? ps.unsupported;
+    const unsupported = unverified ?? shell.unsupported;
     // Codex applies a patch handed to the shell from a workdir or `cd` the hook never sees, so
     // only the apply_patch tool, resolved against this cwd, may carry one.
     const shellPatch = PATCH_TEXT.test(action.command) || PATCH_PROGRAM.test(action.command);
     return {
       // Keep the Bash action: every existing mention rule still judges this command.
       action,
-      files: [
-        ...bashWrites(action.command, p.cwd),
-        ...ps.targets.map((target) => fileAction("Bash", "write", target, p.cwd)),
-      ],
+      files: shell.files,
       ...(shellPatch ? { invalidPatch: "a patch handed to the shell" } : {}),
       ...(unsupported ? { unsupported } : {}),
     };
   }
   return { action, files: mcpFiles(p) };
+}
+
+/**
+ * What a shell command plainly writes, read both as sh and as PowerShell: a host's shell tool
+ * runs either, depending on the machine. What neither reader can follow is `unsupported`.
+ */
+export function shellFiles(
+  command: string,
+  cwd: string,
+): { files: FileAction[]; unsupported?: string } {
+  const ps = powershellWriteTargets(command);
+  return {
+    files: [
+      ...bashWrites(command, cwd),
+      ...ps.targets.map((target) => fileAction("Bash", "write", target, cwd)),
+    ],
+    ...(ps.unsupported ? { unsupported: ps.unsupported } : {}),
+  };
 }
 
 // Codex 0.164.0 also puts .bat shims for the patch program on PATH on Windows.
