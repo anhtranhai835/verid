@@ -8,6 +8,7 @@ description: Use when all ACs of an ordered verid module pass and need an indepe
 Independent reviews run in a fresh read-only subagent (`verid-reviewer` / `verid-security`) so the reviewer judges the diff and ACs without writer bias or main-thread context bloat.
 
 ## Steps
+
 1. **Generate the Review Packet:**
    - Confirm `verid peek` shows `PLATED` and all module ACs covered.
    - Run `verid menu --commits --file` (or `node .verid/verid.mjs menu --commits --file`) via `run_command`. This writes `.verid/review/work.md` without dumping the full diff into your main context.
@@ -24,4 +25,3 @@ Independent reviews run in a fresh read-only subagent (`verid-reviewer` / `verid
 5. **Close or Fix:**
    - If `Verdict: fail`, fix findings through `verid-build` (test-first), regenerate `.verid/review/work.md`, and re-run a fresh `verid-reviewer`.
    - When `Verdict: pass`, ask the developer to run `verid serve <module>` in their terminal (or click **Approve & Serve** in `verid board`).
-

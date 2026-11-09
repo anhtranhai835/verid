@@ -66,4 +66,3 @@ Copy-Item -Path "plugin\skills", "plugin\templates", "i18n" -Destination "$dest\
    - Mở project trong Antigravity. `SessionStart` tự động nạp trạng thái TDD (`RAW / COOKING / PLATED`) và bước tiếp theo.
    - Gõ `/verid peek` hoặc `/verid menu` ngay trong ô chat để xem trạng thái tức thì (**0 token gọi model**).
    - Khi cần mở ngoại lệ có kiểm soát: gõ `/verid tip <lý do>` rồi `/verid confirm <mã>` ngay trong ô chat.
-
