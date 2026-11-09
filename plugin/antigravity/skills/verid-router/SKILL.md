@@ -5,7 +5,7 @@ description: Use when a verid task touches a specific domain (UI/UX, React, Fron
 
 # verid-router (On-Demand Domain Library)
 
-To save ~4,000 characters of system prompt overhead per turn, verid's 17 domain and specialist packs are kept behind this single router instead of registering 25 separate top-level skills.
+To save ~4,000 characters of system prompt overhead per turn, verid's domain and specialist packs are kept behind this single router instead of registering 25 separate top-level skills.
 
 ## How to Resolve Domain Paths
 
@@ -32,4 +32,7 @@ Locate the skills root `<SKILLS_ROOT>`:
 | **High-stakes architectural decision stress-test**     | Read `<SKILLS_ROOT>/predict/SKILL.md` (4-persona analysis: Architect, Security, Performance, UX).                                                 |
 | **Repeatedly stuck implementation / circular fixes**   | Read `<SKILLS_ROOT>/problem-solving/SKILL.md` -> `references/when-stuck.md`.                                                                      |
 | **DOCX / PDF / large spec extraction**                 | Read `<SKILLS_ROOT>/context-engineering/references/document-reading.md` and run `scripts/document_reader.py`.                                     |
+| **TDD rule detail (RED/GREEN evidence, test naming)**  | Read `<SKILLS_ROOT>/tdd/SKILL.md` only when `verid-build`'s short loop leaves a TDD question open.                                                |
+| **Modular workflow: module dossiers and contracts**    | Read `<SKILLS_ROOT>/modules/SKILL.md` when the manifest has `workflow: modular`.                                                                  |
+| **Full security method for `verid-security` review**   | Read `<SKILLS_ROOT>/security/SKILL.md` -> matching file in `references/` (STRIDE/OWASP, supply chain, LLM/agentic).                               |
 | **Missing external library/API documentation**         | Read `<SKILLS_ROOT>/docs-seeker/SKILL.md` or use Antigravity's `search_web`.                                                                      |

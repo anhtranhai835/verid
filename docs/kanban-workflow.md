@@ -17,8 +17,9 @@ research → spec → design → task plan → browser selection → NEW AI sess
 
 Choose `--workflow kanban` in `verid cook` (prep or recipe, human drive), then run
 `verid board`. The browser is a local interface to the project's existing plan,
-approval state, evidence and reviews. It does not call a cloud model or launch a
-provider conversation automatically. No new browser dependencies are required.
+approval state, evidence and reviews. Nothing starts on its own: only a message the
+developer sends from a task's chat box runs a provider. No new browser dependencies
+are required.
 
 Write `.verid/research.md`, `.verid/spec.md` and `.verid/design.md` before ordering
 a task. Spec and plan can be edited from the board while no task is open.
@@ -67,9 +68,24 @@ keeps ownership. The state and session history live in protected local
 `.verid/.state/state.json` under the existing schema with backward-compatible
 defaults. Hook denials use `VERID_BURNT_TASK_SESSION`, which has no agent override.
 
-The board's session prompt identifies only the selected task. Copy it into a new
-Codex or Claude Code session in the project. Existing TDD, role and independent
-review rules apply. `serve` closes the selection and tells the agent to stop.
+The board's session prompt identifies only the selected task. The selected task's
+dialog has a chat box with that prompt prefilled. Sending it runs the chosen
+provider's CLI headless in the project, one run at a time:
+
+| Provider    | First message                           | Later messages                 | Permissions                                                    |
+| ----------- | --------------------------------------- | ------------------------------ | -------------------------------------------------------------- |
+| Claude Code | `claude -p --output-format stream-json` | `--resume <session>`           | Edits accepted; shell only verid and local git (`--settings`). |
+| Codex       | `codex exec --json -`                   | `codex exec resume <thread> -` | `sandbox_mode=workspace-write`, `approval_policy=never`.       |
+| Antigravity | `agy -p --output-format stream-json`    | `--conversation <id>`          | `--mode accept-edits --sandbox`.                               |
+
+The prompt goes to Claude Code and Codex on stdin, never on a command line. verid's
+`SessionStart` hook binds the new session to the task as for any session. Later
+messages resume the bound session, and its provider is fixed. **Dừng** stops the
+run. The transcript lives in the board process only. A restarted board continues
+the bound session, not the old transcript. Every tool call still passes verid's
+hook. A copy of the prompt also works in a new terminal or IDE session.
+Antigravity's stream format has no recorded fixture yet: unknown event shapes
+are shown as their text. Existing TDD, role and independent review rules apply. `serve` closes the selection and tells the agent to stop.
 No hook or UI operation automatically opens the next task.
 
 Git commits follow small feature increments, rather than one large task dump.

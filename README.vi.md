@@ -185,8 +185,9 @@ URL được in ra, hoặc `--port 4318` để chọn cổng.
    và phụ thuộc trong **Kế hoạch task**, hoặc để AI lập plan chi tiết.
    Mỗi `## Module: <tên>` là một card; `Title:` đặt tên dễ đọc.
 3. Chọn task muốn làm trước. Verid duyệt bằng `order`, chỉ mở một task mỗi lần.
-   Sao chép nội dung session, mở **session AI mới** trong project rồi gửi nội dung đó.
-   Bảng chuẩn bị bàn giao; người dùng mở session của provider.
+   Gửi nội dung session (đã điền sẵn) từ **khung chat** của task: bảng chạy CLI của
+   provider ở chế độ headless (`claude -p`, `codex exec`, `agy -p`) trong project, tin
+   sau nối tiếp đúng session đó. Hoặc sao chép sang session AI mới trong terminal/IDE.
 4. AI làm TDD và review độc lập. Nhấn **Duyệt & lên món** để chạy `serve` với
    đầy đủ kiểm tra bằng chứng. Dừng session cũ, chọn task tiếp theo rồi mở session mới.
 

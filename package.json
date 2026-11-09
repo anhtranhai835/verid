@@ -1,6 +1,6 @@
 {
   "name": "@anhtranhai835/verid",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "description": "Evidence-verified, hook-enforced TDD harness for Claude Code, Codex and Antigravity",
   "author": "Anh Tran",
   "license": "MIT",
@@ -30,6 +30,7 @@
     "dist",
     "i18n",
     "plugin/skills",
+    "!plugin/skills/*/scripts/tests",
     "plugin/agents",
     "plugin/codex",
     "plugin/antigravity",
