@@ -3,6 +3,7 @@ import { spawn } from "node:child_process";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { parseArgs } from "node:util";
 import { inAgentShell } from "../adapters/agent-environment.js";
+import { boardChat, type Spawner } from "../adapters/board-chat.js";
 import { boardSnapshot, saveBoardDocument, taskPrompt } from "../adapters/kanban.js";
 import { boardHtml } from "./board-page.js";
 import type { CliResult } from "./test.js";
@@ -10,9 +11,10 @@ import type { CliResult } from "./test.js";
 type Command = (command: "order" | "serve", task: string) => Promise<CliResult>;
 
 /** A loopback-only developer UI. All mutations use the same approval/evidence gates as the CLI. */
-export async function startBoard(project: string, command: Command, port = 0) {
+export async function startBoard(project: string, command: Command, port = 0, spawner?: Spawner) {
   if (inAgentShell()) throw new Error("verid board chỉ chạy từ terminal của người dùng.");
   await boardSnapshot(project);
+  const chat = boardChat(project, spawner);
   const token = randomBytes(32).toString("hex");
   let origin = "";
   let queue = Promise.resolve();
@@ -44,6 +46,8 @@ export async function startBoard(project: string, command: Command, port = 0) {
       return send(res, 401, { error: "Mở board bằng URL được in trong terminal." });
     if (req.method === "GET" && url.pathname === "/api/board")
       return send(res, 200, await boardSnapshot(project));
+    if (req.method === "GET" && url.pathname === "/api/chat")
+      return send(res, 200, await chat.status());
     if (req.method !== "POST" || url.pathname !== "/api/action")
       return send(res, 404, { error: "Not found" });
     if (req.headers.origin !== origin || req.headers["content-type"] !== "application/json")
@@ -59,7 +63,24 @@ export async function startBoard(project: string, command: Command, port = 0) {
     if (!data || typeof data !== "object" || Array.isArray(data))
       return send(res, 400, { error: "Invalid action" });
     const input = data as Record<string, unknown>;
+    // Chat goes on while its own run changes state, so it is not tied to the board revision.
+    if (input.action === "chat-stop") {
+      chat.stop();
+      return send(res, 200, await chat.status());
+    }
     const snapshot = await boardSnapshot(project);
+    if (input.action === "chat") {
+      const task = snapshot.tasks.find((item) => item.id === input.task);
+      if (!task?.selected) return send(res, 409, { error: "Chọn task này trước khi chat." });
+      if (task.needsReapproval)
+        return send(res, 409, { error: "Phạm vi đã đổi. Duyệt lại task trước khi chat." });
+      await chat.send({
+        task: task.id,
+        text: typeof input.text === "string" ? input.text : "",
+        provider: typeof input.provider === "string" ? input.provider : "",
+      });
+      return send(res, 200, await chat.status());
+    }
     if (input.revision !== snapshot.revision)
       return send(res, 409, {
         error: "Bảng đã thay đổi. Đã tải lại dữ liệu; hãy thực hiện lại thao tác.",

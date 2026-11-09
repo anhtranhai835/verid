@@ -1,8 +1,10 @@
+import { spawn } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, it } from "vitest";
 import { stringify } from "yaml";
+import type { Launch } from "../../src/adapters/board-chat.js";
 import { boardSnapshot, saveBoardDocument } from "../../src/adapters/kanban.js";
 import { readState, statePaths } from "../../src/adapters/state-store.js";
 import { startBoard } from "../../src/cli/board.js";
@@ -281,4 +283,68 @@ it("serves a protected local board with real selection and rejects CSRF, stale r
   const duplicate = await post({ action: "prompt", task: "req-2", revision: owned.revision });
   expect(duplicate.status).toBe(400);
   expect((await duplicate.json()).error).toContain("Tiếp tục session hiện tại");
+});
+
+it("chats with the selected task's AI from the board: new session first, then the bound one", async () => {
+  saveBoardDocument(project, "split");
+  const launches: Launch[] = [];
+  // Stands in for the provider CLI: names its thread, echoes the prompt it read on stdin.
+  const fake = `let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{console.log(JSON.stringify({type:"thread.started",thread_id:"t-1"}));console.log(JSON.stringify({type:"item.completed",item:{type:"agent_message",text:"got "+s}}))})`;
+  server = await startBoard(
+    project,
+    async (command, task) => {
+      const result = await cli(command, task);
+      return { exit: result.code, stdout: result.stdout, stderr: result.stderr };
+    },
+    0,
+    (launch, cwd) => {
+      launches.push(launch);
+      return spawn(process.execPath, ["-e", fake], { cwd, stdio: ["pipe", "pipe", "pipe"] });
+    },
+  );
+  const headers = {
+    Authorization: `Bearer ${server.token}`,
+    "Content-Type": "application/json",
+    Origin: server.origin,
+  };
+  const post = (input: unknown) =>
+    fetch(`${server!.origin}/api/action`, { method: "POST", headers, body: JSON.stringify(input) });
+  const status = async () => (await fetch(`${server!.origin}/api/chat`, { headers })).json();
+  const idle = async () => {
+    for (let i = 0; i < 100 && (await status()).running; i++)
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    return status();
+  };
+  const chat = (text: string) => post({ action: "chat", task: "req-1", text, provider: "codex" });
+
+  const early = await chat("start");
+  expect(early.status).toBe(409);
+  expect((await early.json()).error).toContain("Chọn task");
+  const board = await (await fetch(`${server.origin}/api/board`, { headers })).json();
+  expect((await post({ action: "select", task: "req-1", revision: board.revision })).status).toBe(
+    200,
+  );
+  expect(
+    (await post({ action: "chat", task: "req-1", text: "x", provider: "claude-code" })).status,
+  ).toBe(400);
+
+  expect((await chat("build req-1")).status).toBe(200);
+  const first = await idle();
+  expect(launches[0]!.args).not.toContain("resume");
+  expect(launches[0]!.stdin).toBe("build req-1");
+  expect(first.lines).toEqual(
+    expect.arrayContaining([
+      { role: "you", text: "build req-1" },
+      { role: "ai", text: "got build req-1" },
+    ]),
+  );
+  // verid's own SessionStart hook binds the new thread to the task, as the real CLI's would.
+  await hook("SessionStart", "t-1", { source: "startup" });
+  expect(state().kanban.active?.session).toBe("codex:t-1");
+  expect((await status()).locked).toBe("codex");
+
+  expect((await chat("continue")).status).toBe(200);
+  await idle();
+  expect(launches[1]!.args.slice(0, 2)).toEqual(["exec", "resume"]);
+  expect(launches[1]!.args).toContain("t-1");
 });
