@@ -8,6 +8,7 @@ description: Use when a verid project has agreed research and spec and needs arc
 Read `.verid/research.md`, `.verid/spec.md`, and `.verid/rules/architecture.md`. Open cited `.verid/docs/` sections only when needed.
 
 ## Workflow
+
 1. **Approaches & Tradeoffs:**
    - If the design is straightforward, present a concise proposal for approval.
    - If competing architectures exist, present 2–3 options with tradeoffs (and your recommended pick first) via `ask_question`.
@@ -24,4 +25,3 @@ Read `.verid/research.md`, `.verid/spec.md`, and `.verid/rules/architecture.md`.
    - `## Out of scope`
 4. **Builder Check:**
    - Verify every `REQ-*`, `NFR-*`, and `SEC-*` in `.verid/spec.md` maps to a module and testable boundary in `.verid/design.md`, then proceed to `verid-plan`.
-

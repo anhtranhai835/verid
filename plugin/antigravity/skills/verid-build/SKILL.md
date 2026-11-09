@@ -8,6 +8,7 @@ description: Use when an approved verid module is ready for TDD implementation (
 On Antigravity, execute the TDD loop directly in the **main conversation** (Single-Writer mode) to avoid spawning 20 subagent contexts per module. The `PreToolUse` and `Stop` hooks strictly enforce every transition.
 
 ## Token-Saving Loop per Uncovered AC
+
 1. **Check Status Lightly:**
    - Run `verid peek` (or `node .verid/verid.mjs peek`) and read `.verid/log/<module>.md` if present. Read only the target module's section in `.verid/plan.md` and referenced interfaces in `.verid/design.md`.
    - If the AC touches a specialized domain (UI, React, DB, DevOps, Mobile, Web-Testing, Edge-Cases), check `verid-router` and open only the matching reference section.
@@ -24,4 +25,3 @@ On Antigravity, execute the TDD loop directly in the **main conversation** (Sing
    - Append a concise entry (`Done`, `Decided`, `Deviation`, `Commits`, `Next`) to `.verid/log/<module>.md`.
    - Commit small, verified increments using Conventional Commits.
 5. When all module ACs pass in `verid peek`, proceed to `verid-review`.
-

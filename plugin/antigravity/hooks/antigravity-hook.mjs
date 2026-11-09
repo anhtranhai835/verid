@@ -31,7 +31,10 @@ async function main() {
   try {
     payload = raw.trim() ? JSON.parse(raw) : {};
   } catch {
-    return emitFailClosed(EVENT, "verid [VERID_BURNT_PAYLOAD]\nInvalid JSON on Antigravity hook stdin.");
+    return emitFailClosed(
+      EVENT,
+      "verid [VERID_BURNT_PAYLOAD]\nInvalid JSON on Antigravity hook stdin.",
+    );
   }
 
   const projectRoot = findVeridProject(payload.workspacePaths);
@@ -343,8 +346,7 @@ function mapAntigravityTool(projectRoot, toolName, args) {
     case "call_mcp_tool": {
       const server = String(args.ServerName ?? "mcp");
       const tool = String(args.ToolName ?? "tool");
-      const mcpArgs =
-        args.Arguments && typeof args.Arguments === "object" ? args.Arguments : {};
+      const mcpArgs = args.Arguments && typeof args.Arguments === "object" ? args.Arguments : {};
       return {
         tool_name: `mcp__${server}__${tool}`,
         tool_input: mcpArgs,
@@ -370,10 +372,7 @@ function canBypassSafeRead(projectRoot, mapped) {
   if (/^\s*workflow:\s*["']?kanban["']?/m.test(manifestText)) return false;
 
   const rawTarget =
-    mapped.targetPath ||
-    mapped.tool_input?.file_path ||
-    mapped.tool_input?.path ||
-    projectRoot;
+    mapped.targetPath || mapped.tool_input?.file_path || mapped.tool_input?.path || projectRoot;
   if (!rawTarget || typeof rawTarget !== "string") return false;
 
   const resolved = normalize(resolve(projectRoot, rawTarget));
@@ -470,7 +469,10 @@ function checkAntigravityProtection(projectRoot, toolName, args, payload) {
   for (const item of paths) {
     if (!item.path) continue;
     const resolved = normalize(resolve(projectRoot, item.path));
-    if (item.access === "write" && (isUnder(resolved, homeConfig) || isUnder(resolved, projectAgents))) {
+    if (
+      item.access === "write" &&
+      (isUnder(resolved, homeConfig) || isUnder(resolved, projectAgents))
+    ) {
       return `verid [VERID_BURNT_HOOK_PROTECTED]\nProtected Antigravity customization path: ${item.path}`;
     }
     if (
@@ -520,8 +522,7 @@ function resolveSingleWriterIdentity(projectRoot, mapped) {
   if (target && !target.startsWith(".verid/")) {
     const isE2e = /(?:^|\/)e2e\/|\.e2e\.|\.spec\.Playwright/i.test(target);
     const isTest =
-      isE2e ||
-      /(?:^|\/)(?:test|tests|__tests__)\/|\.(?:test|spec)\.[A-Za-z0-9]+$/i.test(target);
+      isE2e || /(?:^|\/)(?:test|tests|__tests__)\/|\.(?:test|spec)\.[A-Za-z0-9]+$/i.test(target);
     if (isTest) {
       const qaRole = isE2e ? extractFirstRoleAgent(manifestText, "qa") : null;
       return {
