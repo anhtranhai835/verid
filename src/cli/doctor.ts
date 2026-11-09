@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { antigravityPluginInstalled } from "../adapters/antigravity-settings.js";
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
@@ -218,6 +219,16 @@ export async function doctorCommand(project: string): Promise<CliResult> {
     else lines.push(say("doctor.instructions.ok", { file }));
   }
   for (const provider of manifest?.providers ?? []) {
+    if (provider === "antigravity") {
+      if (antigravityPluginInstalled()) lines.push(say("doctor.antigravity.plugin_ok"));
+      else
+        problem(
+          "antigravity.plugin",
+          "doctor.antigravity.plugin_missing",
+          "doctor.antigravity.plugin_fix",
+        );
+      continue;
+    }
     if (provider === "codex") {
       const local = manifest?.resources === "repo";
       const hook = local

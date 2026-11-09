@@ -19,7 +19,7 @@ Independent reviews run in a fresh read-only subagent (`verid-reviewer` / `verid
      - `TypeName`: `"verid-reviewer"`
      - `Role`: `"Independent Verid Reviewer"`
      - `Prompt`: Supply only the module name, AC codes, `.verid/review/work.md`, `.verid/plan.md`, `.verid/design.md`, and relevant design row names (never paste raw diffs into the prompt).
-   - The Antigravity hook bridge automatically triggers `SubagentStart` before the subagent runs and records the final `Verdict: pass|fail` via `SubagentStop` into `.verid/.state/reviews/` when it finishes.
+   - verid's hook snapshots the review inputs when it allows the `invoke_subagent` call, and records the subagent's final report (ending `Verdict: pass|fail`) when that same call returns. A report from any other conversation never counts.
 4. **Dedicated Security Subagent (if `roles.security` is mapped in `.verid/manifest.yaml`):**
    - After `verid-reviewer` passes, call `invoke_subagent` with `TypeName: "verid-security"` and the same packet path + `security-audit.json` status.
 5. **Close or Fix:**

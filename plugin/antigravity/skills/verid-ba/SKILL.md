@@ -10,7 +10,7 @@ Inventory `.verid/docs/` (read-only) first, then the user request, code, and tes
 ## Token-Efficient Document Reading
 
 - For DOCX, PDF, or large markdown inputs in `.verid/docs/`, do **not** dump whole files into context. Run the local reader script via `run_command`:
-  - If `.verid/skills/context-engineering/scripts/document_reader.py` exists, use it; otherwise use the plugin's `resources/skills/context-engineering/scripts/document_reader.py` (or `plugin/skills/context-engineering/scripts/document_reader.py`).
+  - If `.verid/skills/context-engineering/scripts/document_reader.py` exists, use it; otherwise use the installed plugin's `plugin/skills/context-engineering/scripts/document_reader.py` (`~/.gemini/config/plugins/verid/plugin/skills/...`).
   - Run `--mode outline` first, then `--mode search` or `--mode read --block <id>` to pull only cited excerpts (capped at 6,000 chars).
 
 ## Clarification Discipline

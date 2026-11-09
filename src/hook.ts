@@ -31,13 +31,7 @@ import { claimTaskSession, taskSessionProblem } from "./core/kanban.js";
 import { decide, isUnder } from "./core/policy.js";
 import { matchesGlob } from "./core/glob.js";
 import { decideAgentContext, decideDispatch, decideKnownTool } from "./core/dispatch.js";
-import {
-  CODEX_TOOLS,
-  codexAction,
-  codexOutput,
-  codexPayload,
-  codexProject,
-} from "./adapters/codex.js";
+import { claudeHost, hostFor, type Host, type Result } from "./adapters/host.js";
 import { decideInstructions } from "./adapters/instruction-protection.js";
 import {
   mappedAgents,
@@ -69,7 +63,6 @@ import {
   normalizePath,
   policyContext,
   preToolUseSchema,
-  projectDir as claudeProjectDir,
   toAction,
   userPromptSchema,
   writtenPath,
@@ -107,20 +100,16 @@ import {
  * UserPromptSubmit lets the prompt through on error but never creates an override;
  * Stop, SubagentStop and SessionStart never block on error.
  */
-interface Result {
-  exit: 0 | 2;
-  stdout?: string;
-  stderr?: string;
-}
-
 const LENIENT = new Set(["Stop", "SubagentStart", "SubagentStop", "SessionStart"]);
-// Provider selection is an explicit invocation contract, never inferred from stdin.
-// ponytail: one module-wide flag set by each run(); overlapping runs in one process would race.
-let CODEX = false;
-const projectDir = (cwd: string) => (CODEX ? codexProject : claudeProjectDir)(cwd);
-const writerFor: typeof writerOf = (...args) => (CODEX ? singleWriterOf : writerOf)(...args);
-const splitFor = (roles: Roles | undefined) => !CODEX && splitOn(roles);
-const mappedNames = (roles: Roles | undefined) => mappedAgents(roles, CODEX);
+// The host that sent this payload (adapters/host.ts). Rules ask what it can do, never its name.
+// ponytail: one module-wide host set by each run(); overlapping runs in one process would race.
+let HOST: Host = claudeHost;
+const projectDir = (cwd: string) => HOST.projectDir(cwd);
+const writerFor: typeof writerOf = (...args) =>
+  (HOST.singleWriter ? singleWriterOf : writerOf)(...args);
+const splitFor = (roles: Roles | undefined) => !HOST.singleWriter && splitOn(roles);
+const mappedNames = (roles: Roles | undefined) => mappedAgents(roles, HOST.singleWriter);
+const sessionKey = (session: string) => `${HOST.id}:${session}`;
 
 /** `dist/hook.js`: one payload from stdin, the result on stdout, stderr and the exit code. */
 export async function main(): Promise<void> {
@@ -135,41 +124,30 @@ export async function main(): Promise<void> {
 
 /** The whole hook for one payload, with the hook's arguments; tests call it in process. */
 export async function run(raw: string, args: readonly string[]): Promise<Result> {
-  CODEX = args[0] === "--provider" && args[1] === "codex";
+  const chosen = hostFor(args);
+  HOST = chosen.host;
   // A payload that names no project gets both languages, as in a fresh process.
   setLanguage(null);
   // Only for routing errors when the payload is not even JSON.
-  let event = /"hook_event_name"\s*:\s*"(\w+)"/.exec(raw)?.[1];
+  let event = HOST.event ?? /"hook_event_name"\s*:\s*"(\w+)"/.exec(raw)?.[1];
   let result: Result;
   try {
-    if (
-      args.length !== 0 &&
-      !(
-        args.length === 2 &&
-        args[0] === "--provider" &&
-        ["codex", "claude-code"].includes(args[1]!)
-      )
-    )
-      throw new VeridError("VERID_BURNT_PAYLOAD", {
-        detail: "expected --provider claude-code|codex",
-      });
-    const payload = CODEX ? codexPayload(parseJson(raw)) : parseJson(raw);
-    event = (payload as { hook_event_name?: string } | null)?.hook_event_name ?? event;
-    result = await handle(payload);
+    if (chosen.error) throw chosen.error;
+    const [payload, ...after] = HOST.events(parseJson(raw));
+    if (payload === undefined) result = { exit: 0 };
+    else {
+      event = (payload as { hook_event_name?: string } | null)?.hook_event_name ?? event;
+      result = await handle(payload);
+      // What follows the call (a subagent's review job) only once verid lets it through.
+      if (result.exit === 0) for (const next of after) await handle(next).catch(() => undefined);
+    }
   } catch (err) {
     result = onError(event, err);
   }
-  return CODEX ? codexOutput(event, result) : result;
+  return HOST.output(event, result);
 }
 
 async function handle(payload: unknown): Promise<Result> {
-  if (
-    CODEX &&
-    ["PostToolUse", "SessionEnd"].includes(
-      String((payload as { hook_event_name?: unknown })?.hook_event_name),
-    )
-  )
-    return { exit: 0 };
   switch ((payload as { hook_event_name?: unknown } | null)?.hook_event_name) {
     case "PreToolUse":
       return preToolUse(inProject(parse(preToolUseSchema, payload)));
@@ -214,7 +192,7 @@ async function preToolUse(p: z.infer<typeof preToolUseSchema>): Promise<Result> 
     );
     return deny("VERID_BURNT_HALTED", { target: halted.reason });
   }
-  const adapted = CODEX ? codexAction(p) : null;
+  const adapted = HOST.action(p);
   const action = adapted?.action ?? toAction(p);
   if ("invalid" in action) throw new VeridError("VERID_BURNT_PAYLOAD", { detail: action.invalid });
   // The files this call touches beyond the action itself: what a Bash command plainly writes,
@@ -227,7 +205,7 @@ async function preToolUse(p: z.infer<typeof preToolUseSchema>): Promise<Result> 
   // A broken manifest must still allow reads; existing write gates report its error in order.
   const taskManifest = await loadManifest(project, { readOnly: true }).catch(() => null);
   if (taskManifest?.workflow === "kanban") {
-    const key = `${CODEX ? "codex" : "claude-code"}:${p.session_id}`;
+    const key = sessionKey(p.session_id);
     const problem = withLock(paths, () => {
       const state = readState(paths);
       const used = state.kanban.sessions[key];
@@ -286,27 +264,23 @@ async function preToolUse(p: z.infer<typeof preToolUseSchema>): Promise<Result> 
   // Dispatch now needs the manifest even without file writes. Defer errors until the
   // existing policy has judged the call, preserving its denial priority.
   const advice: PolicyDecision[] = [];
+  const spawn = HOST.spawnTool !== undefined && p.tool_name === HOST.spawnTool;
   const dispatch = await (async () => {
-    const manifest = [
-      "Skill",
-      "Agent",
-      "Task",
-      ...(CODEX ? ["collaborationspawn_agent"] : []),
-    ].includes(p.tool_name)
-      ? await loadManifest(project)
-      : null;
+    const manifest =
+      ["Skill", "Agent", "Task"].includes(p.tool_name) || spawn
+        ? await loadManifest(project)
+        : null;
     return (lifted: ReadonlySet<RuleCode>) => {
-      const dispatched =
-        CODEX && p.tool_name === "collaborationspawn_agent"
-          ? decideDispatch(
-              "Agent",
-              { ...p.tool_input, subagent_type: p.tool_input.agent_type },
-              manifest,
-              lifted,
-            )
-          : decideDispatch(p.tool_name, p.tool_input, manifest, lifted);
+      const dispatched = spawn
+        ? decideDispatch(
+            "Agent",
+            { ...p.tool_input, subagent_type: p.tool_input.agent_type },
+            manifest,
+            lifted,
+          )
+        : decideDispatch(p.tool_name, p.tool_input, manifest, lifted);
       if (dispatched.kind === "deny") advice.push(dispatched);
-      return CODEX && p.tool_name === "collaborationspawn_agent"
+      return spawn
         ? decideAgentContext(p.tool_input.agent_type, p.tool_input.fork_turns, [
             // The read-only roles start fresh, so they judge the diff, not the writer's reasoning.
             ...(manifest?.roles?.reviewer ?? []),
@@ -324,17 +298,23 @@ async function preToolUse(p: z.infer<typeof preToolUseSchema>): Promise<Result> 
     const rules = [action, ...files].map((a) => decide(a, ctx, lifted));
     const policy = strictest(rules);
     if (policy.kind === "deny") return policy;
-    if (CODEX) {
-      const known = decideKnownTool(p.tool_name, CODEX_TOOLS);
+    if (HOST.knownTools) {
+      const known = decideKnownTool(p.tool_name, HOST.knownTools);
       if (known.kind === "deny") return known;
-      if (adapted?.invalidPatch)
+    }
+    if (adapted) {
+      if (adapted.unknownTool) {
+        const known = decideKnownTool(adapted.unknownTool, []);
+        if (known.kind === "deny") return known;
+      }
+      if (adapted.invalidPatch)
         return {
           kind: "deny",
           code: "VERID_BURNT_PATCH_UNSUPPORTED",
           target: adapted.invalidPatch,
           reason: "unreadable patch",
         };
-      if (adapted?.unsupported)
+      if (adapted.unsupported)
         return {
           kind: "deny",
           code: "VERID_BURNT_SHELL_UNSUPPORTED",
@@ -436,7 +416,7 @@ async function preToolUse(p: z.infer<typeof preToolUseSchema>): Promise<Result> 
     const lifted = new Set<RuleCode>();
     for (;;) {
       const key = { ...call, rule: denied.code };
-      const used = CODEX ? null : consumeOverride(state, key, now);
+      const used = HOST.overrides ? consumeOverride(state, key, now) : null;
       if (!used) {
         appendAudit(paths.audit, { event: "denied", ...key, target: denied.target });
         writeState(paths, recordDenial(state, { ...key, target: denied.target, at: now }));
@@ -659,9 +639,10 @@ const withoutSecurity = (state: State): State => ({
 });
 
 async function userPrompt(p: z.infer<typeof userPromptSchema>): Promise<Result> {
-  // Codex has no attended-input signal: a prompt never opens an exception there, and peek and
-  // menu stay in the terminal. Every prompt still gets the research reminder.
-  const cmd = CODEX ? { kind: "none" as const } : parseVeridPrompt(p.prompt);
+  // A host with no attended-input signal (Codex) never opens an exception from a prompt, and
+  // peek and menu stay in the terminal. Every prompt still gets the research reminder.
+  const attended = HOST.attended();
+  const cmd = attended === null ? { kind: "none" as const } : parseVeridPrompt(p.prompt);
   const project = projectDir(p.cwd);
   const paths = statePaths(project);
   if (cmd.kind === "none") {
@@ -697,8 +678,7 @@ async function userPrompt(p: z.infer<typeof userPromptSchema>): Promise<Result> 
     const state = readState(paths);
     const r = handlePrompt(state, cmd, {
       session: p.session_id,
-      // Set by Claude Code itself: 1 only when a person is at the terminal (spike S2).
-      attended: process.env.CLAUDE_CODE_SESSION_ATTENDED === "1",
+      attended: attended === true,
       agentId: p.agent_id,
       now: new Date().toISOString(),
       newCode: newCode(),
@@ -734,7 +714,7 @@ async function lifecycle(p: z.infer<typeof lifecycleSchema>): Promise<Result> {
   if (!manifest) return { exit: 0 };
   let taskContext: string[] = [];
   if (manifest.workflow === "kanban") {
-    const key = `${CODEX ? "codex" : "claude-code"}:${p.session_id}`;
+    const key = sessionKey(p.session_id);
     const kanban = withLock(paths, () => {
       const state = readState(paths);
       const kanban =
@@ -824,7 +804,7 @@ async function lifecycle(p: z.infer<typeof lifecycleSchema>): Promise<Result> {
     manifest.drive,
     manifest,
     undefined,
-    CODEX,
+    HOST.singleWriter,
   );
   // Session context is an index, not a second copy of the full menu or skill instructions.
   // Keep its size independent of the number of modules, questions and audit findings.
@@ -853,7 +833,7 @@ async function lifecycle(p: z.infer<typeof lifecycleSchema>): Promise<Result> {
       // Which agent to dispatch for each role, read from the manifest now: the instruction block
       // carries the skill guide and the workflow, but only cook and upgrade rewrite it. The mode's
       // own walk-through is in no block.
-      ...(roles && !CODEX
+      ...(roles && !HOST.singleWriter
         ? [
             `verid: roles ${Object.entries(agents)
               .filter(
@@ -865,7 +845,16 @@ async function lifecycle(p: z.infer<typeof lifecycleSchema>): Promise<Result> {
           ]
         : []),
       bilingual(`mode.${mode}`, {}),
-      ...(CODEX ? [bilingual("session.single_writer", { reviewer: agents.reviewer })] : []),
+      ...(HOST.singleWriter
+        ? [
+            bilingual(
+              HOST.id === "antigravity"
+                ? "session.single_writer_antigravity"
+                : "session.single_writer",
+              { reviewer: agents.reviewer, security: agents.security },
+            ),
+          ]
+        : []),
       ...(manifest.drive === "auto" ? [bilingual("drive.auto", {})] : []),
       standing[0]!,
       ...standing.filter((text) => /(?:^|\n)  iteration /.test(text)),
@@ -1110,7 +1099,7 @@ function tryClose(
  * In an auto drive the coder's stop that goes through also ends a round on the module it builds.
  */
 const reviewJobKey = (p: z.infer<typeof lifecycleSchema>): string =>
-  JSON.stringify([CODEX ? "codex" : "claude-code", p.session_id, p.agent_id]);
+  JSON.stringify([HOST.id, p.session_id, p.agent_id]);
 
 async function subagentStart(p: z.infer<typeof lifecycleSchema>): Promise<Result> {
   if (!p.agent_id) return { exit: 0 };
@@ -1142,7 +1131,7 @@ async function subagentStop(p: z.infer<typeof lifecycleSchema>): Promise<Result>
     const problem = kanbanSessionProblem(
       project,
       readState(paths),
-      `${CODEX ? "codex" : "claude-code"}:${p.session_id}`,
+      sessionKey(p.session_id),
       manifest,
     );
     if (problem) {
@@ -1384,15 +1373,7 @@ function onError(event: string | undefined, err: unknown): Result {
       : { detail: err instanceof Error ? err.message : String(err) };
   // Codex continues every held Stop, so a hold on error would never end there either.
   if (event && LENIENT.has(event)) return { exit: 0, stderr: `verid [${code}]\n` };
-  if (event === "UserPromptSubmit")
-    return CODEX
-      ? { exit: 0, stderr: `verid [${code}]\n` }
-      : {
-          exit: 0,
-          stdout: JSON.stringify({
-            systemMessage: bilingual("prompt.hook_failed", { detail: code }),
-          }),
-        };
+  if (event === "UserPromptSubmit") return HOST.promptFailed(code);
   return deny(code, params);
 }
 
@@ -1424,7 +1405,7 @@ const haltedLines = (halted: { reason: string }) =>
 function deny(code: ErrorCode, params: Record<string, string>): Result {
   const rule = (RULE_CODES as readonly string[]).includes(code) ? (code as RuleCode) : undefined;
   const hint: MessageKey | undefined =
-    rule && !CODEX
+    rule && HOST.overrides
       ? isOverridable(rule)
         ? "hint.overridable"
         : "hint.not_overridable"

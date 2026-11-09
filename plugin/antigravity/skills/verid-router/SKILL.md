@@ -12,7 +12,7 @@ To save ~4,000 characters of system prompt overhead per turn, verid's 17 domain 
 Locate the skills root `<SKILLS_ROOT>`:
 
 - If `.verid/skills/` exists in the workspace (`resources: repo`), use `.verid/skills`.
-- Otherwise use `resources/skills` inside the installed `verid` plugin (`~/.gemini/config/plugins/verid/resources/skills`) or `plugin/skills` in the `aeriq` repo.
+- Otherwise use `plugin/skills` inside the installed `verid` plugin (`~/.gemini/config/plugins/verid/plugin/skills`), or `plugin/skills` in the verid repo.
 
 ## Domain Lookup Table (Read ONLY the matching branch)
 

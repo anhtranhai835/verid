@@ -11,6 +11,7 @@ import {
 } from "../core/auto.js";
 import { architectureProblems, type ArchitectureProblem } from "../core/architecture.js";
 import type { Drive, Iterations, Manifest, Mode, Roles } from "../core/manifest.js";
+import { singleWriterOnly } from "../core/manifest.js";
 import { iterationDates } from "../core/iterations.js";
 import {
   modulePhases,
@@ -246,7 +247,7 @@ export function peekLines(
   roles: Roles | undefined,
   drive?: Drive,
   manifest?: Manifest,
-  singleWriter = manifest?.providers?.length === 1 && manifest.providers[0] === "codex",
+  singleWriter = singleWriterOnly(manifest?.providers),
 ): string[] {
   if (mode === null)
     return ["verid: TDD off · no .verid/manifest.yaml", bilingual("status.off", {})];
@@ -426,7 +427,7 @@ export function menuLines(
   drive?: Drive,
   manifest?: Manifest,
   today?: string,
-  singleWriter = manifest?.providers?.length === 1 && manifest.providers[0] === "codex",
+  singleWriter = singleWriterOnly(manifest?.providers),
 ): string[] {
   if (mode === "remix") {
     const baseline = state.baseline === null ? "none" : String(state.baseline.length);

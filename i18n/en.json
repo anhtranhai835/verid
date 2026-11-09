@@ -374,5 +374,13 @@
   "mode.recipe": "Mode recipe: read the existing specification with verid:ba; settle gaps through verid:design and verid:plan before verid:build.",
   "mode.remix": "Mode remix: preserve existing behaviour. The developer records old failures with `{verid} stock`; characterize untested code before changing it (verid:tdd).",
   "session.log": "Read it first to pick up where the last session stopped. After each AC, the main thread appends a dated entry: the AC, decisions and why, any deviation from the plan, commits, and what comes next. Subagents report to main.",
-  "session.menu": "Full status, questions and audits: `{verid} menu`; cycle: `{verid} peek`."
+  "session.menu": "Full status, questions and audits: `{verid} menu`; cycle: `{verid} peek`.",
+  "session.single_writer_antigravity": "Antigravity: main writes tests and code under the TDD gate; dispatch reviews with invoke_subagent to {reviewer} (security: {security}). Type /verid tip and /verid confirm in the chat for exceptions.",
+  "cook.antigravity_served": "AGENTS.md is ready for Antigravity. Install the verid plugin once per machine with `{verid} setup-antigravity`, restart Antigravity, then run verid doctor.",
+  "init.antigravity_done": "Antigravity instructions saved. Commit .verid/manifest.yaml, .verid/.gitignore and {instructions}. Each developer runs `{verid} setup-antigravity` once, and `{verid} cook` after cloning.",
+  "workspace.antigravity_done": "Antigravity workspace instructions saved. Commit shared files inside .verid/ with `git -C .verid`; keep {instructions} at the workspace root as per-machine files. Each developer runs `{verid} setup-antigravity` once, and `{verid} cook` after cloning.",
+  "setup.antigravity_done": "verid's Antigravity plugin is in {dir} ({created} created, {updated} updated, {kept} unchanged). Restart Antigravity, then run verid doctor in each project.",
+  "doctor.antigravity.plugin_missing": "verid's Antigravity plugin is missing or stale on this machine",
+  "doctor.antigravity.plugin_fix": "run verid setup-antigravity in your own terminal, then restart Antigravity",
+  "doctor.antigravity.plugin_ok": "= verid's Antigravity plugin is installed"
 }

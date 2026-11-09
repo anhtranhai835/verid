@@ -1,5 +1,5 @@
 import { skillAllowlist } from "./dispatch.js";
-import type { Manifest, Provider, RoleName } from "./manifest.js";
+import { PROVIDERS, type Manifest, type Provider, type RoleName } from "./manifest.js";
 
 const BEGIN = "<!-- verid:begin -->";
 const END = "<!-- verid:end -->";
@@ -53,12 +53,16 @@ export function instructionBlocks(
 ): { file: "AGENTS.md" | "CLAUDE.md"; block: string }[] {
   const providers = manifest.providers ?? ["claude-code"];
   const claude = providers.includes("claude-code");
+  // In a fixed order, so the block does not depend on how the manifest lists them.
+  const ordered = PROVIDERS.filter((provider) => providers.includes(provider));
   const shared =
-    providers.length === 1
-      ? renderInstructions(manifest, providers[0]!, skillsRoot)
+    ordered.length === 1
+      ? renderInstructions(manifest, ordered[0]!, skillsRoot)
       : mergeProviders(
-          renderInstructions(manifest, "claude-code", skillsRoot),
-          renderInstructions(manifest, "codex", skillsRoot),
+          ordered.map((provider) => ({
+            name: PROVIDER_LABELS[provider],
+            text: renderInstructions(manifest, provider, skillsRoot),
+          })),
         );
   return [
     { file: "AGENTS.md", block: shared },
@@ -66,22 +70,41 @@ export function instructionBlocks(
   ];
 }
 
-/** Section by section: common lines once, then each provider's own bullets under its label. */
-function mergeProviders(claude: string, codex: string): string {
+const PROVIDER_LABELS: Record<Provider, string> = {
+  "claude-code": "Claude Code",
+  codex: "Codex",
+  antigravity: "Antigravity",
+};
+
+/**
+ * Section by section: lines every provider has once, then the others in provider order, each
+ * labelled with the providers it is for.
+ */
+function mergeProviders(rendered: { name: string; text: string }[]): string {
   const sections = (text: string) =>
     text.split("\n").reduce<string[][]>((all, line) => {
       if (line.startsWith("#") || line === BEGIN || line === END || all.length === 0) all.push([]);
       all.at(-1)!.push(line);
       return all;
     }, []);
-  const label = (line: string, name: string) => line.replace(/^- /, `- (${name}) `);
-  const a = sections(claude);
-  const b = sections(codex);
-  return a
-    .flatMap((lines, i) => {
-      const other = b[i] ?? [];
-      const own = lines.map((line) => (other.includes(line) ? line : label(line, "Claude Code")));
-      const extra = other.filter((line) => !lines.includes(line)).map((l) => label(l, "Codex"));
+  const split = rendered.map((r) => sections(r.text));
+  return split[0]!
+    .flatMap((first, i) => {
+      const each = split.map((s) => s[i] ?? []);
+      const label = (line: string) => {
+        const names = rendered.filter((_, k) => each[k]!.includes(line)).map((r) => r.name);
+        return names.length === rendered.length
+          ? line
+          : line.replace(/^- /, `- (${names.join(", ")}) `);
+      };
+      const own = first.map(label);
+      const extra = each
+        .slice(1)
+        .flatMap((lines, k) =>
+          lines.filter((line) => !each.slice(0, k + 1).some((earlier) => earlier.includes(line))),
+        )
+        .filter((line, at, all) => all.indexOf(line) === at)
+        .map(label);
       const blank = own.at(-1) === "" ? own.length - 1 : own.length;
       return [...own.slice(0, blank), ...extra, ...own.slice(blank)];
     })
@@ -98,6 +121,9 @@ export function renderInstructions(
   const skill = (name: string): string => `${skillsRoot.replaceAll("\\", "/")}/${name}/SKILL.md`;
   const routing = `${skillsRoot.replaceAll("\\", "/")}/../templates/skill-routing.md`;
   const codex = provider === "codex";
+  // Codex and Antigravity: the main agent writes; skills are read by path.
+  const single = provider !== "claude-code";
+  const antigravity = provider === "antigravity";
   const extras =
     [...(manifest.allowed_skills ?? []), ...(manifest.allowed_agents ?? [])].length > 0;
   const rendered = [
@@ -107,14 +133,18 @@ export function renderInstructions(
     "### Rules",
     codex
       ? "- Codex hooks enforce TDD, gates and protected files as strictly as the host allows; run verid doctor and trust the hooks in /hooks."
-      : "- Claude Code hooks enforce TDD (RAW → COOKING → PLATED), module approval, roles and protected files.",
+      : antigravity
+        ? "- Antigravity hooks from verid's plugin enforce TDD (RAW → COOKING → PLATED), module approval and protected files; run verid doctor to check the plugin."
+        : "- Claude Code hooks enforce TDD (RAW → COOKING → PLATED), module approval, roles and protected files.",
     "- Never bypass or work around a denial: read its reason and follow it.",
     codex
       ? "- Only the developer edits the manifest; /verid tip and /verid confirm have no effect on Codex; exceptions require Claude Code."
-      : "- Only the developer edits the manifest or opens exceptions with /verid tip and /verid confirm.",
+      : antigravity
+        ? "- Only the developer edits the manifest or opens exceptions with /verid tip and /verid confirm typed in the Antigravity chat."
+        : "- Only the developer edits the manifest or opens exceptions with /verid tip and /verid confirm.",
     manifest.resources === "repo"
       ? "- Read skills and agents from .verid/skills/ and .verid/agents/ in this repo. Local verid-<name> entries route there; calls written verid:<name> in those files mean verid-<name> here. Resolve supporting files relative to the repo copy."
-      : codex
+      : single
         ? "- Call the installed skills by absolute path; do not copy their text."
         : "- Call the installed skills; do not copy their text.",
     ...(manifest.resources === "repo"
@@ -144,16 +174,23 @@ export function renderInstructions(
         ]
       : []),
     "- Session start gives the cycle and next step; else run verid peek.",
-    `- New developer or workspace: verid:onboard${codex ? ` → ${skill("onboard")}` : ""} reads repos, health and status, and writes nothing.`,
-    ...(codex
+    `- New developer or workspace: verid:onboard${single ? ` → ${skill("onboard")}` : ""} reads repos, health and status, and writes nothing.`,
+    ...(single
       ? [
           `- Research/spec: verid:ba → ${skill("ba")}.`,
           `- Design: verid:design → ${skill("design")}.`,
           `- Plan: verid:plan → ${skill("plan")}.`,
           `- Build: verid:build → ${skill("build")}; the main agent writes tests and code under the TDD gate.`,
           `- TDD: verid:tdd → ${skill("tdd")}; debugging: verid:debugging → ${skill("debugging")}.`,
-          `- Review/serve: verid:review → ${skill("review")}; spawn verid_reviewer with agent_type and fork_turns: "none", module/AC identifiers, plan/design paths and .verid/review/work.md from verid menu --commits --file. Reviewer mappings: ${agents("reviewer")}.`,
-          "- Codex spawns configured agents only; verid:* agents are Claude Code plugin entries.",
+          ...(antigravity
+            ? [
+                `- Review/serve: verid:review → ${skill("review")}; invoke_subagent verid-reviewer${manifest.roles?.security ? ", then verid-security," : ""} with module/AC identifiers, plan/design paths and .verid/review/work.md from verid menu --commits --file; its final line is Verdict: pass or Verdict: fail. Reviewer mappings: ${agents("reviewer")}.`,
+                "- Antigravity dispatches the verid-* agents of verid's plugin; verid:* agents are Claude Code plugin entries.",
+              ]
+            : [
+                `- Review/serve: verid:review → ${skill("review")}; spawn verid_reviewer with agent_type and fork_turns: "none", module/AC identifiers, plan/design paths and .verid/review/work.md from verid menu --commits --file. Reviewer mappings: ${agents("reviewer")}.`,
+                "- Codex spawns configured agents only; verid:* agents are Claude Code plugin entries.",
+              ]),
         ]
       : [
           "- Research, then spec: verid:ba in the main conversation.",

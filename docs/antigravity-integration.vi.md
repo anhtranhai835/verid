@@ -1,21 +1,16 @@
-# Thiết kế tích hợp và tối ưu Token cho Verid trên Google Antigravity
+# Tích hợp Verid với Google Antigravity
 
 [Về README](../README.vi.md) · [Rà soát Token](./token-efficiency-audit.vi.md) · [Bảng rule hook](./hook-reference.vi.md)
 
-Tài liệu này mô tả thiết kế tích hợp **Verid (`aeriq`)** vào **Google Antigravity (AGY)** theo nguyên tắc **Zero Source Modification** (không sửa đổi code TypeScript trong `src/`), sử dụng hệ thống **Antigravity Plugin, Progressive Skills, Native Subagents và Lifecycle Hook Bridge** tại [`plugin/antigravity/`](../plugin/antigravity/) và `~/.gemini/config/plugins/verid/`.
+Antigravity là provider thứ ba của verid, ngang hàng với Claude Code và Codex: `providers: ["antigravity"]` trong `.verid/manifest.yaml`, `verid cook --provider antigravity`, `verid setup-antigravity` và `verid doctor`. Lõi verid (`src/adapters/antigravity.ts`) tự đọc payload camelCase của Antigravity và trả lời đúng định dạng của nó; plugin [`plugin/antigravity/`](../plugin/antigravity/) chỉ đăng ký hook, skill và subagent.
 
 ---
 
-## 1. Mục tiêu thiết kế
+## 1. Mục tiêu
 
-1. **Giữ nguyên 100% kỷ luật TDD và kiểm chứng bằng chứng của Verid:**
-   - Cưỡng chế chu trình `RAW → COOKING → PLATED` trên từng lần ghi file (`write_file`, `edit_file`, `replace_file_content`, `multi_replace_file_content`) và lệnh shell (`run_command`).
-   - Giữ nguyên kiểm tra chữ ký phê duyệt module (`verid order`), bằng chứng JUnit (`verid taste`), khóa file bảo vệ (`.verid/.state/`, `.verid/manifest.yaml`, `.verid/docs/`, `.agents/`, `~/.gemini/config/`) và nghiệm thu (`verid serve`).
-2. **Tối ưu hóa triệt để lượng Token tiêu thụ trên Antigravity:**
-   - Loại bỏ hoàn toàn hiện tượng nạp trùng `AGENTS.md`, đọc nhảy 2 bước (double-hop skill stubs), phình to danh mục 25 skills/14 agents ở mỗi turn, và chi phí khởi tạo 20 subagent contexts cho mỗi module.
-3. **Không xâm phạm source code gốc (`src/`):**
-   - Toàn bộ phần thích nghi nằm trong gói cấu hình [`plugin/antigravity/`](../plugin/antigravity/) và cài đặt độc lập tại `~/.gemini/config/plugins/verid/`.
-   - Trong các project không có `.verid/`, plugin tự động đi qua ở chế độ no-op (`< 3ms`) và không can thiệp vào luồng làm việc bình thường.
+1. **Cùng một bộ luật cho mọi provider.** TDD `RAW → COOKING → PLATED`, phê duyệt module (`verid order`), bằng chứng JUnit (`verid taste`), file được bảo vệ và review độc lập chạy đúng code đã dùng cho Claude Code và Codex. Không có bản sao luật nào trong plugin.
+2. **Single-writer.** Luồng chính viết cả test lẫn code dưới cổng TDD, như trên Codex; subagent chỉ dành cho vai trò chỉ-đọc (`verid-reviewer`, `verid-security`). Không giả mạo danh tính tester/coder.
+3. **Rẻ token và nhanh.** Một tiến trình `node` cho mỗi hook (shim nạp hook ngay trong tiến trình), lệnh `/verid` trong chat không tốn lượt model, và project không có `.verid/` được cho qua ngay.
 
 ---
 
@@ -32,77 +27,64 @@ Tài liệu này mô tả thiết kế tích hợp **Verid (`aeriq`)** vào **Go
 
 ---
 
-## 3. Kiến trúc Hook Bridge (`antigravity-hook.mjs`)
-
-Antigravity sử dụng giao thức JSON **camelCase** trên `stdin`/`stdout` (không có trường `hook_event_name` trong payload), trong khi `dist/hook.js` của Verid sử dụng giao thức `snake_case` của Claude Code / Codex.
-
-File [`plugin/antigravity/hooks/antigravity-hook.mjs`](../plugin/antigravity/hooks/antigravity-hook.mjs) đóng vai trò lớp cầu nối (adapter) không phụ thuộc thư viện ngoài:
+## 3. Kiến trúc
 
 ```mermaid
 flowchart LR
-    AGY["Antigravity Runtime"]
-    BRIDGE["antigravity-hook.mjs\n(CamelCase <-> Verid Adapter)"]
-    HOOK["dist/hook.js hoặc\n.verid/hooks/hook.js"]
-    STATE[".verid/.state/\nstate.json & reviews/"]
+    AGY["Antigravity"]
+    SHIM["plugin: hooks/antigravity-hook.mjs\n(chỉ tìm runtime)"]
+    CORE["verid hook-run.js\n--provider antigravity --event X"]
+    STATE[".verid/.state/"]
 
-    AGY -- "stdin (camelCase JSON)\n+ argv EventName" --> BRIDGE
-    BRIDGE -- "Không có .verid/ -> Allow (<3ms)" --> AGY
-    BRIDGE -- "Claude-compatible JSON\n+ Single-Writer Role Identity" --> HOOK
-    HOOK <--> STATE
-    HOOK -- "exit 0|2 + stdout/stderr" --> BRIDGE
-    BRIDGE -- "stdout (injectSteps / decision)" --> AGY
+    AGY -- "stdin camelCase + argv sự kiện" --> SHIM
+    SHIM -- "không có .verid/ → cho qua" --> AGY
+    SHIM -- "import trong cùng tiến trình" --> CORE
+    CORE <--> STATE
+    CORE -- "decision / injectSteps" --> AGY
 ```
 
-### 3.1. Bảng ánh xạ Sự kiện (Lifecycle Events)
+Shim ưu tiên runtime ghim trong project (`.verid/hooks/hook-run.js`, khi `resources: repo`), sau đó tới bundle cài cùng plugin (`<plugin>/dist/hook-run.js`). Không có runtime thì mọi tool call bị từ chối.
 
-| Sự kiện Antigravity (`hooks.json`) | Sự kiện `dist/hook.js`                  | Xử lý tại `antigravity-hook.mjs`                                                                                                                                                                                                                                                    | JSON trả về cho Antigravity (`stdout`)                                                                                                                                                             |
-| :--------------------------------- | :-------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `SessionStart`                     | `SessionStart`                          | Đọc trạng thái TDD (`RAW/COOKING/PLATED`), module đang mở, đường dẫn log và bước tiếp theo.                                                                                                                                                                                         | `{"injectSteps": [{"systemMessage": {"systemMessage": "..."}}]}`                                                                                                                                   |
-| `PreInvocation`                    | `UserPromptSubmit`                      | Truyền `lastUserInput` với `CLAUDE_CODE_SESSION_ATTENDED=1`.<br>• Nếu là `/verid peek`, `menu`, `tip`, `confirm` (`exit === 2`): hiển thị ngay và dừng.<br>• Nếu thiếu `research.md`: tiêm nhắc nhở.                                                                                | • Lệnh `/verid`: `{"injectSteps": [{"errorMessage": {"userMessage": "..."}}], "terminationBehavior": "terminate"}`<br>• Nhắc nhở: `{"injectSteps": [{"systemMessage": {"systemMessage": "..."}}]}` |
-| `PreToolUse`                       | `PreToolUse` (`+ SubagentStart`)        | 1. Kiểm tra bảo vệ `.agents/`, `~/.gemini/config/`, và `transcript.jsonl`.<br>2. Nếu `invoke_subagent` gọi `verid-reviewer` / `verid-security`: kích hoạt `SubagentStart` để chụp snapshot đầu vào.<br>3. Ánh xạ tool của Antigravity + Single-Writer role identity sang `hook.js`. | • Cho phép: `{"decision": "allow"}`<br>• Chặn (TDD / Policy): `{"decision": "deny", "reason": "..."}`                                                                                              |
-| `PostToolUse`                      | `SubagentStop` (khi có review hoàn tất) | Kiểm tra `review_jobs` trong `state.json`; nếu subagent reviewer đã ghi `Verdict: pass\|fail` trong transcript, gọi `SubagentStop` để lưu báo cáo vào `.verid/.state/reviews/`.                                                                                                     | `{}`                                                                                                                                                                                               |
-| `Stop`                             | `Stop` (`+ SubagentStop`)               | Hoàn tất pending review (nếu có), sau đó kiểm tra giữ phiên khi đang ở `COOKING`, `stub`, `dirty` (chưa chạy `verid taste`) hoặc còn AC chưa đạt.                                                                                                                                   | • Giữ phiên: `{"decision": "continue", "reason": "..."}`<br>• Cho dừng: `{"decision": "allow"}`                                                                                                    |
+Trong lõi, mỗi provider là một `Host` (`src/adapters/host.ts`): cách đọc payload, cách trả lời, single-writer hay không, có nhận `/verid tip` hay không. Luật trong `src/hook.ts` chỉ hỏi khả năng của host, không hỏi tên host.
 
-### 3.2. Bảng ánh xạ Công cụ (Tool Mapping) trong `PreToolUse`
+### 3.1. Sự kiện
 
-| Tool của Antigravity                                              | Tham số đầu vào (`toolCall.args`)     | Ánh xạ sang `verid`              | Ghi chú xử lý đặc biệt                                                                                                                                                                             |
-| :---------------------------------------------------------------- | :------------------------------------ | :------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `write_file`                                                      | `Path`, `Content`                     | `Write` (`file_path: args.Path`) | Kiểm tra TDD gate (`RAW/COOKING/PLATED`), plan approval, và protected paths.                                                                                                                       |
-| `edit_file`, `replace_file_content`, `multi_replace_file_content` | `Path` hoặc `TargetFile`              | `Edit` (`file_path: ...`)        | Kiểm tra TDD gate và bảo vệ block `<!-- verid:begin/end -->` trong `AGENTS.md`.                                                                                                                    |
-| `read_file`, `view_file`, `view_file_outline`, `view_code_item`   | `Path`, `AbsolutePath`, `File`        | `Read` (`file_path: ...`)        | Chặn đọc `.verid/.state/`, file bí mật (`.env`, keys) và `transcript.jsonl`.                                                                                                                       |
-| `grep_search`                                                     | `SearchPath`                          | `Grep` (`path: ...`)             | Chặn tìm kiếm trong `.verid/.state/` và thư mục bảo vệ.                                                                                                                                            |
-| `find_by_name`, `list_dir`                                        | `SearchDirectory`, `DirectoryPath`    | `Glob` (`path: ...`)             | Chặn duyệt `.verid/.state/`.                                                                                                                                                                       |
-| `run_command`                                                     | `CommandLine`                         | `Bash` (`command: ...`)          | Trích xuất thêm các cmdlet ghi file của PowerShell trên Windows (`Set-Content`, `Add-Content`, `Out-File`, `Copy-Item`, `Move-Item`, `Remove-Item`) để `bashWrites()` kiểm tra dưới cùng TDD gate. |
-| `invoke_subagent`                                                 | `TypeName`, `Role`, `Prompt`          | `Agent` (`subagent_type: ...`)   | Chuẩn hóa `verid-<name>` ↔ `verid:<name>` theo manifest; tự động phát `SubagentStart` khi gọi `verid-reviewer` hoặc `verid-security`.                                                              |
-| `call_mcp_tool`                                                   | `ServerName`, `ToolName`, `Arguments` | `mcp__<Server>__<Tool>`          | Kiểm tra đường dẫn file trong `Arguments` qua `mcpFiles()`.                                                                                                                                        |
+| Antigravity     | verid xử lý như                      | Trả lời                                                                                                         |
+| :-------------- | :----------------------------------- | :-------------------------------------------------------------------------------------------------------------- |
+| `SessionStart`  | `SessionStart`                       | `{"injectSteps":[{"systemMessage":{...}}]}`: chu trình TDD, vai trò, bước tiếp theo.                            |
+| `PreInvocation` | `UserPromptSubmit`, một lần mỗi turn | `/verid peek\|menu\|tip\|confirm`: `errorMessage` cho developer + `"terminationBehavior":"terminate"`.          |
+| `PreToolUse`    | `PreToolUse` (+ `SubagentStart`)     | `{"decision":"allow"}` hoặc `{"decision":"deny","reason":"verid [MÃ] ..."}`.                                    |
+| `PostToolUse`   | `SubagentStop` cho `invoke_subagent` | `{}`; báo cáo kết thúc bằng `Verdict: pass\|fail` được ghi thành review.                                        |
+| `Stop`          | `Stop`                               | `{"decision":"continue","reason":...}` khi còn việc chưa kiểm chứng; lần dừng kế tiếp trong cùng turn được qua. |
 
-### 3.3. Cơ chế Single-Writer Role Bridge
+Antigravity gọi `PreInvocation` trước mỗi lượt model trong một turn. verid chỉ xử lý lượt đầu (theo `executionNum` và nội dung prompt), nên `/verid confirm` không bị dùng hai lần và lời nhắc không bị tiêm lặp.
 
-Khi một project được khởi tạo bằng `verid cook` mặc định (`providers: ["claude-code"]`), `.verid/manifest.yaml` sẽ chứa cấu hình tách vai trò:
+### 3.2. Công cụ
 
-```yaml
-roles:
-  reviewer: ["verid:reviewer"]
-  tester: ["verid:tester"]
-  coder: ["verid:coder"]
-```
+| Tool của Antigravity                                              | verid xét như                           | Ghi chú                                                                             |
+| :---------------------------------------------------------------- | :-------------------------------------- | :---------------------------------------------------------------------------------- |
+| `write_to_file`, `write_file`, `create_file`                      | `Write` (`TargetFile`/`Path`, nội dung) | Cổng TDD, phê duyệt module, file bảo vệ, block `AGENTS.md`.                         |
+| `replace_file_content`, `multi_replace_file_content`, `edit_file` | `Edit`                                  | Sửa `AGENTS.md` không kiểm chứng được nội dung nên bị từ chối nếu chạm block verid. |
+| `view_file`, `read_file`, `view_file_outline`, `view_code_item`   | `Read`                                  | Chặn `.verid/.state/`, file bí mật, transcript.                                     |
+| `grep_search`, `codebase_search` / `find_by_name`, `list_dir`     | `Grep` / `Glob`                         |                                                                                     |
+| `run_command`                                                     | `Bash`, đọc theo cả sh và PowerShell    | `Cwd` được dùng để giải đường dẫn. Lệnh PowerShell không đọc được thì bị từ chối.   |
+| `send_command_input`                                              | shell không đọc được                    | Bị từ chối (developer có thể mở ngoại lệ bằng `/verid tip`).                        |
+| `invoke_subagent`                                                 | `Agent` (`TypeName`)                    | Khi được cho qua, verid chụp snapshot review cho đúng lời gọi đó (`toolCall.id`).   |
+| `call_mcp_tool`                                                   | `mcp__<Server>__<Tool>`                 | Đường dẫn trong `Arguments` được xét như MCP tool.                                  |
+| Tool khác                                                         | theo tên và đường dẫn trong tham số     | Tool có tên "ghi" mà không tìm thấy đường dẫn: `VERID_BURNT_TOOL_UNSUPPORTED`.      |
 
-Nếu không có cầu nối, khi luồng chính (`main`) của Antigravity trực tiếp ghi file test hoặc code để tiết kiệm token, `decideRole()` sẽ từ chối với lỗi `VERID_BURNT_ROLE_TESTER_ONLY` hoặc `VERID_BURNT_ROLE_CODER_ONLY`.
+### 3.3. Review độc lập
 
-Trong `antigravity-hook.mjs`, hàm `resolveSingleWriterIdentity()` tự động kiểm tra:
+1. `invoke_subagent` tới `verid-reviewer` được cho qua → verid chụp snapshot đầu vào review, gắn với `toolCall.id`.
+2. Khi chính lời gọi đó trả về (`PostToolUse`), verid lấy báo cáo kết thúc bằng `Verdict: pass|fail` và ghi review.
+3. Báo cáo của lời gọi khác, của hội thoại khác, hoặc sau khi code đã đổi thì không được tính (`REVIEW_STALE`).
 
-- Nếu file đích là file test (`test/**`, `*.test.*`, `*.spec.*`, `e2e/**`): gắn định danh `tester` (hoặc `qa` cho `e2e`) từ `manifest.yaml`.
-- Nếu file đích là code production (`src/**`...): gắn định danh `coder` từ `manifest.yaml`.
-- Nếu file đích là `.verid/design.md` hoặc `.verid/plan.md`: gắn định danh `architect` / `planner` nếu có.
+### 3.4. Đường dẫn được bảo vệ thêm
 
-Nhờ đó:
+- Ghi vào `.agents/` của project và `~/.gemini/config/` (nơi đăng ký plugin và hook).
+- Đọc hoặc ghi transcript Antigravity: `~/.gemini/antigravity/brain/*/.system_generated/` và `~/.gemini/antigravity/conversations/`. Artifact của hội thoại vẫn ghi được.
 
-- Luồng `main` trên Antigravity **không bị chặn bởi lỗi phân vai giả tạo**, không cần spawn 2 subagent cho mỗi AC.
-- Ngược lại, **mọi quy tắc TDD (`decideTdd`) vẫn giữ nguyên 100% sức mạnh**:
-  - Ghi code production khi đang ở `RAW` → bị chặn bởi `VERID_BURNT_TDD_NO_FAILING_TEST`.
-  - Sửa file test khi đang ở `COOKING` → bị chặn bởi `VERID_BURNT_TDD_TEST_FROZEN`.
-  - Ghi code khi chưa `verid order` → bị chặn bởi `VERID_BURNT_PLAN_NOT_APPROVED`.
-- Nếu người dùng muốn ép Antigravity phải tách subagent `tester`/`coder` riêng, chỉ cần đặt biến môi trường `VERID_ANTIGRAVITY_SPLIT_ROLES=1`.
+Các luật này áp dụng cho mọi provider: một agent Claude Code cũng không thể sửa hook Antigravity để tắt verid ở phía bên kia.
 
 ---
 
@@ -132,26 +114,23 @@ Get-Content $log | ForEach-Object { $_ | ConvertFrom-Json } |
 
 ---
 
-## 5. Hướng dẫn sử dụng thực tế
+## 5. Cách dùng
 
-### Cách 1: Dùng Global Plugin (Khuyến nghị — bật sẵn cho mọi project)
-
-Plugin đã được cài tại `~/.gemini/config/plugins/verid/`.
-
-1. Trong bất kỳ project nào muốn dùng `verid`, mở terminal của developer và chạy:
-   ```powershell
-   verid cook --mode prep --workflow modular --provider codex --yes
+1. Cài plugin một lần trên mỗi máy, trong terminal của developer:
+   ```sh
+   verid setup-antigravity
    ```
-   _(Hoặc dùng `node <path-to-aeriq>/dist/cli.js cook ...` nếu chưa cài global)._
-2. Mở project trong **Antigravity**:
-   - Hook `SessionStart` tự động nhận diện `.verid/.state/state.json` và nạp trạng thái TDD hiện tại.
-   - Dùng các skill `verid-onboard`, `verid-ba`, `verid-design`, `verid-plan`, `verid-build`, `verid-debugging`, `verid-review`, `verid-router`.
-   - Gõ `/verid peek` hoặc `/verid menu` trực tiếp vào khung chat bất kỳ lúc nào để xem tiến độ mà không tốn token.
+   Lệnh chép plugin, skill, agent và bundle hook vào `~/.gemini/config/plugins/verid/`. Chạy lại sau mỗi lần cập nhật verid. Khởi động lại Antigravity.
+2. Khởi tạo project:
+   ```sh
+   verid cook --provider antigravity --mode prep --yes
+   ```
+   Dùng `--mode remix` cho sửa lỗi nhỏ trên code có sẵn, thêm `--provider claude-code` nếu nhóm dùng cả hai. Ba preset trong [`plugin/antigravity/presets/`](../plugin/antigravity/presets/) là manifest mẫu hợp lệ.
+3. Kiểm tra: `verid doctor` báo plugin đã cài.
+4. Trong Antigravity: gõ `/verid peek` hoặc `/verid menu` trong chat để xem trạng thái (không tốn token), `/verid tip <lý do>` rồi `/verid confirm <mã>` khi cần ngoại lệ.
 
-### Cách 2: Đóng gói theo từng Repository (Workspace-Local)
+### Giới hạn đã biết
 
-Nếu muốn chia sẻ cấu hình Antigravity qua Git cùng repository của nhóm:
-
-1. Chạy `verid cook --mode prep --workflow modular --resources repo --provider codex --yes`.
-2. Xóa các file stub redirect trong `.agents/skills/` (do `codex` sinh ra) và chép mẫu `.agents/skills.json` từ [`plugin/antigravity/workspace-template/.agents/skills.json`](../plugin/antigravity/workspace-template/.agents/skills.json) vào `.agents/skills.json` của project.
-3. Chép `hooks.json`, `hooks/antigravity-hook.mjs` và `agents/*.md` từ [`plugin/antigravity/`](../plugin/antigravity/) vào `.agents/` của project.
+- Định dạng payload dựa trên những gì bridge cũ giả định; chưa có fixture ghi lại từ Antigravity thật như `test/fixtures/codex/`. Nếu Antigravity đặt tên trường khác (ví dụ không gửi `toolCall.id` hoặc kết quả `invoke_subagent` trong `PostToolUse`), review sẽ không được ghi nhận: an toàn, nhưng cần fixture để sửa.
+- Với `workflow: kanban`, tool call của subagent mang `conversationId` riêng nên có thể bị coi là session khác.
+- Antigravity chưa có biến môi trường đánh dấu shell của agent, nên `verid` không tự nhận ra nó đang chạy trong agent; các lệnh chỉ dành cho developer vẫn bị chặn bằng luật shell.

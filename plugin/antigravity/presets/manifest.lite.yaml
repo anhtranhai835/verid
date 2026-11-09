@@ -1,22 +1,15 @@
-# Preset 1: Lite / Low-Ceremony Mode (Recommended for Bugfixes, UI Tweaks & Small Features)
-# - Enforces deterministic TDD (RAW -> COOKING -> PLATED + JUnit XML via `verid taste`)
-# - Skips heavy ceremony (`spec.md`, `design.md`, `plan.md`, `verid order`, `verid serve`, subagent review)
-# - Single-writer on Antigravity main thread (0 subagent overhead)
-version: 1
+# Lite (bug fixes, UI tweaks, small changes in existing code). Prefer generating it:
+#   verid cook --provider antigravity --mode remix
+# Copy to .verid/manifest.yaml, then run verid cook and verid stock in your own terminal.
+# - The TDD gate stays (RAW -> COOKING -> PLATED, evidence from verid taste).
+# - No research, spec, design, plan, order, serve or review: remix has no modules.
+# - The main agent is the single writer: no subagent per AC.
+schemaVersion: 1
 mode: remix
-drive: human
-workflow: classic
-resources: plugin
+providers: ["antigravity"]
+architecture: none
 repos:
-  - name: app
-    path: .
-    role: fullstack
-    test_cmd: npx vitest run --reporter=default --reporter=junit --outputFile=.verid/.state/junit.xml
-    junit_path: .verid/.state/junit.xml
-    source_globs:
-      - "src/**"
-    test_globs:
-      - "test/**"
-      - "tests/**"
-      - "**/*.test.*"
-      - "**/*.spec.*"
+  - path: "."
+    source_globs: ["src/**"]
+    test_globs: ["**/test/**", "**/tests/**", "**/__tests__/**", "**/*.test.*", "**/*.spec.*"]
+    e2e_globs: ["**/e2e/**", "**/*.e2e.*"]

@@ -1,7 +1,7 @@
 {
   "name": "@anhtranhai835/verid",
   "version": "1.0.0",
-  "description": "Evidence-verified, hook-enforced TDD harness for Claude Code and Codex",
+  "description": "Evidence-verified, hook-enforced TDD harness for Claude Code, Codex and Antigravity",
   "author": "Anh Tran",
   "license": "MIT",
   "type": "module",
@@ -32,12 +32,13 @@
     "plugin/skills",
     "plugin/agents",
     "plugin/codex",
+    "plugin/antigravity",
     "plugin/templates",
     "docs",
     "README.vi.md"
   ],
   "scripts": {
-    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && esbuild hook=src/hook-entry.ts cli=src/cli/entry.ts --bundle --splitting --platform=node --format=esm --target=node22 --outdir=dist --log-level=warning \"--banner:js=import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);\"",
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && esbuild hook=src/hook-entry.ts hook-run=src/hook-run.ts cli=src/cli/entry.ts --bundle --splitting --platform=node --format=esm --target=node22 --outdir=dist --log-level=warning \"--banner:js=import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);\"",
     "typecheck": "tsc --noEmit",
     "test": "npm run build && vitest run --exclude test/e2e/installers.e2e.test.ts",
     "test:full": "npm run build && vitest run",
