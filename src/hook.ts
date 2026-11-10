@@ -1,100 +1,89 @@
-import { planned, taskSessions } from "./core/manifest.js";
-import { createHash, randomInt } from "node:crypto";
-import { dirname, isAbsolute, join, relative, resolve } from "node:path";
-import type * as z from "zod/mini";
+import { type Result, hostFor } from "./adapters/host.js";
+import * as shared from "./hook/shared.js";
+import { setLanguage, bilingual, veridName } from "./adapters/i18n.js";
 import {
-  autoNextStep,
-  autoPhase,
-  closeReady,
-  securityOf,
-  coderRoundsAfter,
-  LIMIT,
-  parseVerdict,
-  progressKey,
-  stopHolds,
-  type AutoFacts,
-  type AutoPhase,
-} from "./core/auto.js";
-import {
-  ERROR_CODES,
-  isOverridable,
-  RULE_CODES,
-  type ErrorCode,
-  type MessageKey,
-  type PolicyDecision,
-  type RuleCode,
-} from "./core/errors.js";
-import type { State } from "./core/state.js";
-import type { Manifest, Roles } from "./core/manifest.js";
-import { consumeOverride, handlePrompt, parseVeridPrompt, recordDenial } from "./core/override.js";
-import { openModule } from "./core/plan.js";
-import { claimTaskSession, taskSessionProblem } from "./core/kanban.js";
-import { decide, isUnder } from "./core/policy.js";
-import { matchesGlob } from "./core/glob.js";
-import { decideAgentContext, decideDispatch, decideKnownTool } from "./core/dispatch.js";
-import { claudeHost, hostFor, type Host, type Result } from "./adapters/host.js";
-import { decideInstructions } from "./adapters/instruction-protection.js";
-import {
-  mappedAgents,
-  ROLE_DOCUMENTS,
-  splitOn,
-  singleWriterOf,
-  subagentHold,
-  writerOf,
-  roleAdvice,
-  type Writer,
-} from "./core/roles.js";
-import {
-  cycleLabel,
-  fileRole,
-  decideTdd,
-  keyId,
-  TDD_STRICTNESS,
-  type AutoLock,
-  type Cycle,
-  type TddDecision,
-} from "./core/tdd.js";
-import { appendAudit } from "./adapters/audit-log.js";
-import { auditLines, auditWarnings } from "./adapters/rule-audit.js";
-import {
-  bashWrites,
-  inputHash,
-  mcpFiles,
-  lifecycleSchema,
-  normalizePath,
-  policyContext,
   preToolUseSchema,
-  toAction,
   userPromptSchema,
-  writtenPath,
+  lifecycleSchema,
+  toAction,
   type FileAction,
+  bashWrites,
+  mcpFiles,
+  normalizePath,
+  writtenPath,
+  policyContext,
+  inputHash,
 } from "./adapters/claude-code.js";
-import { captureWork } from "./adapters/git.js";
-import { reviewSnapshot } from "./adapters/review-snapshot.js";
-import { bilingual, inLanguage, setLanguage, t, veridName, type Lang } from "./adapters/i18n.js";
-import { loadManifest, tddLayouts } from "./adapters/manifest.js";
 import {
-  autoFactsOf,
-  designMissing,
-  menuLines,
-  peekLines,
-  planViews,
-  readPlan,
+  VeridError,
+  languageOf,
+  statePaths,
+  withLock,
+  readState,
+  writeState,
+  type StatePaths,
+  readFileHash,
+  writeReview,
+} from "./adapters/state-store.js";
+import type * as z from "zod/mini";
+import { appendAudit } from "./adapters/audit-log.js";
+import { loadManifest, tddLayouts } from "./adapters/manifest.js";
+import { taskSessions, planned, type Roles, type Manifest } from "./core/manifest.js";
+import { isUnder, decide } from "./core/policy.js";
+import {
+  fileRole,
+  type AutoLock,
+  decideTdd,
+  type TddDecision,
+  TDD_STRICTNESS,
+  type Cycle,
+  cycleLabel,
+  keyId,
+} from "./core/tdd.js";
+import { relative, dirname, resolve, isAbsolute, join } from "node:path";
+import {
   researchMissing,
   specMissing,
+  designMissing,
+  autoFactsOf,
+  menuLines,
+  peekLines,
+  readPlan,
   servedSections,
+  planViews,
 } from "./adapters/plan-file.js";
 import {
-  languageOf,
-  readState,
-  statePaths,
-  VeridError,
-  withLock,
-  writeReview,
-  writeState,
-  readFileHash,
-  type StatePaths,
-} from "./adapters/state-store.js";
+  type PolicyDecision,
+  type RuleCode,
+  isOverridable,
+  ERROR_CODES,
+  type ErrorCode,
+} from "./core/errors.js";
+import { decideDispatch, decideAgentContext, decideKnownTool } from "./core/dispatch.js";
+import { decideInstructions } from "./adapters/instruction-protection.js";
+import { matchesGlob } from "./core/glob.js";
+import { roleAdvice, type Writer, ROLE_DOCUMENTS, subagentHold } from "./core/roles.js";
+import { consumeOverride, recordDenial, parseVeridPrompt, handlePrompt } from "./core/override.js";
+import {
+  autoPhase,
+  progressKey,
+  stopHolds,
+  LIMIT,
+  autoNextStep,
+  securityOf,
+  type AutoPhase,
+  type AutoFacts,
+  closeReady,
+  coderRoundsAfter,
+  parseVerdict,
+} from "./core/auto.js";
+import { claimTaskSession, taskSessionProblem } from "./core/kanban.js";
+import { openModule } from "./core/plan.js";
+import { type State } from "./core/state.js";
+import { auditWarnings, auditLines } from "./adapters/rule-audit.js";
+import { captureWork } from "./adapters/git.js";
+import { reviewSnapshot } from "./adapters/review-snapshot.js";
+import { createHash, randomInt } from "node:crypto";
 
 /**
  * Single entry for tool, prompt, session and subagent lifecycle hooks.
@@ -103,15 +92,6 @@ import {
  * Stop, SubagentStop and SessionStart never block on error.
  */
 const LENIENT = new Set(["Stop", "SubagentStart", "SubagentStop", "SessionStart"]);
-// The host that sent this payload (adapters/host.ts). Rules ask what it can do, never its name.
-// ponytail: one module-wide host set by each run(); overlapping runs in one process would race.
-let HOST: Host = claudeHost;
-const projectDir = (cwd: string) => HOST.projectDir(cwd);
-const writerFor: typeof writerOf = (...args) =>
-  (HOST.singleWriter ? singleWriterOf : writerOf)(...args);
-const splitFor = (roles: Roles | undefined) => !HOST.singleWriter && splitOn(roles);
-const mappedNames = (roles: Roles | undefined) => mappedAgents(roles, HOST.singleWriter);
-const sessionKey = (session: string) => `${HOST.id}:${session}`;
 
 /** `dist/hook.js`: one payload from stdin, the result on stdout, stderr and the exit code. */
 export async function main(): Promise<void> {
@@ -127,15 +107,15 @@ export async function main(): Promise<void> {
 /** The whole hook for one payload, with the hook's arguments; tests call it in process. */
 export async function run(raw: string, args: readonly string[]): Promise<Result> {
   const chosen = hostFor(args);
-  HOST = chosen.host;
+  shared.setHost(chosen.host);
   // A payload that names no project gets both languages, as in a fresh process.
   setLanguage(null);
   // Only for routing errors when the payload is not even JSON.
-  let event = HOST.event ?? /"hook_event_name"\s*:\s*"(\w+)"/.exec(raw)?.[1];
+  let event = shared.host().event ?? /"hook_event_name"\s*:\s*"(\w+)"/.exec(raw)?.[1];
   let result: Result;
   try {
     if (chosen.error) throw chosen.error;
-    const [payload, ...after] = HOST.events(parseJson(raw));
+    const [payload, ...after] = shared.host().events(shared.parseJson(raw));
     if (payload === undefined) result = { exit: 0 };
     else {
       event = (payload as { hook_event_name?: string } | null)?.hook_event_name ?? event;
@@ -146,20 +126,20 @@ export async function run(raw: string, args: readonly string[]): Promise<Result>
   } catch (err) {
     result = onError(event, err);
   }
-  return HOST.output(event, result);
+  return shared.host().output(event, result);
 }
 
 async function handle(payload: unknown): Promise<Result> {
   switch ((payload as { hook_event_name?: unknown } | null)?.hook_event_name) {
     case "PreToolUse":
-      return preToolUse(inProject(parse(preToolUseSchema, payload)));
+      return preToolUse(inProject(shared.parse(preToolUseSchema, payload)));
     case "UserPromptSubmit":
-      return userPrompt(inProject(parse(userPromptSchema, payload)));
+      return userPrompt(inProject(shared.parse(userPromptSchema, payload)));
     case "Stop":
     case "SubagentStart":
     case "SubagentStop":
     case "SessionStart": {
-      const p = inProject(parse(lifecycleSchema, payload));
+      const p = inProject(shared.parse(lifecycleSchema, payload));
       const result = await lifecycle(p);
       return result;
     }
@@ -173,15 +153,15 @@ async function handle(payload: unknown): Promise<Result> {
  * a payload it cannot read gets both languages.
  */
 function inProject<P extends { cwd: string }>(payload: P): P {
-  setLanguage(languageOf(projectDir(payload.cwd)));
+  setLanguage(languageOf(shared.projectDir(payload.cwd)));
   return payload;
 }
 
 async function preToolUse(p: z.infer<typeof preToolUseSchema>): Promise<Result> {
-  const project = projectDir(p.cwd);
+  const project = shared.projectDir(p.cwd);
   const paths = statePaths(project);
   // The developer's kill switch comes before every rule, and no /verid tip lifts it.
-  const halted = haltedBy(paths);
+  const halted = shared.haltedBy(paths);
   if (halted) {
     withLock(paths, () =>
       appendAudit(paths.audit, {
@@ -192,9 +172,9 @@ async function preToolUse(p: z.infer<typeof preToolUseSchema>): Promise<Result> 
         target: halted.reason,
       }),
     );
-    return deny("VERID_BURNT_HALTED", { target: halted.reason });
+    return shared.deny("VERID_BURNT_HALTED", { target: halted.reason });
   }
-  const adapted = HOST.action(p);
+  const adapted = shared.host().action(p);
   const action = adapted?.action ?? toAction(p);
   if ("invalid" in action) throw new VeridError("VERID_BURNT_PAYLOAD", { detail: action.invalid });
   // The files this call touches beyond the action itself: what a Bash command plainly writes,
@@ -208,7 +188,7 @@ async function preToolUse(p: z.infer<typeof preToolUseSchema>): Promise<Result> 
   const taskManifest = await loadManifest(project, { readOnly: true }).catch(() => null);
   let taskProblem: string | null = null;
   if (taskManifest && taskSessions(taskManifest)) {
-    const key = sessionKey(p.session_id);
+    const key = shared.sessionKey(p.session_id);
     const layouts = tddLayouts(project, taskManifest);
     const guardedWrite = writes.some(
       (write) =>
@@ -267,7 +247,7 @@ async function preToolUse(p: z.infer<typeof preToolUseSchema>): Promise<Result> 
   // Dispatch now needs the manifest even without file writes. Defer errors until the
   // existing policy has judged the call, preserving its denial priority.
   const advice: PolicyDecision[] = [];
-  const spawn = HOST.spawnTool !== undefined && p.tool_name === HOST.spawnTool;
+  const spawn = shared.host().spawnTool !== undefined && p.tool_name === shared.host().spawnTool;
   const dispatch = await (async () => {
     const manifest =
       ["Skill", "Agent", "Task"].includes(p.tool_name) || spawn
@@ -301,8 +281,8 @@ async function preToolUse(p: z.infer<typeof preToolUseSchema>): Promise<Result> 
     const rules = [action, ...files].map((a) => decide(a, ctx, lifted));
     const policy = strictest(rules);
     if (policy.kind === "deny") return policy;
-    if (HOST.knownTools) {
-      const known = decideKnownTool(p.tool_name, HOST.knownTools);
+    if (shared.host().knownTools) {
+      const known = decideKnownTool(p.tool_name, shared.host().knownTools!);
       if (known.kind === "deny") return known;
     }
     if (adapted) {
@@ -340,12 +320,12 @@ async function preToolUse(p: z.infer<typeof preToolUseSchema>): Promise<Result> 
     return gated?.tdd.kind === "deny" ? gated.tdd : gated;
   };
   // A write of code or a test is a change like any other; an unfrozen test reopens RAW.
-  const event = (j: Judged): CycleEvent => ({
+  const event = (j: Judged): shared.CycleEvent => ({
     session: p.session_id,
     tool: p.tool_name,
     target: j.write.display,
   });
-  const change = (j: Judged): Move => ({
+  const change = (j: Judged): shared.Move => ({
     reopen: j.tdd.kind === "reopen",
     written: true,
     writer: p.agent_id,
@@ -378,7 +358,7 @@ async function preToolUse(p: z.infer<typeof preToolUseSchema>): Promise<Result> 
   }
   if (writes.length && (first === undefined || "write" in first)) {
     const manifest = await loadManifest(project);
-    const writer = writerFor(p.agent_id, p.agent_type, manifest?.roles);
+    const writer = shared.writerFor(p.agent_id, p.agent_type, manifest?.roles);
     for (const w of writes) {
       const path = relative(project, resolve(p.cwd, w.display)).replaceAll("\\", "/");
       const e2e = manifest?.repos.some((repo) => {
@@ -411,10 +391,10 @@ async function preToolUse(p: z.infer<typeof preToolUseSchema>): Promise<Result> 
   }
 
   if (first === undefined || "write" in first) {
-    if (first) move(paths, event(first), change(first));
+    if (first) shared.move(paths, event(first), change(first));
     // Only a pass to void is written, so other writes never wait on the state lock.
     else if (voidsSecurity)
-      withLock(paths, () => writeState(paths, withoutSecurity(readState(paths))));
+      withLock(paths, () => writeState(paths, shared.withoutSecurity(readState(paths))));
     return { exit: 0, ...(auditWarning && { stderr: auditWarning }) };
   }
 
@@ -426,7 +406,7 @@ async function preToolUse(p: z.infer<typeof preToolUseSchema>): Promise<Result> 
     const lifted = new Set<RuleCode>();
     for (;;) {
       const key = { ...call, rule: denied.code };
-      const used = HOST.overrides ? consumeOverride(state, key, now) : null;
+      const used = shared.host().overrides ? consumeOverride(state, key, now) : null;
       if (!used) {
         appendAudit(paths.audit, { event: "denied", ...key, target: denied.target });
         writeState(paths, recordDenial(state, { ...key, target: denied.target, at: now }));
@@ -434,7 +414,7 @@ async function preToolUse(p: z.infer<typeof preToolUseSchema>): Promise<Result> 
           isAbsolute(denied.target) && isUnder(normalizePath(denied.target), normalizePath(project))
             ? relative(project, denied.target).replaceAll("\\", "/")
             : denied.target;
-        return deny(denied.code, { ...gate.names, target });
+        return shared.deny(denied.code, { ...gate.names, target });
       }
       lifted.add(denied.code);
       // Before anything is written: a call verid cannot judge stays denied and keeps its override.
@@ -446,8 +426,8 @@ async function preToolUse(p: z.infer<typeof preToolUseSchema>): Promise<Result> 
         denied = rest;
         continue;
       }
-      if (rest) state = moved(paths, state, event(rest), change(rest));
-      else if (voidsSecurity) state = withoutSecurity(state);
+      if (rest) state = shared.moved(paths, state, event(rest), change(rest));
+      else if (voidsSecurity) state = shared.withoutSecurity(state);
       writeState(paths, state);
       return { exit: 0 };
     }
@@ -455,10 +435,12 @@ async function preToolUse(p: z.infer<typeof preToolUseSchema>): Promise<Result> 
 }
 
 type Deny = Extract<PolicyDecision, { kind: "deny" }>;
+
 interface Who {
   writer: Writer;
   split: boolean;
 }
+
 const ANYONE: Who = { writer: "main", split: false };
 
 interface Gate {
@@ -499,11 +481,11 @@ async function tddGate(
   const auto = facts === null ? null : autoPhase(facts);
   const planApproved =
     manifest.mode === "remix" ||
-    (auto ? auto.kind === "module" : hasOpenModule(project, state, manifest));
+    (auto ? auto.kind === "module" : shared.hasOpenModule(project, state, manifest));
   const lock: AutoLock | null = auto?.kind === "stuck" ? "VERID_BURNT_AUTO_STUCK" : null;
   const who = {
-    writer: writerFor(p.agent_id, p.agent_type, manifest.roles),
-    split: splitFor(manifest.roles),
+    writer: shared.writerFor(p.agent_id, p.agent_type, manifest.roles),
+    split: shared.splitFor(manifest.roles),
   };
   const judge = (
     approved: boolean,
@@ -558,8 +540,8 @@ function roleNames(
 ): Record<string, string> {
   return {
     writer: agentId === undefined ? "main" : (agentType ?? "?"),
-    ...mappedNames(roles),
-    document: ROLE_DOCUMENTS[writerFor(agentId, agentType, roles)] ?? "—",
+    ...shared.mappedNames(roles),
+    document: ROLE_DOCUMENTS[shared.writerFor(agentId, agentType, roles)] ?? "—",
   };
 }
 
@@ -588,71 +570,16 @@ function strictest(decisions: PolicyDecision[]): PolicyDecision {
   );
 }
 
-interface CycleEvent {
-  session: string;
-  tool: string;
-  target: string;
-}
-/**
- * `reopen`: a test changed or a new task began; `written`: production code or a test changed;
- * `writer`: the subagent that wrote it, held at its stop until a run shows the change.
- */
-interface Move {
-  reopen: boolean;
-  written: boolean;
-  writer?: string | undefined;
-}
-
-function move(paths: StatePaths, event: CycleEvent, change: Move): void {
-  withLock(paths, () => writeState(paths, moved(paths, readState(paths), event, change)));
-}
-
-/**
- * rev moves on so a `verid taste` already running cannot count as evidence for what changed.
- * Written files need a run before the agent stops; a changed test must be watched failing, so the
- * cycle goes (or stays) RAW.
- */
-function moved(paths: StatePaths, state: State, event: CycleEvent, change: Move): State {
-  // Audit only real changes of state: test writes in RAW are routine.
-  if (change.reopen && state.tdd.state !== "RAW")
-    appendAudit(paths.audit, { event: "tdd_reopened", ...event, from: state.tdd.state });
-  const tdd = { ...state.tdd, rev: state.tdd.rev + 1 };
-  if (change.reopen) tdd.state = "RAW";
-  if (change.written) tdd.dirty = true;
-  const writers =
-    change.writer === undefined || state.writers.includes(change.writer)
-      ? state.writers
-      : [...state.writers, change.writer];
-  // A review covers the code it read: a change after it needs another, and so does a security review.
-  return {
-    ...state,
-    tdd,
-    writers,
-    ...(change.written && {
-      review: null,
-      security: null,
-      review_epoch: state.review_epoch + 1,
-      security_epoch: state.security_epoch + 1,
-    }),
-  };
-}
-
-const withoutSecurity = (state: State): State => ({
-  ...state,
-  security: null,
-  security_epoch: state.security_epoch + 1,
-});
-
 async function userPrompt(p: z.infer<typeof userPromptSchema>): Promise<Result> {
   // A host with no attended-input signal (Codex) never opens an exception from a prompt, and
   // peek and menu stay in the terminal. Every prompt still gets the research reminder.
-  const attended = HOST.attended();
+  const attended = shared.host().attended();
   const cmd = attended === null ? { kind: "none" as const } : parseVeridPrompt(p.prompt);
-  const project = projectDir(p.cwd);
+  const project = shared.projectDir(p.cwd);
   const paths = statePaths(project);
   if (cmd.kind === "none") {
-    const halted = haltedBy(paths);
-    if (halted) return { exit: 0, stdout: haltedLines(halted) };
+    const halted = shared.haltedBy(paths);
+    if (halted) return { exit: 0, stdout: shared.haltedLines(halted) };
     // Until research.md says what the project is, every prompt reminds the agent to ask first.
     const manifest = await loadManifest(project);
     if (!manifest || !researchMissing(project, manifest.mode)) return { exit: 0 };
@@ -702,13 +629,13 @@ async function userPrompt(p: z.infer<typeof userPromptSchema>): Promise<Result> 
 }
 
 async function lifecycle(p: z.infer<typeof lifecycleSchema>): Promise<Result> {
-  const project = projectDir(p.cwd);
+  const project = shared.projectDir(p.cwd);
   const paths = statePaths(project);
   // Halted, no agent is held back and none is told to go on: the developer has the wheel.
-  const halted = haltedBy(paths);
+  const halted = shared.haltedBy(paths);
   if (halted)
     return p.hook_event_name === "SessionStart"
-      ? { exit: 0, stdout: haltedLines(halted) }
+      ? { exit: 0, stdout: shared.haltedLines(halted) }
       : { exit: 0 };
   if (p.hook_event_name === "SubagentStart") return subagentStart(p);
   if (p.hook_event_name === "SubagentStop") return subagentStop(p);
@@ -727,7 +654,7 @@ async function lifecycle(p: z.infer<typeof lifecycleSchema>): Promise<Result> {
       "verid: AI drive follows the developer's priority queue in one session. Finish the current task before moving to the next.",
     );
   if (taskSessions(manifest)) {
-    const key = sessionKey(p.session_id);
+    const key = shared.sessionKey(p.session_id);
     const kanban = withLock(paths, () => {
       const state = readState(paths);
       const kanban =
@@ -789,7 +716,7 @@ async function lifecycle(p: z.infer<typeof lifecycleSchema>): Promise<Result> {
       writeState(paths, { ...state, ac_stop_session: p.session_id });
       const why = cooking
         ? bilingual("stop.uncovered", { acs: open.uncovered.join(", ") })
-        : bilingual("stop.evaluate", { module: open.name, ...mappedNames(manifest.roles) });
+        : bilingual("stop.evaluate", { module: open.name, ...shared.mappedNames(manifest.roles) });
       return { exit: 2, stderr: `${line(tdd)}\n${why}\n` };
     });
   }
@@ -803,13 +730,13 @@ async function lifecycle(p: z.infer<typeof lifecycleSchema>): Promise<Result> {
     (p.source === "startup" || p.source === "clear")
   ) {
     const event = { session: p.session_id, tool: "SessionStart", target: p.source };
-    move(paths, event, { reopen: true, written: false });
+    shared.move(paths, event, { reopen: true, written: false });
     cycle = { state: "RAW", stub: false };
   }
   // SessionStart stdout goes into the agent's context: with the gate on, the agent learns the
   // cycle before its first write rather than from its first denial.
   const { roles } = manifest;
-  const agents = mappedNames(roles);
+  const agents = shared.mappedNames(roles);
   const standing = menuLines(
     project,
     mode,
@@ -818,14 +745,14 @@ async function lifecycle(p: z.infer<typeof lifecycleSchema>): Promise<Result> {
     manifest.drive,
     manifest,
     undefined,
-    HOST.singleWriter,
+    shared.host().singleWriter,
   );
   // Session context is an index, not a second copy of the full menu or skill instructions.
   // Keep its size independent of the number of modules, questions and audit findings.
   const next = standing.at(-1)!;
   const command = veridName();
   // The open module's log carries the last session's decisions into this one.
-  const open = loggedModule(project, manifest, readState(paths));
+  const open = shared.loggedModule(project, manifest, readState(paths));
   const log = open ? [`verid: log .verid/log/${open}.md`, bilingual("session.log", {})] : [];
   if (p.source === "resume") {
     const alias = command !== "verid" && next.includes(command) ? `verid = ${command}\n` : "";
@@ -844,7 +771,7 @@ async function lifecycle(p: z.infer<typeof lifecycleSchema>): Promise<Result> {
       // Which agent to dispatch for each role, read from the manifest now: the instruction block
       // carries the skill guide and the workflow, but only cook and upgrade rewrite it. The mode's
       // own walk-through is in no block.
-      ...(roles && !HOST.singleWriter
+      ...(roles && !shared.host().singleWriter
         ? [
             `verid: roles ${Object.entries(agents)
               .filter(
@@ -856,10 +783,10 @@ async function lifecycle(p: z.infer<typeof lifecycleSchema>): Promise<Result> {
           ]
         : []),
       bilingual(`mode.${mode}`, {}),
-      ...(HOST.singleWriter
+      ...(shared.host().singleWriter
         ? [
             bilingual(
-              HOST.id === "antigravity"
+              shared.host().id === "antigravity"
                 ? "session.single_writer_antigravity"
                 : "session.single_writer",
               { reviewer: agents.reviewer, security: agents.security },
@@ -978,7 +905,7 @@ function autoStop(
       statusLine(manifest.mode, state.tdd, state.tdd.last_run),
       ...auditLines(project, manifest, state, false, warnings),
       ...(closed === null ? [] : [bilingual("auto.closed", { module: closed })]),
-      bilingual(step.key, { ...mappedNames(manifest.roles), ...step.params }),
+      bilingual(step.key, { ...shared.mappedNames(manifest.roles), ...step.params }),
     ].join("\n");
     // The agent may stop, and the developer sees why.
     if (over(phase)) {
@@ -1105,14 +1032,14 @@ function tryClose(
  * In an auto drive the coder's stop that goes through also ends a round on the module it builds.
  */
 const reviewJobKey = (p: z.infer<typeof lifecycleSchema>): string =>
-  JSON.stringify([HOST.id, p.session_id, p.agent_id]);
+  JSON.stringify([shared.host().id, p.session_id, p.agent_id]);
 
 async function subagentStart(p: z.infer<typeof lifecycleSchema>): Promise<Result> {
   if (!p.agent_id) return { exit: 0 };
-  const project = projectDir(p.cwd);
+  const project = shared.projectDir(p.cwd);
   const manifest = await loadManifest(project);
   if (!manifest) return { exit: 0 };
-  const kind = writerFor(p.agent_id, p.agent_type, manifest.roles);
+  const kind = shared.writerFor(p.agent_id, p.agent_type, manifest.roles);
   if (kind !== "reviewer" && kind !== "security") return { exit: 0 };
   const paths = statePaths(project);
   withLock(paths, () => {
@@ -1129,7 +1056,7 @@ async function subagentStart(p: z.infer<typeof lifecycleSchema>): Promise<Result
 }
 
 async function subagentStop(p: z.infer<typeof lifecycleSchema>): Promise<Result> {
-  const project = projectDir(p.cwd);
+  const project = shared.projectDir(p.cwd);
   const manifest = await loadManifest(project);
   if (!manifest) return { exit: 0 };
   const paths = statePaths(project);
@@ -1137,7 +1064,7 @@ async function subagentStop(p: z.infer<typeof lifecycleSchema>): Promise<Result>
     const problem = kanbanSessionProblem(
       project,
       readState(paths),
-      sessionKey(p.session_id),
+      shared.sessionKey(p.session_id),
       manifest,
     );
     if (problem) {
@@ -1151,7 +1078,7 @@ async function subagentStop(p: z.infer<typeof lifecycleSchema>): Promise<Result>
       return { exit: 0 };
     }
   }
-  const writer = writerFor(p.agent_id, p.agent_type, manifest.roles);
+  const writer = shared.writerFor(p.agent_id, p.agent_type, manifest.roles);
   const auto = manifest.drive === "auto";
   if (writer === "reviewer" || writer === "security") {
     if (manifest.mode !== "remix") recordReview(p, project, paths, auto, manifest, writer);
@@ -1166,7 +1093,7 @@ async function subagentStop(p: z.infer<typeof lifecycleSchema>): Promise<Result>
     const wrote = state.writers.includes(agentId);
     const why =
       wrote && !p.stop_hook_active
-        ? subagentHold(writer, splitFor(manifest.roles), state.tdd)
+        ? subagentHold(writer, shared.splitFor(manifest.roles), state.tdd)
         : null;
     if (why) {
       appendAudit(paths.audit, {
@@ -1278,7 +1205,7 @@ function recordReview(
     const phase = facts === null ? null : autoPhase(facts);
     const module =
       phase === null
-        ? openModuleName(project, state, manifest)
+        ? shared.openModuleName(project, state, manifest)
         : phase.kind === "module"
           ? phase.view.name
           : undefined;
@@ -1350,23 +1277,6 @@ function recordReview(
   });
 }
 
-/** A missing or broken plan has no open module, so production code stays locked. */
-function hasOpenModule(project: string, state: State, manifest: Manifest): boolean {
-  return openModuleName(project, state, manifest) !== undefined;
-}
-
-function openModuleName(project: string, state: State, manifest?: Manifest): string | undefined {
-  const plan = readPlan(
-    project,
-    manifest?.iterations !== undefined,
-    manifest ? planned(manifest) : false,
-    servedSections(state),
-  );
-  if (!plan?.ok) return undefined;
-  const views = planViews(project, plan, state);
-  return openModule(views)?.name;
-}
-
 function onError(event: string | undefined, err: unknown): Result {
   const code: ErrorCode = err instanceof VeridError ? err.code : "VERID_BURNT_INTERNAL";
   const params =
@@ -1375,66 +1285,13 @@ function onError(event: string | undefined, err: unknown): Result {
       : { detail: err instanceof Error ? err.message : String(err) };
   // Codex continues every held Stop, so a hold on error would never end there either.
   if (event && LENIENT.has(event)) return { exit: 0, stderr: `verid [${code}]\n` };
-  if (event === "UserPromptSubmit") return HOST.promptFailed(code);
-  return deny(code, params);
-}
-
-/** The module whose log a session reads, in either drive; undefined when none is open or in remix. */
-function loggedModule(project: string, manifest: Manifest, state: State): string | undefined {
-  if (manifest.mode === "remix") return undefined;
-  if (manifest.drive !== "auto") return openModuleName(project, state, manifest);
-  const phase = autoPhase(
-    autoFactsOf(project, state, manifest.iterations !== undefined, planned(manifest)),
-  );
-  return phase.kind === "module" ? phase.view.name : undefined;
-}
-
-/**
- * What `verid halt` recorded; null when verid is not halted. Unreadable state is not a halt:
- * every later rule reads state again and keeps its own answer to that.
- */
-function haltedBy(paths: ReturnType<typeof statePaths>): { reason: string } | null {
-  try {
-    return readState(paths).halted;
-  } catch {
-    return null;
-  }
-}
-
-const haltedLines = (halted: { reason: string }) =>
-  `verid: halted · ${halted.reason}\n${bilingual("halt.notice", {})}\n`;
-
-function deny(code: ErrorCode, params: Record<string, string>): Result {
-  const rule = (RULE_CODES as readonly string[]).includes(code) ? (code as RuleCode) : undefined;
-  const hint: MessageKey | undefined =
-    rule && HOST.overrides
-      ? isOverridable(rule)
-        ? "hint.overridable"
-        : "hint.not_overridable"
-      : undefined;
-  const line = (lang: Lang) => `${t(lang, code, params)}${hint ? ` ${t(lang, hint, params)}` : ""}`;
-  return { exit: 2, stderr: `verid [${code}]\n${inLanguage(line)}\n` };
-}
-
-function parseJson(raw: string): unknown {
-  try {
-    return JSON.parse(raw);
-  } catch {
-    throw new VeridError("VERID_BURNT_PAYLOAD", { detail: "not JSON" });
-  }
-}
-
-function parse<S extends z.ZodMiniType>(schema: S, payload: unknown): z.infer<S> {
-  const r = schema.safeParse(payload);
-  if (r.success) return r.data;
-  const issue = r.error.issues[0];
-  throw new VeridError("VERID_BURNT_PAYLOAD", {
-    detail: issue ? `${issue.path.join(".") || "payload"}: ${issue.message}` : "invalid",
-  });
+  if (event === "UserPromptSubmit") return shared.host().promptFailed(code);
+  return shared.deny(code, params);
 }
 
 // No 0/O/1/I so the code is easy to read back and type.
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
 function newCode(): string {
   return Array.from({ length: 6 }, () => CODE_ALPHABET[randomInt(CODE_ALPHABET.length)]).join("");
 }
