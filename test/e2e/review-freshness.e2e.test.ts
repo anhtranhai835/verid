@@ -1,69 +1,29 @@
-import { readyModulePlan, startTaskSession } from "./helpers.js";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { tempProject } from "../support/project.js";
+import { startTaskSession } from "./helpers.js";
+import { readFileSync } from "node:fs";
+
 import { join } from "node:path";
-import { afterEach, beforeEach, expect, it } from "vitest";
-import { runCli, runHook } from "./in-process.js";
+import { beforeEach, expect, it } from "vitest";
+import { runHook } from "./in-process.js";
 
 let project: string;
-const stateFile = () => join(project, ".verid/.state/state.json");
-const state = () => JSON.parse(readFileSync(stateFile(), "utf8"));
-const put = (rel: string, text: string) =>
-  writeFileSync(
-    join(project, rel),
-    rel === ".verid/plan.md" ? readyModulePlan(project, text) : text,
-  );
-const cli = async (...args: string[]) => {
-  const result = await runCli(args, project);
 
-  return result;
-};
-const manifest = (drive = "human") => ({
-  schemaVersion: 1,
-  mode: "recipe",
-  drive,
-  providers: ["claude-code", "codex"],
-  roles: {
-    reviewer: ["verid:reviewer", "verid_reviewer"],
-    security: ["verid:security", "codex_security"],
+const t = tempProject("verid-review-freshness-", {
+  approved: true,
+  manifestPreset: "review",
+  parents: false,
+  claudeProject: false,
+  cwd: () => project,
+  bind: (p) => {
+    project = p.root;
   },
-  repos: [
-    {
-      path: ".",
-      source_globs: ["src/**"],
-      test_globs: ["test/**"],
-      test_cmd: `"${process.execPath}" "${join(import.meta.dirname, "fake-runner.mjs")}" {junit}`,
-    },
-  ],
 });
+const { state, putPlan: put, cli, manifestForDrive: manifest } = t;
 beforeEach(async () => {
-  project = mkdtempSync(join(tmpdir(), "verid-review-freshness-"));
-  for (const dir of [".verid/.state", "src", "test"])
-    mkdirSync(join(project, dir), { recursive: true });
-  put(
-    ".verid/.state/state.json",
-    JSON.stringify({
-      schemaVersion: 1,
-      tdd: { state: "PLATED", last_run: "seed", passed_acs: ["AC-1"] },
-    }),
-  );
-  put(".verid/manifest.yaml", JSON.stringify(manifest()));
-  put(".verid/design.md", "# Design\nPure addition\n");
-  put(".verid/research.md", "# Research\n");
-  put(".verid/spec.md", "- REQ-1: adds two numbers\n");
-  put(
-    ".verid/plan.md",
-    "## Module: calc\n- AC-1: adds two numbers\n\n## Module: product\n- AC-9 (e2e): works end to end\n",
-  );
-  put(
-    "scenario.json",
-    JSON.stringify({ exit: 0, junit: "vitest-ac.xml", output: "passing evidence" }),
-  );
   expect((await cli("order", "calc")).code).toBe(0);
   expect((await cli("taste")).code).toBe(0);
   expect((await cli("garnish")).code).toBe(0);
 });
-afterEach(() => rmSync(project, { recursive: true, force: true }));
 
 const cases = [
   ["claude-code", "reviewer", "verid:reviewer"],
