@@ -31,16 +31,11 @@ export const setHost = (value: Host): void => {
   HOST = value;
 };
 export const host = (): Host => HOST;
-
 export const projectDir = (cwd: string) => HOST.projectDir(cwd);
-
 export const writerFor: typeof writerOf = (...args) =>
   (HOST.singleWriter ? singleWriterOf : writerOf)(...args);
-
 export const splitFor = (roles: Roles | undefined) => !HOST.singleWriter && splitOn(roles);
-
 export const mappedNames = (roles: Roles | undefined) => mappedAgents(roles, HOST.singleWriter);
-
 export const sessionKey = (session: string) => `${HOST.id}:${session}`;
 
 export interface CycleEvent {
@@ -48,7 +43,6 @@ export interface CycleEvent {
   tool: string;
   target: string;
 }
-
 /**
  * `reopen`: a test changed or a new task began; `written`: production code or a test changed;
  * `writer`: the subagent that wrote it, held at its stop until a run shows the change.
