@@ -5,6 +5,8 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve, sep } from "node:path";
 import { afterEach, beforeEach } from "vitest";
+import { defaultRoles } from "../../src/core/manifest.js";
+import { readJUnit } from "../../src/adapters/junit.js";
 import { parsePlan } from "../../src/core/plan.js";
 import { MODULE_INPUTS, readPlan } from "../../src/adapters/plan-file.js";
 import { runCli, runHook, runReview } from "../e2e/in-process.js";
@@ -210,12 +212,16 @@ interface ProjectOptions {
 }
 
 export interface TestProject extends ProjectFiles {
+  installedHook: (event: string, extra?: Payload) => SpawnSyncReturns<string>;
+  gitManifest: (extra?: string, repos?: string) => void;
+  contextSetup: (language?: string, extra?: Payload) => void;
+  startSession: (source: string, provider?: string) => ReturnType<typeof runHook>;
   payloadFor: (event: string, session: string, extra?: Payload) => string;
   newDir: () => string;
-  hookArgs: (input: string, args?: string[]) => Promise<Run>;
+  hookArgs: (input: string, args?: string[]) => ReturnType<typeof runHook>;
   readonly session: string;
   path: (rel: string) => string;
-  put: (rel: string, text: string) => void;
+  put: (rel: string, text?: string) => void;
   read: (rel: string) => string;
   state: () => Payload;
   audit: () => Payload[];
@@ -224,17 +230,17 @@ export interface TestProject extends ProjectFiles {
   fixture: (name: string, edit?: (p: Payload) => void) => string;
   write: (rel: string, agent?: string) => string;
   readTool: (rel: string) => string;
-  hook: (input: string, extra?: NodeJS.ProcessEnv, args?: string[]) => Promise<Run>;
+  hook: (input: string, extra?: NodeJS.ProcessEnv, args?: string[]) => ReturnType<typeof runHook>;
   hookSync: (input: string, extra?: NodeJS.ProcessEnv, args?: string[]) => Run;
   hookAsync: (input: string) => Promise<Run>;
-  reviewStop: (type: string) => (report: string) => Promise<Run>;
-  coderStop: (active: boolean) => Promise<Run>;
-  stop: (active?: boolean) => Promise<Run>;
+  reviewStop: (type: string) => (report: string) => ReturnType<typeof runHook>;
+  coderStop: (active: boolean) => ReturnType<typeof runHook>;
+  stop: (active?: boolean) => ReturnType<typeof runHook>;
   actorWrite: (agent: string, rel: string) => Promise<ReturnType<typeof verdict>>;
   gitRaw: (...args: string[]) => GitResult;
   gitChecked: (check: (result: GitResult) => void) => (...args: string[]) => void;
-  cliWith: (extra: NodeJS.ProcessEnv, ...args: string[]) => Promise<Run>;
-  cli: (...args: string[]) => Promise<Run>;
+  cliWith: (extra: NodeJS.ProcessEnv, ...args: string[]) => ReturnType<typeof runCli>;
+  cli: (...args: string[]) => ReturnType<typeof runCli>;
   reset: () => void;
   fresh: () => void;
   putPlan: (rel: string, text?: string) => void;
@@ -249,27 +255,35 @@ export interface TestProject extends ProjectFiles {
   manifestForDrive: (drive?: string) => Payload;
   loadState: () => ReturnType<typeof readState>;
   auditText: () => string;
-  providerHook: (payload: unknown, provider?: string, extra?: NodeJS.ProcessEnv) => Promise<Run>;
-  inputHook: (payload: Payload, attended?: boolean, configDir?: string) => Promise<Run>;
+  providerHook: (
+    payload: unknown,
+    provider?: string,
+    extra?: NodeJS.ProcessEnv,
+  ) => ReturnType<typeof runHook>;
+  inputHook: (
+    payload: Payload,
+    attended?: boolean,
+    configDir?: string,
+  ) => ReturnType<typeof runHook>;
   guardHook: (
     payload: Payload,
     attended?: boolean,
     configDir?: string,
-  ) => Promise<{ code: number | null; stderr: string }>;
-  event: (event: string, extra?: Payload) => Promise<Run>;
+  ) => Promise<{ code: number; stderr: string }>;
+  event: (event: string, extra?: Payload) => ReturnType<typeof runHook>;
   sessionEvent: (
     event: string,
     session: string,
     extra?: Payload,
     provider?: string,
-  ) => Promise<Run>;
-  writeCall: (path: string) => Promise<Run>;
+  ) => ReturnType<typeof runHook>;
+  writeCall: (path: string) => ReturnType<typeof runHook>;
   pathHook: (
     path: string,
     writer?: string,
     tool?: string,
     input?: object,
-  ) => Promise<{ code: number | null; err: string }>;
+  ) => Promise<{ code: number; err: string }>;
   gitRawAt: (cwd: string, ...args: string[]) => GitResult;
   gitAt: (cwd: string, ...args: string[]) => string;
   cliAt: (args: string[], cwd?: string, extra?: NodeJS.ProcessEnv) => ReturnType<typeof runCli>;
@@ -309,6 +323,43 @@ export function tempProject(prefix: string, options: ProjectOptions = {}) {
     ...extra,
   });
   const project: TestProject = {
+    installedHook: (event: string, extra: Payload = {}): SpawnSyncReturns<string> =>
+      spawnSync(process.execPath, [project.path(".verid/hooks/hook.js"), "--provider", "codex"], {
+        cwd: project.dir,
+        env: project.env(),
+        encoding: "utf8",
+        input: JSON.stringify({
+          hook_event_name: event,
+          session_id: options.sessionId?.() ?? project.session,
+          cwd: project.dir,
+          ...options.payload,
+          ...extra,
+        }),
+      }),
+    gitManifest: (
+      extra = "",
+      repos = '  - path: "."\n    source_globs: ["src/**"]\n    test_globs: ["test/**"]\n',
+    ): void =>
+      project.put(
+        ".verid/manifest.yaml",
+        "schemaVersion: 1\nmode: prep\n" + extra + "repos:\n" + repos,
+      ),
+    contextSetup: (language = "en", extra: Payload = {}): void => {
+      project.put(
+        ".verid/manifest.yaml",
+        stringify({
+          schemaVersion: 1,
+          mode: "prep",
+          providers: ["claude-code"],
+          roles: defaultRoles(["claude-code"]),
+          repos: [{ path: ".", source_globs: ["src/**"], test_globs: ["test/**"] }],
+          ...extra,
+        }),
+      );
+      project.put(".verid/.state/state.json", JSON.stringify({ schemaVersion: 1, language }));
+    },
+    startSession: (source: string, provider = "claude-code"): ReturnType<typeof runHook> =>
+      project.sessionEvent("SessionStart", project.session, { source }, provider),
     payloadFor: (event: string, session: string, extra: Payload = {}): string =>
       JSON.stringify({
         hook_event_name: event,
@@ -339,7 +390,7 @@ export function tempProject(prefix: string, options: ProjectOptions = {}) {
       return session;
     },
     path: (rel: string): string => join(project.dir, ...rel.split("/")),
-    put: (rel: string, text: string): void => {
+    put: (rel: string, text = options.defaultText ?? ""): void => {
       const file = project.path(rel);
       if (options.parents !== false) mkdirSync(dirname(file), { recursive: true });
       writeFileSync(file, text);
@@ -380,7 +431,11 @@ export function tempProject(prefix: string, options: ProjectOptions = {}) {
       project.fixture("pre-tool-use-read", (p) => {
         p.tool_input.file_path = project.path(rel);
       }),
-    hook: (input: string, extra: NodeJS.ProcessEnv = {}, args: string[] = []): Promise<Run> =>
+    hook: (
+      input: string,
+      extra: NodeJS.ProcessEnv = {},
+      args: string[] = [],
+    ): ReturnType<typeof runHook> =>
       (options.review && JSON.parse(input).hook_event_name === "SubagentStop"
         ? runReview
         : runHook)(
@@ -416,14 +471,14 @@ export function tempProject(prefix: string, options: ProjectOptions = {}) {
       }),
     reviewStop:
       (type: string) =>
-      (report: string): Promise<Run> =>
+      (report: string): ReturnType<typeof runHook> =>
         project.hook(
           project.fixture("subagent-stop-reviewer", (p) => {
             p.agent_type = type;
             p.last_assistant_message = report;
           }),
         ),
-    coderStop: (active: boolean): Promise<Run> =>
+    coderStop: (active: boolean): ReturnType<typeof runHook> =>
       project.hook(
         project.fixture("subagent-stop-reviewer", (p) => {
           p.agent_type = "verid:coder";
@@ -431,7 +486,7 @@ export function tempProject(prefix: string, options: ProjectOptions = {}) {
           p.stop_hook_active = active;
         }),
       ),
-    stop: (active = false): Promise<Run> =>
+    stop: (active = false): ReturnType<typeof runHook> =>
       project.hook(
         project.fixture("stop", (p) => {
           p.stop_hook_active = active;
@@ -468,7 +523,7 @@ export function tempProject(prefix: string, options: ProjectOptions = {}) {
       (...args: string[]): void => {
         check(project.gitRaw(...args));
       },
-    cliWith: async (extra: NodeJS.ProcessEnv, ...args: string[]): Promise<Run> => {
+    cliWith: async (extra: NodeJS.ProcessEnv, ...args: string[]): ReturnType<typeof runCli> => {
       const result = await runCli(args, project.dir, callEnv(extra));
       if (
         options.taskSession &&
@@ -483,7 +538,7 @@ export function tempProject(prefix: string, options: ProjectOptions = {}) {
       }
       return result;
     },
-    cli: (...args: string[]): Promise<Run> => project.cliWith({}, ...args),
+    cli: (...args: string[]): ReturnType<typeof runCli> => project.cliWith({}, ...args),
     reset: (): void => {
       if (options.state !== undefined || options.manifest !== undefined) {
         const target = resolve(project.dir, ".verid");
@@ -546,7 +601,8 @@ export function tempProject(prefix: string, options: ProjectOptions = {}) {
       roots.push(created);
       return created;
     },
-    hookArgs: (input: string, args: string[] = []): Promise<Run> => project.hook(input, {}, args),
+    hookArgs: (input: string, args: string[] = []): ReturnType<typeof runHook> =>
+      project.hook(input, {}, args),
 
     putPlan: (rel: string, text = options.defaultText ?? ""): void => {
       if (rel === ".verid/plan.md") {
@@ -556,7 +612,7 @@ export function tempProject(prefix: string, options: ProjectOptions = {}) {
       }
       project.put(rel, text);
     },
-    putAt: (dir: string, rel: string, text = ""): void => {
+    putAt: (dir: string, rel: string, text = options.defaultText ?? ""): void => {
       const file = join(dir, ...rel.split("/"));
       mkdirSync(dirname(file), { recursive: true });
       writeFileSync(file, text);
@@ -590,12 +646,16 @@ export function tempProject(prefix: string, options: ProjectOptions = {}) {
       payload: unknown,
       provider = "codex",
       extra: NodeJS.ProcessEnv = {},
-    ): Promise<Run> =>
+    ): ReturnType<typeof runHook> =>
       project.hook(typeof payload === "string" ? payload : JSON.stringify(payload), extra, [
         "--provider",
         provider,
       ]),
-    inputHook: (payload: Payload, attended = false, configDir?: string): Promise<Run> =>
+    inputHook: (
+      payload: Payload,
+      attended = false,
+      configDir?: string,
+    ): ReturnType<typeof runHook> =>
       project.hook(
         JSON.stringify({
           session_id: options.sessionId?.() ?? project.session,
@@ -611,11 +671,11 @@ export function tempProject(prefix: string, options: ProjectOptions = {}) {
       payload: Payload,
       attended = false,
       configDir?: string,
-    ): Promise<{ code: number | null; stderr: string }> => {
+    ): Promise<{ code: number; stderr: string }> => {
       const result = await project.inputHook(payload, attended, configDir);
       return { code: result.code, stderr: result.stderr };
     },
-    event: (event: string, extra: Payload = {}): Promise<Run> =>
+    event: (event: string, extra: Payload = {}): ReturnType<typeof runHook> =>
       project.hook(
         JSON.stringify({
           hook_event_name: event,
@@ -634,7 +694,7 @@ export function tempProject(prefix: string, options: ProjectOptions = {}) {
       session: string,
       extra: Payload = {},
       provider = options.provider ?? "codex",
-    ): Promise<Run> =>
+    ): ReturnType<typeof runHook> =>
       project.hook(
         JSON.stringify({
           hook_event_name: event,
@@ -646,7 +706,7 @@ export function tempProject(prefix: string, options: ProjectOptions = {}) {
         {},
         provider === "codex" ? ["--provider", "codex"] : [],
       ),
-    writeCall: (path: string): Promise<Run> =>
+    writeCall: (path: string): ReturnType<typeof runHook> =>
       project.event("PreToolUse", {
         agent_id: "coder-1",
         agent_type: "verid:coder",
@@ -658,7 +718,7 @@ export function tempProject(prefix: string, options: ProjectOptions = {}) {
       writer?: string,
       tool = "Write",
       input?: object,
-    ): Promise<{ code: number | null; err: string }> => {
+    ): Promise<{ code: number; err: string }> => {
       const result = await project.event("PreToolUse", {
         tool_name: tool,
         tool_input: input ?? { file_path: path, content: "test" },
@@ -811,3 +871,23 @@ export function projectManifest(extra: Payload = {}, preset = "plain"): Payload 
     });
   return { ...value, repos: [repo], ...extra };
 }
+
+export const readJUnitFixture = (name: string): ReturnType<typeof readJUnit> =>
+  readJUnit(join(TEST_ROOT, "test/fixtures/junit", name));
+export const kanbanManifest = (): string =>
+  stringify({
+    schemaVersion: 1,
+    workflow: "kanban",
+    mode: "prep",
+    providers: ["codex"],
+    roles: defaultRoles(["codex"]),
+    architecture: "none",
+    repos: [
+      {
+        path: ".",
+        source_globs: ["src/**"],
+        test_globs: ["test/**"],
+        test_cmd: `"${process.execPath}" "${RUNNER}" {junit}`,
+      },
+    ],
+  });

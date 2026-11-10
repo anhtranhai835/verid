@@ -1,46 +1,32 @@
+import { tempProject, TEST_ROOT as ROOT } from "../support/project.js";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { developerEnv } from "./helpers.js";
 import { runCli, runHook } from "./in-process.js";
 
-const ROOT = join(import.meta.dirname, "../..");
 let project: string;
-const stateFile = () => join(project, ".verid/.state/state.json");
-const state = () => JSON.parse(readFileSync(stateFile(), "utf8"));
-const audit = () =>
-  readFileSync(join(project, ".verid/.state/audit.jsonl"), "utf8")
-    .trim()
-    .split("\n")
-    .map((line) => JSON.parse(line));
 
-beforeEach(() => {
-  project = mkdtempSync(join(tmpdir(), "verid-halt-"));
-  mkdirSync(join(project, ".verid/.state"), { recursive: true });
-  // COOKING: a failing test, so an ordinary Stop would be held.
-  writeFileSync(
-    stateFile(),
-    JSON.stringify({
-      schemaVersion: 1,
-      language: "en",
-      tdd: { state: "COOKING", last_run: "r1", failing: ["t"], rev: 1 },
-    }),
-  );
-  writeFileSync(
-    join(project, ".verid/manifest.yaml"),
+const t = tempProject("verid-halt-", {
+  cwd: () => project,
+  bind: (p) => {
+    project = p.root;
+  },
+  state: {
+    schemaVersion: 1,
+    language: "en",
+    tdd: { state: "COOKING", last_run: "r1", failing: ["t"], rev: 1 },
+  },
+  manifest:
     'schemaVersion: 1\nmode: remix\nrepos:\n  - path: "."\n    source_globs: ["src/**"]\n    test_globs: ["test/**"]\n',
-  );
 });
-afterEach(() => rmSync(project, { recursive: true, force: true }));
+const { state, audit, hookArgs: hook } = t;
 
 const payload = (event: string, extra: Record<string, unknown> = {}) =>
   JSON.stringify({ hook_event_name: event, session_id: "s", cwd: project, ...extra });
 const tool = (tool_name: string, tool_input: Record<string, unknown>) =>
   payload("PreToolUse", { tool_name, tool_input });
-const hook = (input: string, args: string[] = []) =>
-  runHook(input, { CLAUDE_PROJECT_DIR: project }, args);
 
 describe("kill switch: verid halt and verid resume", () => {
   it("halts and resumes through the built CLI and hook", () => {
