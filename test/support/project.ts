@@ -1,4 +1,4 @@
-import { spawn, spawnSync } from "node:child_process";
+import { spawn, spawnSync, type SpawnSyncReturns } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve, sep } from "node:path";
@@ -102,23 +102,66 @@ export const manifest = (
   testCmd = `"${process.execPath}" "${RUNNER}" {junit}`,
   repoPath = ".",
   mode = "remix",
+  header: string[] = [],
+  repoExtra: string[] = [],
 ) =>
   [
     "schemaVersion: 1",
     `mode: ${mode}`,
+    ...header,
     "repos:",
     `  - path: ${repoPath}`,
     `    test_cmd: ${JSON.stringify(testCmd)}`,
     `    source_globs: ["${sourceGlob}"]`,
     '    test_globs: ["test/**"]',
+    ...repoExtra,
     "",
   ].join("\n");
+
+export const autoManifest = (testCmd?: string) =>
+  manifest("src/**", testCmd, ".", "prep", [
+    "drive: auto",
+    "roles:",
+    '  reviewer: ["verid:reviewer"]',
+    '  tester: ["verid:tester"]',
+    '  coder: ["verid:coder"]',
+  ]);
+export const SRC_TEST = '    source_globs: ["src/**"]\n    test_globs: ["test/**"]';
+export const architectureManifest = (
+  check: Record<string, unknown> | null,
+  mode = "remix",
+  extra = 'roles:\n  reviewer: ["verid:reviewer"]\n',
+  globs = SRC_TEST,
+) =>
+  manifest(
+    "src/**",
+    undefined,
+    ".",
+    mode,
+    mode === "remix" ? [] : [extra.trimEnd()],
+    check ? [`    architecture_check: ${JSON.stringify(check)}`] : [],
+  ).replace(SRC_TEST, globs);
 
 export interface Run {
   code: number | null;
   stdout: string;
   stderr: string;
 }
+export type GitResult = SpawnSyncReturns<string>;
+export const verdict = (r: Run) =>
+  r.code === 0 ? "exit 0" : /verid \[(\w+)\]/.exec(r.stderr)?.[1];
+let english: Record<string, string> | undefined;
+export const enMessage = (key: string, params: Record<string, string>) => {
+  english ??= JSON.parse(readFileSync(join(TEST_ROOT, "i18n/en.json"), "utf8"));
+  return (english![key] ?? key).replace(
+    /\{(\w+)\}/g,
+    (match, name: string) =>
+      params[name] ?? (name === "verid" ? `node "${CLI.replaceAll("\\", "/")}"` : match),
+  );
+};
+export const told = (r: Run | undefined, key: string, params: Record<string, string>) =>
+  r?.code === 0 &&
+  String((JSON.parse(r.stdout || "{}") as Payload).systemMessage).includes(enMessage(key, params));
 
 interface ProjectFiles {
   readonly root: string;
@@ -146,6 +189,10 @@ interface ProjectOptions {
   taskSession?: boolean;
   sessionChanged?: (session: string) => void;
   cleanup?: { maxRetries?: number; retryDelay?: number };
+  parents?: boolean;
+  gitIdentity?: readonly [string, string] | false;
+  gitEnv?: () => NodeJS.ProcessEnv;
+  gitHide?: boolean;
 }
 
 /** Calls into in-process.ts share process state: keep a file's tests and calls sequential. */
@@ -185,7 +232,7 @@ export function tempProject(prefix: string, options: ProjectOptions = {}) {
     path: (rel: string): string => join(project.dir, ...rel.split("/")),
     put: (rel: string, text: string): void => {
       const file = project.path(rel);
-      mkdirSync(dirname(file), { recursive: true });
+      if (options.parents !== false) mkdirSync(dirname(file), { recursive: true });
       writeFileSync(file, text);
     },
     read: (rel: string): string => readFileSync(project.path(rel), "utf8"),
@@ -195,6 +242,14 @@ export function tempProject(prefix: string, options: ProjectOptions = {}) {
         .trim()
         .split("\n")
         .map((line) => JSON.parse(line)),
+    seed: (partial: Payload): void => {
+      const { auto, ...rest } = partial;
+      const now = project.state();
+      writeFileSync(
+        project.stateFile,
+        JSON.stringify({ ...now, ...rest, ...(auto && { auto: { ...now.auto, ...auto } }) }),
+      );
+    },
     env: (extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv => ({
       ...developerEnv(...(options.omitEnv ?? [])),
       ...callEnv(extra),
@@ -242,6 +297,60 @@ export function tempProject(prefix: string, options: ProjectOptions = {}) {
         child.on("close", (code) => done({ code, stdout, stderr }));
         child.stdin.end(input);
       }),
+    reviewStop:
+      (type: string) =>
+      (report: string): Promise<Run> =>
+        project.hook(
+          project.fixture("subagent-stop-reviewer", (p) => {
+            p.agent_type = type;
+            p.last_assistant_message = report;
+          }),
+        ),
+    coderStop: (active: boolean): Promise<Run> =>
+      project.hook(
+        project.fixture("subagent-stop-reviewer", (p) => {
+          p.agent_type = "verid:coder";
+          p.agent_id = "c1";
+          p.stop_hook_active = active;
+        }),
+      ),
+    stop: (active = false): Promise<Run> =>
+      project.hook(
+        project.fixture("stop", (p) => {
+          p.stop_hook_active = active;
+        }),
+      ),
+    actorWrite: async (agent: string, rel: string) =>
+      verdict(
+        await project.hook(
+          project.fixture("pre-tool-use-write-from-plugin-agent", (p) => {
+            p.agent_type = agent;
+            p.tool_input.file_path = project.path(rel);
+          }),
+        ),
+      ),
+    gitRaw: (...args: string[]): GitResult => {
+      const identity =
+        options.gitIdentity === false
+          ? []
+          : [
+              "-c",
+              `user.name=${options.gitIdentity?.[0] ?? "t"}`,
+              "-c",
+              `user.email=${options.gitIdentity?.[1] ?? "t@t"}`,
+            ];
+      return spawnSync("git", [...identity, ...args], {
+        cwd: project.dir,
+        encoding: "utf8",
+        ...(options.gitEnv && { env: options.gitEnv() }),
+        ...(options.gitHide !== undefined && { windowsHide: options.gitHide }),
+      });
+    },
+    gitChecked:
+      (check: (result: GitResult) => void) =>
+      (...args: string[]): void => {
+        check(project.gitRaw(...args));
+      },
     cliWith: async (extra: NodeJS.ProcessEnv, ...args: string[]): Promise<Run> => {
       const result = await runCli(args, project.dir, callEnv(extra));
       if (
@@ -268,16 +377,20 @@ export function tempProject(prefix: string, options: ProjectOptions = {}) {
       session = options.session ?? FIXTURE_SESSION;
       sessionCount = 0;
       options.sessionChanged?.(session);
-      if (options.state !== undefined)
-        project.put(
-          ".verid/.state/state.json",
+      if (options.state !== undefined) {
+        mkdirSync(dirname(project.stateFile), { recursive: true });
+        writeFileSync(
+          project.stateFile,
           typeof options.state === "string" ? options.state : JSON.stringify(options.state),
         );
-      if (options.manifest !== undefined)
-        project.put(
-          ".verid/manifest.yaml",
+      }
+      if (options.manifest !== undefined) {
+        mkdirSync(dirname(project.manifestFile), { recursive: true });
+        writeFileSync(
+          project.manifestFile,
           typeof options.manifest === "function" ? options.manifest() : options.manifest,
         );
+      }
     },
     fresh: (): void => {
       root = mkdtempSync(join(tmpdir(), prefix));
