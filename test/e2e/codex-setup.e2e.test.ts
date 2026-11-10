@@ -1,43 +1,30 @@
-import { spawnSync } from "node:child_process";
-import {
-  cpSync,
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
+import { tempProject } from "../support/project.js";
+
+import { cpSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 
-const CLI = join(import.meta.dirname, "../../dist/cli.js");
 let dir: string;
 let project: string;
 let home: string;
-beforeEach(() => {
-  dir = mkdtempSync(join(tmpdir(), "verid codex setup "));
-  project = join(dir, "project with spaces");
-  home = join(dir, "codex home");
-  mkdirSync(project);
-  mkdirSync(home);
+const t = tempProject("verid codex setup ", {
+  subdir: "project with spaces",
+  cwd: () => project,
+  claudeProject: false,
+  omitEnv: ["CODEX"],
+  bind: (p) => {
+    dir = p.root;
+    project = join(dir, "project with spaces");
+    home = join(dir, "codex home");
+  },
+  env: () => ({ CODEX_HOME: home }),
+  setup: () => {
+    mkdirSync(home);
+  },
 });
-afterEach(() => rmSync(dir, { recursive: true, force: true }));
-const cliAt = (entry: string, ...args: string[]) =>
-  spawnSync(process.execPath, [entry, ...args], {
-    cwd: project,
-    encoding: "utf8",
-    env: {
-      ...Object.fromEntries(
-        Object.entries(process.env).filter(([key]) => !/^(CLAUDE|CODEX)/.test(key)),
-      ),
-      CODEX_HOME: home,
-    },
-  });
-const cli = (...args: string[]) => cliAt(CLI, ...args);
-const read = (path: string) => readFileSync(path, "utf8");
+const { rawCliFile: cliAt, rawCliArgs: cli, readFile: read } = t;
 
 describe("Codex setup and diagnostics", () => {
   it("checks the installed reviewer overlay rather than only its config mapping", () => {
