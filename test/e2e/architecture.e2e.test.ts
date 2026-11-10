@@ -10,7 +10,6 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { loadManifest } from "../../src/adapters/manifest.js";
 import { launchable } from "../../src/adapters/architecture.js";
 import { runCli, runHook } from "./in-process.js";
 import { claudeFixture, type Payload } from "./helpers.js";

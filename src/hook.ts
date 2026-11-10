@@ -45,7 +45,6 @@ import {
   type Writer,
 } from "./core/roles.js";
 import {
-  cycleHint,
   cycleLabel,
   fileRole,
   decideTdd,

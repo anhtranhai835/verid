@@ -280,7 +280,6 @@ function decideRepoTdd(
     who.split,
     rel !== null && isE2eFile(rel, layout) ? "e2e" : role,
     action.display,
-    relativeTo(action.path, layout.projectRoot ?? layout.repoRoot),
   );
   if (byRole.kind === "deny") return byRole;
   if (role === "outside") return { kind: "allow", reason: "outside the repo" };

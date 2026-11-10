@@ -10,7 +10,6 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
-  renameSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -85,9 +84,6 @@ const cliWith = (extra: Record<string, string>, ...args: string[]): Promise<Run>
   runCli(args, project, { CLAUDE_PROJECT_DIR: project, ...extra });
 const cli = (...args: string[]): Promise<Run> => cliWith({}, ...args);
 
-const scenario = (exit: number, junit: string | null, output = "fake runner output", delay = 0) =>
-  writeFileSync(join(project, "scenario.json"), JSON.stringify({ exit, junit, output, delay }));
-
 const state = () => JSON.parse(readFileSync(stateFile, "utf8"));
 // Only the cycle is replaced: the auto state a test built before it must stay.
 const setTdd = (s: string) => seed({ tdd: { state: s, last_run: null } });
@@ -97,8 +93,6 @@ const audit = (): Payload[] =>
     .split("\n")
     .map((l) => JSON.parse(l));
 
-const write = (rel: string) =>
-  fixture("pre-tool-use-write", (p) => (p.tool_input.file_path = join(project, ...rel.split("/"))));
 const prompt = (text: string) => fixture("user-prompt-submit-verid-tip", (p) => (p.prompt = text));
 const verdict = (r: Run) => (r.code === 0 ? "exit 0" : /verid \[(\w+)\]/.exec(r.stderr)?.[1]);
 

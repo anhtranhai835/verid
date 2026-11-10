@@ -67,7 +67,6 @@ export function decideRole(
   split: boolean,
   file: "test" | "e2e" | "code" | "free" | "outside",
   target: string,
-  documentPath: string | null = null,
 ): PolicyDecision {
   if (writer === "reviewer" || writer === "security")
     return {

@@ -2,15 +2,13 @@ import { readyModulePlan, startTaskSession } from "./helpers.js";
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { runCli, runHook } from "./in-process.js";
 import { workLog } from "../../src/adapters/git.js";
 
 // The Git rules through the hook, on real throwaway repositories. One case spawns the built hook;
 // the tables run it in process.
-const ROOT = resolve(import.meta.dirname, "../..");
-const HOOK = join(ROOT, "dist", "hook.js");
 const SESSION = "git-session";
 let project: string;
 let gitconfig: string;
@@ -60,24 +58,10 @@ const payload = (command: string, cwd = project) =>
     tool_name: "Bash",
     tool_input: { command },
   });
-const prompt = (text: string) =>
-  JSON.stringify({
-    hook_event_name: "UserPromptSubmit",
-    session_id: SESSION,
-    cwd: project,
-    prompt: text,
-  });
 const code = async (command: string, cwd = project) => {
   const r = await runHook(payload(command, cwd), env());
   return r.code === 0 ? "allow" : (/verid \[(\w+)\]/.exec(r.stderr)?.[1] ?? r.stderr);
 };
-const audit = (): Record<string, any>[] =>
-  readFileSync(join(project, ".verid/.state/audit.jsonl"), "utf8")
-    .trim()
-    .split("\n")
-    .map((l) => JSON.parse(l));
-const codes = async (rows: string[], cwd = project) =>
-  Object.fromEntries(await Promise.all(rows.map(async (r) => [r, await code(r, cwd)] as const)));
 
 beforeEach(() => {
   project = mkdtempSync(join(tmpdir(), "verid-git-"));

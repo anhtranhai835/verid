@@ -62,7 +62,7 @@ describe("roles", () => {
       ["planner", true, null, "allow"],
     ] as const;
     for (const [writer, split, path, want] of rows) {
-      const d = decideRole(writer, split, path === null ? "outside" : "free", "display", path);
+      const d = decideRole(writer, split, path === null ? "outside" : "free", "display");
       expect(d.kind === "deny" ? d.code : d.kind, `${writer} ${path}`).toBe(want);
     }
   });
