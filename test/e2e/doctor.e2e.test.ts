@@ -1,5 +1,5 @@
-import { readyModulePlan } from "./helpers.js";
-import { spawnSync } from "node:child_process";
+import { tempProject, TEST_ROOT as root, type GitResult } from "../support/project.js";
+
 import {
   cpSync,
   existsSync,
@@ -11,15 +11,12 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { parse, stringify } from "yaml";
+import { join } from "node:path";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+
 import { appendAudit } from "../../src/adapters/audit-log.js";
 import { codexHookKeys } from "../../src/adapters/codex-settings.js";
-import { runCli } from "./in-process.js";
-import { developerEnv } from "./helpers.js";
 
-const root = join(import.meta.dirname, "../..");
 let dir: string;
 let project: string;
 let config: string;
@@ -34,36 +31,24 @@ beforeAll(async () => {
   fixture = project;
 });
 afterAll(() => rmSync(fixtureDir, { recursive: true, force: true }));
-beforeEach(() => {
-  dir = mkdtempSync(join(tmpdir(), "verid-doctor-"));
-  config = join(dir, "claude-config");
+const t = tempProject("verid-doctor-", {
+  cwd: () => project,
+  claudeProject: false,
+  readyPlan: true,
+  gitIdentity: false,
+  env: () => ({ CLAUDE_CONFIG_DIR: config, CODEX_HOME: join(dir, "codex") }),
+  gitEnv: () => env(),
+  bind: (p) => {
+    dir = p.root;
+    config = join(dir, "claude-config");
+  },
 });
-afterEach(() => rmSync(dir, { recursive: true, force: true }));
-const put = (path: string, text: string) => {
-  mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(
-    path,
-    path.endsWith(join(".verid", "plan.md")) ? readyModulePlan(project, text) : text,
-  );
-};
-const env = () => ({
-  ...developerEnv(),
-  CLAUDE_CONFIG_DIR: config,
-  CODEX_HOME: join(dir, "codex"),
-});
-// In process; setup.e2e and tdd.e2e spawn the built CLI.
-const cli = async (args: string[], extra = {}) => {
-  const r = await runCli(args, project, {
-    CLAUDE_CONFIG_DIR: config,
-    CODEX_HOME: join(dir, "codex"),
-    ...extra,
-  });
-  return { code: r.code, out: r.stdout, err: r.stderr };
-};
-const git = (...args: string[]) => {
-  const r = spawnSync("git", args, { cwd: project, env: env(), encoding: "utf8" });
+const { putFile: put, env, shortCliArgs: cli, editManifest: manifest } = t;
+const git = t.gitChecked(checkGit);
+
+function checkGit(r: GitResult) {
   expect(r.status, r.stderr).toBe(0);
-};
+}
 const commit = () => {
   git("add", ".");
   git(
@@ -79,12 +64,7 @@ const commit = () => {
     "fixture",
   );
 };
-const manifest = (edit: (m: any) => void) => {
-  const path = join(project, ".verid/manifest.yaml");
-  const doc = parse(readFileSync(path, "utf8"));
-  edit(doc);
-  writeFileSync(path, stringify(doc));
-};
+
 const plugins = (entries: Record<string, unknown>) =>
   put(
     join(config, "plugins/installed_plugins.json"),

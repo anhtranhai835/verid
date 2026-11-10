@@ -1,3 +1,5 @@
+import { parse as parseYaml, stringify } from "yaml";
+import { readState, statePaths } from "../../src/adapters/state-store.js";
 import { spawn, spawnSync, type SpawnSyncReturns } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
@@ -193,6 +195,105 @@ interface ProjectOptions {
   gitIdentity?: readonly [string, string] | false;
   gitEnv?: () => NodeJS.ProcessEnv;
   gitHide?: boolean;
+
+  sessionId?: () => string;
+  gitPrefix?: string;
+  readyPlan?: boolean;
+  planSpec?: string;
+  defaultText?: string;
+  provider?: string;
+  payload?: Payload;
+  cliEnv?: NodeJS.ProcessEnv | (() => NodeJS.ProcessEnv);
+  manifestPreset?: "plain" | "codex" | "review" | "antigravity";
+  hookEnv?: NodeJS.ProcessEnv | (() => NodeJS.ProcessEnv);
+  approved?: boolean;
+}
+
+export interface TestProject extends ProjectFiles {
+  payloadFor: (event: string, session: string, extra?: Payload) => string;
+  newDir: () => string;
+  hookArgs: (input: string, args?: string[]) => Promise<Run>;
+  readonly session: string;
+  path: (rel: string) => string;
+  put: (rel: string, text: string) => void;
+  read: (rel: string) => string;
+  state: () => Payload;
+  audit: () => Payload[];
+  seed: (partial: Payload) => void;
+  env: (extra?: NodeJS.ProcessEnv) => NodeJS.ProcessEnv;
+  fixture: (name: string, edit?: (p: Payload) => void) => string;
+  write: (rel: string, agent?: string) => string;
+  readTool: (rel: string) => string;
+  hook: (input: string, extra?: NodeJS.ProcessEnv, args?: string[]) => Promise<Run>;
+  hookSync: (input: string, extra?: NodeJS.ProcessEnv, args?: string[]) => Run;
+  hookAsync: (input: string) => Promise<Run>;
+  reviewStop: (type: string) => (report: string) => Promise<Run>;
+  coderStop: (active: boolean) => Promise<Run>;
+  stop: (active?: boolean) => Promise<Run>;
+  actorWrite: (agent: string, rel: string) => Promise<ReturnType<typeof verdict>>;
+  gitRaw: (...args: string[]) => GitResult;
+  gitChecked: (check: (result: GitResult) => void) => (...args: string[]) => void;
+  cliWith: (extra: NodeJS.ProcessEnv, ...args: string[]) => Promise<Run>;
+  cli: (...args: string[]) => Promise<Run>;
+  reset: () => void;
+  fresh: () => void;
+  putPlan: (rel: string, text?: string) => void;
+  putAt: (dir: string, rel: string, text?: string) => void;
+  putFile: (file: string, text: string) => void;
+  readAt: (dir: string, rel: string) => string;
+  readFile: (file: string) => string;
+  manifestText: () => string;
+  editManifest: (edit: (value: Payload) => void) => void;
+  objectManifest: (extra?: Payload) => Payload;
+  writeManifest: (extra?: Payload) => void;
+  manifestForDrive: (drive?: string) => Payload;
+  loadState: () => ReturnType<typeof readState>;
+  auditText: () => string;
+  providerHook: (payload: unknown, provider?: string, extra?: NodeJS.ProcessEnv) => Promise<Run>;
+  inputHook: (payload: Payload, attended?: boolean, configDir?: string) => Promise<Run>;
+  guardHook: (
+    payload: Payload,
+    attended?: boolean,
+    configDir?: string,
+  ) => Promise<{ code: number | null; stderr: string }>;
+  event: (event: string, extra?: Payload) => Promise<Run>;
+  sessionEvent: (
+    event: string,
+    session: string,
+    extra?: Payload,
+    provider?: string,
+  ) => Promise<Run>;
+  writeCall: (path: string) => Promise<Run>;
+  pathHook: (
+    path: string,
+    writer?: string,
+    tool?: string,
+    input?: object,
+  ) => Promise<{ code: number | null; err: string }>;
+  gitRawAt: (cwd: string, ...args: string[]) => GitResult;
+  gitAt: (cwd: string, ...args: string[]) => string;
+  cliAt: (args: string[], cwd?: string, extra?: NodeJS.ProcessEnv) => ReturnType<typeof runCli>;
+  cliBound: (...args: string[]) => ReturnType<typeof runCli>;
+  shortCliAt: (
+    args: string[],
+    cwd?: string,
+    extra?: NodeJS.ProcessEnv,
+  ) => Promise<{ code: number; out: string; err: string }>;
+  shortCliArgs: (
+    args: string[],
+    extra?: NodeJS.ProcessEnv,
+  ) => Promise<{ code: number; out: string; err: string }>;
+  rawCliFile: (entry: string, ...args: string[]) => SpawnSyncReturns<string>;
+  rawCli: (args: string[]) => SpawnSyncReturns<string>;
+  rawCliArgs: (...args: string[]) => SpawnSyncReturns<string>;
+  spawnCliAt: (cwd: string, ...args: string[]) => Run;
+  spawnCook: (cwd: string, ...args: string[]) => Run;
+  spawnCookWith: (env: NodeJS.ProcessEnv, cwd: string, ...args: string[]) => Run;
+  shortSpawnArgs: (
+    args: string[],
+    extra?: NodeJS.ProcessEnv,
+  ) => { code: number | null; out: string; err: string };
+  settingsHook: (cwd: string, event: string, input: string) => Run;
 }
 
 /** Calls into in-process.ts share process state: keep a file's tests and calls sequential. */
@@ -207,7 +308,15 @@ export function tempProject(prefix: string, options: ProjectOptions = {}) {
     ...(typeof options.env === "function" ? options.env() : options.env),
     ...extra,
   });
-  const project = {
+  const project: TestProject = {
+    payloadFor: (event: string, session: string, extra: Payload = {}): string =>
+      JSON.stringify({
+        hook_event_name: event,
+        cwd: project.dir,
+        session_id: session,
+        ...options.payload,
+        ...extra,
+      }),
     get root() {
       return root;
     },
@@ -274,7 +383,15 @@ export function tempProject(prefix: string, options: ProjectOptions = {}) {
     hook: (input: string, extra: NodeJS.ProcessEnv = {}, args: string[] = []): Promise<Run> =>
       (options.review && JSON.parse(input).hook_event_name === "SubagentStop"
         ? runReview
-        : runHook)(input, callEnv(extra), args),
+        : runHook)(
+        input,
+        {
+          ...callEnv(),
+          ...(typeof options.hookEnv === "function" ? options.hookEnv() : options.hookEnv),
+          ...extra,
+        },
+        args,
+      ),
     hookSync: (input: string, extra: NodeJS.ProcessEnv = {}, args: string[] = []): Run => {
       const result = spawnSync(process.execPath, [HOOK, ...args], {
         input,
@@ -320,7 +437,7 @@ export function tempProject(prefix: string, options: ProjectOptions = {}) {
           p.stop_hook_active = active;
         }),
       ),
-    actorWrite: async (agent: string, rel: string) =>
+    actorWrite: async (agent: string, rel: string): Promise<ReturnType<typeof verdict>> =>
       verdict(
         await project.hook(
           project.fixture("pre-tool-use-write-from-plugin-agent", (p) => {
@@ -399,7 +516,250 @@ export function tempProject(prefix: string, options: ProjectOptions = {}) {
       if (dir !== root) mkdirSync(dir, { recursive: true });
       options.bind?.(project);
       project.reset();
+      if (options.approved) {
+        for (const folder of [".verid/.state", "src", "test"])
+          mkdirSync(project.path(folder), { recursive: true });
+        project.put(
+          ".verid/.state/state.json",
+          JSON.stringify({
+            schemaVersion: 1,
+            tdd: { state: "PLATED", last_run: "seed", passed_acs: ["AC-1"] },
+          }),
+        );
+        project.writeManifest();
+        project.put(".verid/design.md", "# Design\nPure addition\n");
+        project.put(".verid/research.md", "# Research\n");
+        project.put(".verid/spec.md", "- REQ-1: adds two numbers\n");
+        project.putPlan(
+          ".verid/plan.md",
+          "## Module: calc\n- AC-1: adds two numbers\n\n## Module: product\n- AC-9 (e2e): works end to end\n",
+        );
+        project.put(
+          "scenario.json",
+          JSON.stringify({ exit: 0, junit: "vitest-ac.xml", output: "passing evidence" }),
+        );
+      }
       options.setup?.(project);
+    },
+    newDir: (): string => {
+      const created = mkdtempSync(join(tmpdir(), prefix));
+      roots.push(created);
+      return created;
+    },
+    hookArgs: (input: string, args: string[] = []): Promise<Run> => project.hook(input, {}, args),
+
+    putPlan: (rel: string, text = options.defaultText ?? ""): void => {
+      if (rel === ".verid/plan.md") {
+        if (options.planSpec && !existsSync(project.path(".verid/spec.md")))
+          project.put(".verid/spec.md", options.planSpec);
+        text = readyModulePlan(project.dir, text);
+      }
+      project.put(rel, text);
+    },
+    putAt: (dir: string, rel: string, text = ""): void => {
+      const file = join(dir, ...rel.split("/"));
+      mkdirSync(dirname(file), { recursive: true });
+      writeFileSync(file, text);
+    },
+    putFile: (file: string, text: string): void => {
+      mkdirSync(dirname(file), { recursive: true });
+      writeFileSync(
+        file,
+        options.readyPlan && file.endsWith(join(".verid", "plan.md"))
+          ? readyModulePlan(project.dir, text)
+          : text,
+      );
+    },
+    readAt: (dir: string, rel: string): string =>
+      readFileSync(join(dir, ...rel.split("/")), "utf8"),
+    readFile: (file: string): string => readFileSync(file, "utf8"),
+    manifestText: (): string => readFileSync(project.manifestFile, "utf8"),
+    editManifest: (edit: (value: Payload) => void): void => {
+      const value = parseYaml(project.manifestText());
+      edit(value);
+      project.put(".verid/manifest.yaml", stringify(value));
+    },
+    objectManifest: (extra: Payload = {}): Payload =>
+      projectManifest(extra, options.manifestPreset),
+    writeManifest: (extra: Payload = {}): void =>
+      project.put(".verid/manifest.yaml", JSON.stringify(project.objectManifest(extra))),
+    manifestForDrive: (drive = "human"): Payload => project.objectManifest({ drive }),
+    loadState: (): ReturnType<typeof readState> => readState(statePaths(project.dir)),
+    auditText: (): string => readFileSync(project.auditFile, "utf8"),
+    providerHook: (
+      payload: unknown,
+      provider = "codex",
+      extra: NodeJS.ProcessEnv = {},
+    ): Promise<Run> =>
+      project.hook(typeof payload === "string" ? payload : JSON.stringify(payload), extra, [
+        "--provider",
+        provider,
+      ]),
+    inputHook: (payload: Payload, attended = false, configDir?: string): Promise<Run> =>
+      project.hook(
+        JSON.stringify({
+          session_id: options.sessionId?.() ?? project.session,
+          cwd: project.dir,
+          ...payload,
+        }),
+        {
+          ...(configDir ? { CLAUDE_CONFIG_DIR: configDir } : {}),
+          ...(attended ? { CLAUDE_CODE_SESSION_ATTENDED: "1" } : {}),
+        },
+      ),
+    guardHook: async (
+      payload: Payload,
+      attended = false,
+      configDir?: string,
+    ): Promise<{ code: number | null; stderr: string }> => {
+      const result = await project.inputHook(payload, attended, configDir);
+      return { code: result.code, stderr: result.stderr };
+    },
+    event: (event: string, extra: Payload = {}): Promise<Run> =>
+      project.hook(
+        JSON.stringify({
+          hook_event_name: event,
+          session_id: options.sessionId?.() ?? project.session,
+          cwd: project.dir,
+          ...options.payload,
+          ...extra,
+        }),
+        {},
+        options.provider && options.provider !== "claude-code"
+          ? ["--provider", options.provider]
+          : [],
+      ),
+    sessionEvent: (
+      event: string,
+      session: string,
+      extra: Payload = {},
+      provider = options.provider ?? "codex",
+    ): Promise<Run> =>
+      project.hook(
+        JSON.stringify({
+          hook_event_name: event,
+          cwd: project.dir,
+          session_id: session,
+          ...options.payload,
+          ...extra,
+        }),
+        {},
+        provider === "codex" ? ["--provider", "codex"] : [],
+      ),
+    writeCall: (path: string): Promise<Run> =>
+      project.event("PreToolUse", {
+        agent_id: "coder-1",
+        agent_type: "verid:coder",
+        tool_name: "Write",
+        tool_input: { file_path: project.path(path), content: "x" },
+      }),
+    pathHook: async (
+      path: string,
+      writer?: string,
+      tool = "Write",
+      input?: object,
+    ): Promise<{ code: number | null; err: string }> => {
+      const result = await project.event("PreToolUse", {
+        tool_name: tool,
+        tool_input: input ?? { file_path: path, content: "test" },
+        ...(writer && { agent_id: "worker", agent_type: `verid:${writer}` }),
+      });
+      return { code: result.code, err: result.stderr };
+    },
+    gitRawAt: (cwd: string, ...args: string[]): GitResult => {
+      const identity =
+        options.gitIdentity === false
+          ? []
+          : [
+              "-c",
+              `user.name=${options.gitIdentity?.[0] ?? "t"}`,
+              "-c",
+              `user.email=${options.gitIdentity?.[1] ?? "t@t"}`,
+            ];
+      return spawnSync("git", [...identity, ...args], {
+        cwd,
+        encoding: "utf8",
+        ...(options.gitEnv && { env: options.gitEnv() }),
+        ...(options.gitHide !== undefined && { windowsHide: options.gitHide }),
+      });
+    },
+    gitAt: (cwd: string, ...args: string[]): string => {
+      const result = project.gitRawAt(cwd, ...args);
+      if (result.status !== 0)
+        throw new Error(`${options.gitPrefix ?? "git "}${args.join(" ")}: ${result.stderr}`);
+      return result.stdout.trim();
+    },
+    cliAt: (
+      args: string[],
+      cwd: string = project.dir,
+      extra: NodeJS.ProcessEnv = {},
+    ): ReturnType<typeof runCli> =>
+      runCli(args, cwd, {
+        ...callEnv(),
+        ...(typeof options.cliEnv === "function" ? options.cliEnv() : options.cliEnv),
+        ...extra,
+      }),
+    cliBound: (...args: string[]): ReturnType<typeof runCli> => project.cliAt(args),
+    shortCliAt: async (
+      args: string[],
+      cwd: string = project.dir,
+      extra: NodeJS.ProcessEnv = {},
+    ): Promise<{ code: number; out: string; err: string }> => {
+      const result = await project.cliAt(args, cwd, extra);
+      return { code: result.code, out: result.stdout, err: result.stderr };
+    },
+    shortCliArgs: (
+      args: string[],
+      extra: NodeJS.ProcessEnv = {},
+    ): Promise<{ code: number; out: string; err: string }> =>
+      project.shortCliAt(args, project.dir, extra),
+    rawCliFile: (entry: string, ...args: string[]): SpawnSyncReturns<string> =>
+      spawnSync(process.execPath, [entry, ...args], {
+        cwd: project.dir,
+        env: project.env(),
+        encoding: "utf8",
+      }),
+    rawCli: (args: string[]): SpawnSyncReturns<string> => project.rawCliFile(CLI, ...args),
+    rawCliArgs: (...args: string[]): SpawnSyncReturns<string> => project.rawCli(args),
+    spawnCliAt: (cwd: string, ...args: string[]): Run => {
+      const result = spawnSync(process.execPath, [CLI, ...args], {
+        cwd,
+        env: project.env(),
+        encoding: "utf8",
+      });
+      return { code: result.status, stdout: result.stdout, stderr: result.stderr };
+    },
+    spawnCook: (cwd: string, ...args: string[]): Run => project.spawnCliAt(cwd, "cook", ...args),
+    spawnCookWith: (env: NodeJS.ProcessEnv, cwd: string, ...args: string[]): Run => {
+      const result = spawnSync(process.execPath, [CLI, "cook", ...args], {
+        cwd,
+        env,
+        encoding: "utf8",
+      });
+      return { code: result.status, stdout: result.stdout, stderr: result.stderr };
+    },
+    shortSpawnArgs: (
+      args: string[],
+      extra: NodeJS.ProcessEnv = {},
+    ): { code: number | null; out: string; err: string } => {
+      const result = spawnSync(process.execPath, [CLI, ...args], {
+        cwd: project.dir,
+        env: project.env(extra),
+        encoding: "utf8",
+      });
+      return { code: result.status, out: result.stdout, err: result.stderr };
+    },
+    settingsHook: (cwd: string, event: string, input: string): Run => {
+      const groups = JSON.parse(readFileSync(join(cwd, ".claude/settings.local.json"), "utf8"))
+        .hooks[event] as Payload[];
+      const handler = groups.at(-1)?.hooks.at(-1);
+      const result = spawnSync(handler.command, handler.args, {
+        cwd,
+        input,
+        env: project.env({ CLAUDE_PROJECT_DIR: cwd }),
+        encoding: "utf8",
+      });
+      return { code: result.status, stdout: result.stdout, stderr: result.stderr };
     },
   };
   beforeEach(project.fresh);
@@ -416,4 +776,38 @@ export function tempProject(prefix: string, options: ProjectOptions = {}) {
     }
   });
   return project;
+}
+
+export function projectManifest(extra: Payload = {}, preset = "plain"): Payload {
+  const repo: Payload = { path: ".", source_globs: ["src/**"], test_globs: ["test/**"] };
+  if (preset === "review" || preset === "antigravity")
+    repo.test_cmd = `"${process.execPath}" "${RUNNER}" {junit}`;
+  const value: Payload = {
+    schemaVersion: 1,
+    mode: preset === "review" || preset === "antigravity" ? "recipe" : "remix",
+  };
+  if (preset === "review") value.drive = "human";
+  if (preset === "codex")
+    Object.assign(value, {
+      providers: ["codex"],
+      roles: {
+        reviewer: ["reviewer", "verid_reviewer"],
+        tester: ["verid:tester"],
+        coder: ["verid:coder"],
+      },
+    });
+  if (preset === "review")
+    Object.assign(value, {
+      providers: ["claude-code", "codex"],
+      roles: {
+        reviewer: ["verid:reviewer", "verid_reviewer"],
+        security: ["verid:security", "codex_security"],
+      },
+    });
+  if (preset === "antigravity")
+    Object.assign(value, {
+      providers: ["antigravity"],
+      roles: { reviewer: ["verid-reviewer"], tester: ["verid:tester"], coder: ["verid:coder"] },
+    });
+  return { ...value, repos: [repo], ...extra };
 }
