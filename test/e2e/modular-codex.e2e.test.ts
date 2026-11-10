@@ -17,13 +17,15 @@ import { MODULE_INPUTS } from "../../src/adapters/plan-file.js";
 const CLI = join(import.meta.dirname, "../../dist/cli.js");
 const RUNNER = join(import.meta.dirname, "fake-runner.mjs");
 let project: string;
+let taskSession = "repo-codex-session";
+let taskNumber = 0;
 beforeEach(() => {
   project = mkdtempSync(join(tmpdir(), "verid modular codex-"));
 });
 afterEach(() => rmSync(project, { recursive: true, force: true }));
 const env = () => ({ ...developerEnv("CODEX"), CODEX_HOME: join(project, "user-codex") });
-const cli = (...args: string[]) =>
-  spawnSync(
+const cli = (...args: string[]) => {
+  const result = spawnSync(
     process.execPath,
     [
       existsSync(join(project, ".verid/verid.mjs")) ? join(project, ".verid/verid.mjs") : CLI,
@@ -31,6 +33,12 @@ const cli = (...args: string[]) =>
     ],
     { cwd: project, env: env(), encoding: "utf8" },
   );
+  if (args[0] === "order" && result.status === 0) {
+    taskSession = "task-calculator-" + ++taskNumber;
+    hook("SessionStart", { source: "startup" });
+  }
+  return result;
+};
 const put = (rel: string, content: string) => {
   mkdirSync(dirname(join(project, rel)), { recursive: true });
   writeFileSync(join(project, rel), content);
@@ -43,7 +51,7 @@ const hook = (event: string, extra = {}) =>
     encoding: "utf8",
     input: JSON.stringify({
       hook_event_name: event,
-      session_id: "repo-codex-session",
+      session_id: taskSession,
       cwd: project,
       model: "gpt-6.1-sol",
       transcript_path: null,
@@ -92,7 +100,7 @@ it("runs the built repo hook on Codex through module order, RED/GREEN and a read
   });
   expect(reason(developerCall)).toContain("VERID_BURNT_BASH_DEVELOPER_ONLY");
   expect(reason(patch(".verid/skills/ba/SKILL.md"))).toContain("VERID_BURNT_HOOK_PROTECTED");
-  expect(reason(patch("src/add.ts"))).toContain("VERID_BURNT_PLAN");
+  expect(reason(patch("src/add.ts"))).toContain("VERID_BURNT_TASK_SESSION");
   expect(cli("module", "calculator").status).toBe(0);
   put(".verid/research.md", "# Research\nAgreed calculator module\n");
   put(".verid/spec.md", "- REQ-1: The calculator shall add two numbers. (source: developer)\n");
@@ -144,7 +152,10 @@ it("runs the built repo hook on Codex through module order, RED/GREEN and a read
     verdict: "pass",
   });
   put(".verid/artifacts/03-modules/calculator/spec/spec.md", "Changed public contract\n");
-  expect(reason(patch("src/changed.ts"))).toContain("VERID_BURNT_PLAN_NOT_APPROVED");
+  expect(reason(patch("src/changed.ts"))).toContain("VERID_BURNT_TASK_SESSION");
+  const staleServe = cli("serve", "calculator");
+  expect(staleServe.status).toBe(2);
+  expect(staleServe.stderr).toContain("VERID_BURNT_TASK_SESSION");
 }, 60_000);
 
 it("runs its repo CLI after moving the project without a verid installation on PATH", () => {

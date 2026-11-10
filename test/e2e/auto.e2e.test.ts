@@ -1,3 +1,6 @@
+import { autoFactsOf } from "../../src/adapters/plan-file.js";
+import { readState, statePaths } from "../../src/adapters/state-store.js";
+import { readyModulePlan } from "./helpers.js";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
@@ -109,7 +112,7 @@ async function allowOnce(reason = "hotfix"): Promise<void> {
 }
 
 const put = (rel: string, text: string) => writeFileSync(join(project, ...rel.split("/")), text);
-const writePlan = (text: string) => put(".verid/plan.md", text);
+const writePlan = (text: string) => put(".verid/plan.md", readyModulePlan(project, text));
 const sha = (rel: string) =>
   createHash("sha256")
     .update(readFileSync(join(project, ...rel.split("/"))))
@@ -143,7 +146,12 @@ async function signed(): Promise<void> {
 }
 
 // The reviewer has passed the plan as it stands.
-const planPassed = (): void => seed({ auto: { plan_sha256: sha(".verid/plan.md") } });
+const planPassed = (): void =>
+  seed({
+    auto: {
+      plan_sha256: autoFactsOf(project, readState(statePaths(project)), false, true).planHash,
+    },
+  });
 
 // A subagent stops: the mapped reviewer with its report, or the coder c1, held once as Stop is.
 const reviewerStop = async (report: string): Promise<Run> =>
@@ -260,7 +268,7 @@ describe("verid order and verid serve in an auto drive", () => {
     const files = [sha(".verid/research.md"), sha(".verid/design.md")];
     seed({
       auto: {
-        plan_sha256: sha(".verid/plan.md"),
+        plan_sha256: autoFactsOf(project, readState(statePaths(project)), false, true).planHash,
         plan_reviews: 2,
         coder_rounds: { "AC-1": 2 },
         module_reviews: 1,
@@ -284,7 +292,7 @@ describe("verid order and verid serve in an auto drive", () => {
       hashes: files,
       kept: {
         signed: null,
-        plan_sha256: sha(".verid/plan.md"),
+        plan_sha256: autoFactsOf(project, readState(statePaths(project)), false, true).planHash,
         plan_reviews: 0,
         coder_rounds: {},
         module_reviews: 0,
@@ -335,7 +343,10 @@ describe("verid order and verid serve in an auto drive", () => {
     put(".verid/design.md", "# Design\n");
     writePlan(CALC_AND_PRODUCT);
     const signed = (await cli("order")).stdout.split("\n")[0];
-    const at = { ...state().auto, plan_sha256: sha(".verid/plan.md") };
+    const at = {
+      ...state().auto,
+      plan_sha256: autoFactsOf(project, readState(statePaths(project)), false, true).planHash,
+    };
     seed({ auto: at });
     put(".verid/spec.md", "# Spec\n- REQ-1: The system shall add and subtract.\n");
     const doctor = (await cli("doctor")).stdout;
@@ -444,7 +455,9 @@ describe("subagents stopping in an auto drive", () => {
     await reviewerStop("no verdict at all");
     rows.counted = state().auto.plan_reviews;
     await reviewerStop("**Verdict:** pass");
-    rows.passed = state().auto.plan_sha256 === sha(".verid/plan.md");
+    rows.passed =
+      state().auto.plan_sha256 ===
+      autoFactsOf(project, readState(statePaths(project)), false, true).planHash;
     rows.reset = state().auto.plan_reviews;
     rows.reports = readdirSync(join(project, ".verid", ".state", "reviews")).filter((f) =>
       f.startsWith("plan-"),

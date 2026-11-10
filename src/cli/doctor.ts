@@ -1,3 +1,4 @@
+import { planned } from "../core/manifest.js";
 import { spawnSync } from "node:child_process";
 import { antigravityPluginInstalled } from "../adapters/antigravity-settings.js";
 import { existsSync, readFileSync } from "node:fs";
@@ -27,6 +28,7 @@ import { findRunners } from "../adapters/test-runner.js";
 import { checkSetupPath, repoFolder } from "../adapters/workspace.js";
 import { skillsFor } from "../adapters/repo-resources.js";
 import { ROLE_NAMES, type Manifest } from "../core/manifest.js";
+import { dossierStatus, readPlan, servedModules } from "../adapters/plan-file.js";
 import type { ErrorCode, MessageKey } from "../core/errors.js";
 import type { CliResult } from "./test.js";
 
@@ -166,7 +168,7 @@ export async function doctorCommand(project: string): Promise<CliResult> {
       "review",
       "security",
       "onboard",
-      ...(manifest.workflow === "modular" ? ["modules"] : []),
+      ...(planned(manifest) ? ["modules"] : []),
     ];
     const required = [
       ".verid/hooks/hook.js",
@@ -360,12 +362,40 @@ export async function doctorCommand(project: string): Promise<CliResult> {
   }
   // Git as the hook and the close read it, offline: main and the branch in each root, then the
   if (manifest) {
+    if (manifest.workflow !== undefined)
+      problem("workflow.legacy", "doctor.workflow_legacy", "doctor.workflow_fix", {
+        workflow: manifest.workflow,
+      });
     for (const { repo, check } of checkedRepos(manifest))
       lines.push(
         say("doctor.architecture.configured", { repo: repo.path, command: check.command }),
       );
     try {
-      lines.push(...auditLines(project, manifest, readState(statePaths(project))));
+      const state = readState(statePaths(project));
+      lines.push(...auditLines(project, manifest, state));
+      if (planned(manifest)) {
+        const plan = readPlan(
+          project,
+          manifest.iterations !== undefined,
+          false,
+          servedModules(state),
+          true,
+        );
+        if (plan?.ok)
+          for (const module of plan.modules) {
+            if (
+              servedModules(state).has(module.name) &&
+              state.modules[module.name]?.sha256 === plan.hashes[module.name]
+            )
+              continue;
+            const dossier = dossierStatus(project, module);
+            if (dossier.problem)
+              problem(`module.${module.name}`, "doctor.module_dossier", "doctor.module_fix", {
+                module: module.name,
+                detail: dossier.problem,
+              });
+          }
+      }
     } catch (err) {
       if (err instanceof VeridError && err.code !== "VERID_BURNT_STATE_MISSING")
         problem("state", err.code, "doctor.architecture.fix", err.params);

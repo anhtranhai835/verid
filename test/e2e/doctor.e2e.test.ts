@@ -1,3 +1,4 @@
+import { readyModulePlan } from "./helpers.js";
 import { spawnSync } from "node:child_process";
 import {
   cpSync,
@@ -40,7 +41,10 @@ beforeEach(() => {
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 const put = (path: string, text: string) => {
   mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, text);
+  writeFileSync(
+    path,
+    path.endsWith(join(".verid", "plan.md")) ? readyModulePlan(project, text) : text,
+  );
 };
 const env = () => ({
   ...developerEnv(),
@@ -335,6 +339,7 @@ describe("verid doctor", () => {
     const ordered = async () => {
       put(join(project, ".verid/research.md"), "# Research\n");
       put(join(project, ".verid/design.md"), "# Design\n");
+      put(join(project, ".verid/spec.md"), "- REQ-1: works\n");
       put(join(project, ".verid/plan.md"), "## Module: calc\n- AC-1: sums\n");
       as("docs: plan calc");
       expect((await cli(["order", "calc"])).code).toBe(0);
@@ -580,6 +585,7 @@ describe("verid doctor", () => {
     const waiting = async () => {
       put(join(project, ".verid", "research.md"), "# Research\n");
       put(join(project, ".verid", "design.md"), "# Design\n");
+      put(join(project, ".verid/spec.md"), "- REQ-1: works\n");
       put(join(project, ".verid", "plan.md"), "## Module: calc\n- AC-1: adds\n");
       commit();
       expect((await cli(["order", "calc"])).code).toBe(0);

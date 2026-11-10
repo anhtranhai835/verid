@@ -1,3 +1,4 @@
+import { moduleHash, readyModulePlan, startTaskSession } from "./helpers.js";
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
@@ -31,6 +32,8 @@ const RUNNER = join(import.meta.dirname, "fake-runner.mjs");
 const SESSION = "11111111-2222-3333-4444-555555555555";
 
 let project: string;
+let currentSession = SESSION;
+let sessionCount = 0;
 let stateFile: string;
 let auditFile: string;
 let manifestFile: string;
@@ -67,6 +70,8 @@ afterEach(() => rmSync(project, { recursive: true, force: true }));
 
 // A new .verid with the fresh state and manifest, so each case of a table starts from the same place.
 function freshState(): void {
+  currentSession = SESSION;
+  sessionCount = 0;
   rmSync(join(project, ".verid"), { recursive: true, force: true });
   mkdirSync(join(project, ".verid", ".state"), { recursive: true });
   writeFileSync(stateFile, FRESH_STATE);
@@ -74,7 +79,10 @@ function freshState(): void {
 }
 
 const fixture = (name: string, edit?: (p: Payload) => void): string =>
-  claudeFixture(project, name, edit);
+  claudeFixture(project, name, (p) => {
+    p.session_id = currentSession;
+    edit?.(p);
+  });
 
 // Claude Code sets CLAUDE_* for hooks and Bash; start clean so the test machine's session leaks nothing.
 function env(extra: Record<string, string> = {}): NodeJS.ProcessEnv {
@@ -93,8 +101,15 @@ const hook = (input: string, extra: Record<string, string> = {}): Promise<Run> =
     CLAUDE_PROJECT_DIR: project,
     ...extra,
   });
-const cliWith = (extra: Record<string, string>, ...args: string[]): Promise<Run> =>
-  runCli(args, project, { CLAUDE_PROJECT_DIR: project, ...extra });
+const cliWith = async (extra: Record<string, string>, ...args: string[]): Promise<Run> => {
+  const result = await runCli(args, project, { CLAUDE_PROJECT_DIR: project, ...extra });
+  if (args[0] === "order" && result.code === 0 && state().kanban?.active?.session === null) {
+    if (Object.hasOwn(state().kanban.sessions, "claude-code:" + currentSession))
+      currentSession = SESSION + "-" + ++sessionCount;
+    await startTaskSession(project, currentSession);
+  }
+  return result;
+};
 const cli = (...args: string[]): Promise<Run> => cliWith({}, ...args);
 // In-process calls share process state, so a table's rows run one after another, never at once.
 async function serially<T, R>(items: readonly T[], fn: (item: T) => Promise<R>): Promise<R[]> {
@@ -1301,6 +1316,11 @@ describe("remix baseline", () => {
 describe("prep and recipe plan", () => {
   const planPath = () => join(project, ".verid", "plan.md");
   const sha256 = (data: Buffer) => createHash("sha256").update(data).digest("hex");
+  const writePlan = (text: string) => {
+    if (!existsSync(join(project, ".verid/spec.md")))
+      writeFileSync(join(project, ".verid/spec.md"), "- REQ-1: works\n");
+    writeFileSync(planPath(), readyModulePlan(project, text));
+  };
   const GOOD_PLAN = "- AC-1: adds\n- AC-2: greets";
 
   // How the project is built is agreed before any module is ordered, and a reviewer is mapped.
@@ -1333,7 +1353,7 @@ describe("prep and recipe plan", () => {
   };
 
   it("leaves approving to the developer, and checks the plan first", async () => {
-    writeFileSync(planPath(), GOOD_PLAN);
+    writePlan(GOOD_PLAN);
     refusedWith(await cliWith({ CLAUDECODE: "1" }, "order"), "VERID_BURNT_APPROVE_IN_AGENT");
 
     rmSync(planPath());
@@ -1341,19 +1361,19 @@ describe("prep and recipe plan", () => {
     refusedWith(missing, "VERID_BURNT_PLAN_MISSING");
     expect(missing.stderr).toContain(planPath());
 
-    writeFileSync(planPath(), "- AC-1: adds\n- AC-1: greets");
+    writePlan("- AC-1: adds\n- AC-1: greets");
     const twice = await cli("order");
     refusedWith(twice, "VERID_BURNT_PLAN_INVALID");
     expect(twice.stderr).toContain("AC-1 appears twice");
     expect(twice.stderr).toContain(planPath());
 
-    writeFileSync(planPath(), "- AC-1: adds [NEEDS CLARIFICATION: which type?]");
+    writePlan("- AC-1: adds [NEEDS CLARIFICATION: which type?]");
     refusedWith(await cli("order"), "VERID_BURNT_PLAN_INVALID");
 
-    writeFileSync(planPath(), "no criteria here");
+    writePlan("no criteria here");
     refusedWith(await cli("order"), "VERID_BURNT_PLAN_INVALID");
 
-    writeFileSync(planPath(), GOOD_PLAN);
+    writePlan(GOOD_PLAN);
     writeFileSync(manifestFile, manifest("src/**", undefined, ".", "remix"));
     const remix = await cli("order");
     refusedWith(remix, "VERID_BURNT_MODE_MISMATCH");
@@ -1368,14 +1388,18 @@ describe("prep and recipe plan", () => {
   it("counts one acceptance criterion, or several criteria", async () => {
     const plan = (auth: string) =>
       `## Module: auth\n- AC-1: ${auth}\n## Module: ui\n- AC-2: greets\n- AC-3: waves\n`;
-    writeFileSync(planPath(), plan("adds"));
-    const one = (await cli("order", "auth")).stdout.split("\n")[0];
-    writeFileSync(planPath(), plan("adds up")); // auth's section changed: it is set aside
-    const two = (await cli("order", "ui")).stdout.split("\n")[0];
-    expect([one, two]).toEqual([
+    writePlan(plan("adds"));
+    expect((await cli("order", "auth")).stdout.split("\n")[0]).toBe(
       "verid: module auth approved · 1 acceptance criterion",
+    );
+    expect((await cli("order", "ui")).stderr).toContain("VERID_BURNT_MODULE_OPEN");
+    scenario(0, "vitest-ac.xml");
+    await cli("taste");
+    await reviewed();
+    expect((await cli("serve", "auth")).code).toBe(0);
+    expect((await cli("order", "ui")).stdout.split("\n")[0]).toBe(
       "verid: module ui approved · 2 acceptance criteria",
-    ]);
+    );
   });
 
   // What the hook answers a production write in RAW: the plan gate first, then the cycle.
@@ -1383,22 +1407,26 @@ describe("prep and recipe plan", () => {
     /verid \[(VERID_BURNT_\w+)\]/.exec((await hook(write("src/a.ts"))).stderr)?.[1];
 
   it("approves one module of a plan with modules, and opens production code", async () => {
-    writeFileSync(planPath(), MODULES_PLAN);
+    writePlan(MODULES_PLAN);
     const which = await cli("order");
     expect(which.code).toBe(2);
     expect(which.stderr).toContain("verid [VERID_BURNT_MODULE_REQUIRED]");
     expect(which.stderr).toContain("auth, ui");
     expect((await cli("order", "nope")).stderr).toContain("verid [VERID_BURNT_MODULE_UNKNOWN]");
-    expect(await gate()).toBe("VERID_BURNT_PLAN_NOT_APPROVED");
+    expect(await gate()).toBe("VERID_BURNT_TASK_SESSION");
 
     expect((await cli("order", "auth")).code).toBe(0);
     expect(state().modules.auth).toMatchObject({ acs: ["AC-1"], served_at: null });
-    expect(audit().at(-1)).toMatchObject({ event: "plan_approved", module: "auth", acs: 1 });
+    expect(audit().findLast((event) => event.event === "plan_approved")).toMatchObject({
+      event: "plan_approved",
+      module: "auth",
+      acs: 1,
+    });
     expect(await gate()).toBe("VERID_BURNT_TDD_NO_FAILING_TEST");
   });
 
   it("keeps one module open at a time", async () => {
-    writeFileSync(planPath(), MODULES_PLAN);
+    writePlan(MODULES_PLAN);
     expect((await cli("order", "auth")).code).toBe(0);
     const second = await cli("order", "ui");
     expect(second.code).toBe(2);
@@ -1406,39 +1434,36 @@ describe("prep and recipe plan", () => {
     expect(second.stderr).toContain("auth");
     expect((await cli("order", "auth")).code).toBe(0); // the open module itself may be approved again
 
-    // An edited module is set aside; once another is ordered, reverting the edit must not reopen it.
-    writeFileSync(planPath(), MODULES_PLAN.replace("adds", "adds more"));
-    expect((await cli("order", "ui")).code).toBe(0);
-    writeFileSync(planPath(), MODULES_PLAN);
+    // Editing scope does not authorize switching to a different human task.
+    writePlan(MODULES_PLAN.replace("adds", "adds more"));
+    expect((await cli("order", "ui")).stderr).toContain("VERID_BURNT_MODULE_OPEN");
+    writePlan(MODULES_PLAN);
     const menu = (await cli("menu")).stdout;
-    expect(menu).toContain("auth · planned");
-    expect(menu).toContain("ui · cooking");
-    expect(Object.keys(state().modules)).toEqual(["ui"]);
+    expect(menu).toContain("auth · cooking");
+    expect(menu).toContain("ui · planned");
+    expect(Object.keys(state().modules)).toEqual(["auth"]);
   });
 
   it("lets the agent draft another module while one is open, unless the plan breaks", async () => {
-    writeFileSync(planPath(), MODULES_PLAN);
+    writePlan(MODULES_PLAN);
     expect((await cli("order", "auth")).code).toBe(0);
     appendFileSync(planPath(), "- AC-3: more\n");
     expect(await gate()).toBe("VERID_BURNT_TDD_NO_FAILING_TEST");
     appendFileSync(planPath(), "- AC-1: dup\n");
-    expect(await gate()).toBe("VERID_BURNT_PLAN_NOT_APPROVED");
+    expect(await gate()).toBe("VERID_BURNT_TASK_SESSION");
   });
 
   it("locks production code again when the open module's section changes", async () => {
-    writeFileSync(planPath(), MODULES_PLAN);
+    writePlan(MODULES_PLAN);
     expect((await cli("order", "auth")).code).toBe(0);
-    writeFileSync(planPath(), MODULES_PLAN.replace("adds", "adds two numbers"));
-    expect(await gate()).toBe("VERID_BURNT_PLAN_NOT_APPROVED");
+    writePlan(MODULES_PLAN.replace("adds", "adds two numbers"));
+    expect(await gate()).toBe("VERID_BURNT_TASK_SESSION");
     expect((await cli("order", "auth")).code).toBe(0);
     expect(await gate()).toBe("VERID_BURNT_TDD_NO_FAILING_TEST");
   });
 
   it("refuses a module that still has a question or no AC", async () => {
-    writeFileSync(
-      planPath(),
-      "## Module: auth\n- AC-1: adds [NEEDS CLARIFICATION: type?]\n## Module: ui\nnotes\n",
-    );
+    writePlan("## Module: auth\n- AC-1: adds [NEEDS CLARIFICATION: type?]\n## Module: ui\nnotes\n");
     const question = await cli("order", "auth");
     expect(question.stderr).toContain("verid [VERID_BURNT_PLAN_INVALID]");
     expect(question.stderr).toContain("line 2 still has [NEEDS CLARIFICATION]");
@@ -1448,8 +1473,8 @@ describe("prep and recipe plan", () => {
 
   // Its approval signed no design, so it is ordered again; the plan without headings still works.
   it("refuses a 0.1.0-beta.1 project's state and tells the developer to cook again", async () => {
-    writeFileSync(planPath(), GOOD_PLAN);
-    const plan = { sha256: sha256(readFileSync(planPath())), acs: ["AC-1", "AC-2"], at: "t" };
+    writePlan(GOOD_PLAN);
+    const plan = { sha256: moduleHash(project, "main"), acs: ["AC-1", "AC-2"], at: "t" };
     writeFileSync(stateFile, JSON.stringify({ schemaVersion: 1, baseline: [], plan }));
     expect(await gate()).toBe("VERID_BURNT_STATE_VERSION");
     const menu = await cli("menu");
@@ -1458,14 +1483,14 @@ describe("prep and recipe plan", () => {
   });
 
   it("records the approved plan", async () => {
-    writeFileSync(planPath(), GOOD_PLAN);
+    writePlan(GOOD_PLAN);
     const r = await cli("order");
     expect(r.stderr).toBe("");
     expect(r.code).toBe(0);
     expect(r.stdout).toContain("AC-1, AC-2");
     expect(r.stdout).toMatch(/^en: Module main approved: AC-1, AC-2\./m);
 
-    const sha = sha256(readFileSync(planPath()));
+    const sha = moduleHash(project, "main");
     // A plan without module headings is the module main.
     expect(state().modules).toEqual({
       main: {
@@ -1477,13 +1502,13 @@ describe("prep and recipe plan", () => {
         work: {}, // outside Git: no history to check
       },
     });
-    expect(audit().at(-1)).toMatchObject({
+    expect(audit().findLast((event) => event.event === "plan_approved")).toMatchObject({
       event: "plan_approved",
       module: "main",
       sha256: sha,
       acs: 2,
     });
-    expect(verifyAuditChain(auditFile)).toEqual({ ok: true, count: 1 });
+    expect(verifyAuditChain(auditFile)).toEqual({ ok: true, count: 2 });
     expect(state().tdd.state).toBe("RAW"); // approving is not a TDD run
   });
 
@@ -1500,14 +1525,17 @@ describe("prep and recipe plan", () => {
       }),
     );
     // What an editor on Windows saves: a BOM and CRLF. The hash covers these exact bytes.
-    writeFileSync(planPath(), "﻿# Plan\r\n- AC-3: reads\r\n- AC-4: writes\r\n");
+    writePlan("﻿# Plan\r\n- AC-3: reads\r\n- AC-4: writes\r\n");
     expect((await cli("order")).code).toBe(0);
     expect(state().modules.main).toMatchObject({
-      sha256: sha256(readFileSync(planPath())),
+      sha256: moduleHash(project, "main"),
       acs: ["AC-3", "AC-4"],
     });
     expect(state().ac_stop_session).toBeNull();
-    expect(audit().at(-1)).toMatchObject({ event: "plan_approved", acs: 2 });
+    expect(audit().findLast((event) => event.event === "plan_approved")).toMatchObject({
+      event: "plan_approved",
+      acs: 2,
+    });
   });
 
   it("locks the plan until research.md and then design.md exist, and reminds at each prompt", async () => {
@@ -1546,22 +1574,20 @@ describe("prep and recipe plan", () => {
     writeFileSync(join(project, ".verid", "research.md"), "# Research\n");
     const locked = await hook(write("src/a.ts"));
     expect(locked.code).toBe(2);
-    expect(locked.stderr).toContain("verid [VERID_BURNT_PLAN_NOT_APPROVED]");
-    expect(locked.stderr).toContain(`${VERID_CMD} order`); // the agent can pass it on as is
-    expect((await hook(write("test/a.test.ts"))).code).toBe(0); // tests and the plan itself stay writable
+    expect(locked.stderr).toContain("verid [VERID_BURNT_TASK_SESSION]");
+    expect(locked.stderr).toContain("verid board"); // the agent can pass it on as is
+    expect((await hook(write("test/a.test.ts"))).stderr).toContain("VERID_BURNT_TASK_SESSION"); // tests need a selected task too
     expect((await hook(write(".verid/plan.md"))).code).toBe(0);
 
-    writeFileSync(planPath(), GOOD_PLAN);
+    writePlan(GOOD_PLAN);
     expect((await cli("order")).code).toBe(0);
     expect((await hook(write("src/a.ts"))).stderr).toContain(
       "verid [VERID_BURNT_TDD_NO_FAILING_TEST]",
     );
 
-    writeFileSync(planPath(), `${GOOD_PLAN}\n- AC-3: waves`);
-    expect((await hook(write("src/a.ts"))).stderr).toContain(
-      "verid [VERID_BURNT_PLAN_NOT_APPROVED]",
-    );
-    expect((await hook(write("test/a.test.ts"))).code).toBe(0);
+    writePlan(`${GOOD_PLAN}\n- AC-3: waves`);
+    expect((await hook(write("src/a.ts"))).stderr).toContain("verid [VERID_BURNT_TASK_SESSION]");
+    expect((await hook(write("test/a.test.ts"))).stderr).toContain("VERID_BURNT_TASK_SESSION");
 
     expect((await cli("order")).code).toBe(0);
     expect((await hook(write("src/a.ts"))).stderr).toContain(
@@ -1569,94 +1595,53 @@ describe("prep and recipe plan", () => {
     );
 
     rmSync(planPath()); // a deleted plan is not the approved one
-    expect((await hook(write("src/a.ts"))).stderr).toContain(
-      "verid [VERID_BURNT_PLAN_NOT_APPROVED]",
-    );
+    expect((await hook(write("src/a.ts"))).stderr).toContain("verid [VERID_BURNT_TASK_SESSION]");
   });
 
   it("checks the plan before the cycle, in COOKING and PLATED too", async () => {
     for (const s of ["COOKING", "PLATED"]) {
       setTdd(s);
-      expect((await hook(write("src/a.ts"))).stderr).toContain(
-        "verid [VERID_BURNT_PLAN_NOT_APPROVED]",
-      );
+      expect((await hook(write("src/a.ts"))).stderr).toContain("verid [VERID_BURNT_TASK_SESSION]");
     }
     setTdd("COOKING");
-    writeFileSync(planPath(), GOOD_PLAN);
+    writePlan(GOOD_PLAN);
     expect((await cli("order")).code).toBe(0);
-    expect((await hook(write("src/a.ts"))).code).toBe(0);
+    expect((await hook(write("src/a.ts"))).stderr).toContain("VERID_BURNT_TDD_NO_FAILING_TEST");
   });
 
-  it("lets the developer override the plan gate once, as a change like any other", async () => {
-    setTdd("COOKING"); // the plan is the only thing between this write and the disk
-    expect((await hook(write("src/a.ts"))).stderr).toContain(
-      "verid [VERID_BURNT_PLAN_NOT_APPROVED]",
-    );
-    await allowOnce();
-    expect((await hook(write("src/a.ts"))).code).toBe(0);
-    expect(state().tdd.dirty).toBe(true); // a run must show it
-    expect(audit().at(-1)).toMatchObject({
-      event: "override_used",
-      rule: "VERID_BURNT_PLAN_NOT_APPROVED",
-    });
-    expect((await hook(write("src/a.ts"))).code).toBe(2);
-  });
-
-  it("lets an override past the one rule it was given for, not the next one", async () => {
-    // RAW and no approved plan: this write would also be denied for want of a failing test.
-    expect((await hook(write("src/a.ts"))).stderr).toContain(
-      "verid [VERID_BURNT_PLAN_NOT_APPROVED]",
-    );
-    await allowOnce();
-    const r = await hook(write("src/a.ts"));
-    expect(r.code).toBe(2);
-    expect(r.stderr).toContain("verid [VERID_BURNT_TDD_NO_FAILING_TEST]");
-    // The plan override is spent; the rule that still denies is what /verid tip would cover now.
-    expect(audit().at(-2)).toMatchObject({
-      event: "override_used",
-      rule: "VERID_BURNT_PLAN_NOT_APPROVED",
-    });
-    expect(audit().at(-1)).toMatchObject({
-      event: "denied",
-      rule: "VERID_BURNT_TDD_NO_FAILING_TEST",
-    });
-    expect(state().last_denied.rule).toBe("VERID_BURNT_TDD_NO_FAILING_TEST");
-    expect(state().overrides).toMatchObject([
-      { rule: "VERID_BURNT_PLAN_NOT_APPROVED", used: true },
-    ]);
-    expect(state().tdd.dirty).toBe(false); // nothing was written
-  });
-
-  it("judges every file a command writes: allowing the plan gate does not unfreeze a test", async () => {
+  it("keeps task selection non-overridable in a cooking cycle", async () => {
     setTdd("COOKING");
-    const both = bash("echo x > src/a.ts && echo y > test/b.test.ts");
-    expect((await hook(both)).stderr).toContain("verid [VERID_BURNT_PLAN_NOT_APPROVED]");
-    await allowOnce();
-    const r = await hook(both);
-    expect(r.code).toBe(2);
-    expect(r.stderr).toContain("verid [VERID_BURNT_TDD_TEST_FROZEN]");
-    expect(r.stderr).toContain("test/b.test.ts");
-    expect(state().last_denied.rule).toBe("VERID_BURNT_TDD_TEST_FROZEN");
-    expect(state().tdd).toMatchObject({ state: "COOKING", dirty: false }); // neither file was written
+    expect((await hook(write("src/a.ts"))).stderr).toContain("VERID_BURNT_TASK_SESSION");
+    const tip = await hook(prompt("/verid tip hotfix"), { CLAUDE_CODE_SESSION_ATTENDED: "1" });
+    expect(tip.stderr).toContain("VERID_BURNT_OVERRIDE_FORBIDDEN");
+    expect(state().pending_override).toBeNull();
+    expect(state().tdd.dirty).toBe(false);
+  });
 
-    // Each tip is used up once: the command passes only when every rule that denies it has had
-    // a tip left to spend, and the frozen test then reopens RAW like any other.
-    await allowOnce();
-    expect((await hook(both)).stderr).toContain("verid [VERID_BURNT_PLAN_NOT_APPROVED]"); // the first is spent
+  it("keeps task selection non-overridable even after a passing cycle", async () => {
+    setTdd("PLATED");
+    expect((await hook(write("src/a.ts"))).stderr).toContain("VERID_BURNT_TASK_SESSION");
+    const tip = await hook(prompt("/verid tip refactor"), { CLAUDE_CODE_SESSION_ATTENDED: "1" });
+    expect(tip.stderr).toContain("VERID_BURNT_OVERRIDE_FORBIDDEN");
+    expect(state().pending_override).toBeNull();
+    expect(state().overrides).toEqual([]);
+  });
+
+  it("judges every file in an ordered session: allowing a frozen test reopens RAW", async () => {
+    writePlan(GOOD_PLAN);
+    expect((await cli("order")).code).toBe(0);
+    patchTdd({ state: "COOKING", failing: ["test/a.test.ts > fails"], last_run: "red" });
+    const both = bash("echo x > src/a.ts && echo y > test/b.test.ts");
+    expect((await hook(both)).stderr).toContain("VERID_BURNT_TDD_TEST_FROZEN");
+    expect(state().tdd.dirty).toBe(false);
     await allowOnce();
     expect((await hook(both)).code).toBe(0);
     expect(state().tdd).toMatchObject({ state: "RAW", dirty: true });
-    expect(state().overrides.map((o: Payload) => [o.rule, o.used])).toEqual([
-      ["VERID_BURNT_PLAN_NOT_APPROVED", true],
-      ["VERID_BURNT_TDD_TEST_FROZEN", true],
-      ["VERID_BURNT_PLAN_NOT_APPROVED", true],
-    ]);
-    expect((await hook(both)).code).toBe(2);
   });
 
   // The approved plan has AC-1 and AC-2; vitest-ac.xml passes `add > AC-1 adds two numbers`.
   const approveAndRun = async (plan = GOOD_PLAN, run = "vitest-ac.xml") => {
-    writeFileSync(planPath(), plan);
+    writePlan(plan);
     expect((await cli("order")).code).toBe(0);
     scenario(0, run);
     expect((await cli("taste")).code).toBe(0);
@@ -1673,13 +1658,17 @@ describe("prep and recipe plan", () => {
 
   const notReady = (r: Run, because: string) => {
     expect(r.code).toBe(2);
+    if (because === "not open") {
+      expect(r.stderr).toContain("VERID_BURNT_TASK_SESSION");
+      return;
+    }
     expect(r.stderr).toContain("verid [VERID_BURNT_SERVE_NOT_READY]");
     expect(r.stderr).toContain(because);
   };
 
   it("serves a module only with evidence, from the developer's terminal", async () => {
     writeFileSync(researchPath(), "# Research\n");
-    writeFileSync(planPath(), MODULES_PLAN);
+    writePlan(MODULES_PLAN);
     expect((await cli("order", "auth")).code).toBe(0);
     expect((await cliWith({ CLAUDECODE: "1" }, "serve", "auth")).stderr).toContain(
       "verid [VERID_BURNT_SERVE_IN_AGENT]",
@@ -1702,13 +1691,13 @@ describe("prep and recipe plan", () => {
     expect(audit().at(-1)).toMatchObject({ event: "module_served", module: "auth" });
     expect(served.stdout).toContain(`${VERID_CMD} order ui`); // the menu's next step
     notReady(await cli("serve", "auth"), "not open"); // served once
-    expect(await gate()).toBe("VERID_BURNT_PLAN_NOT_APPROVED"); // no module is open any more
+    expect(await gate()).toBe("VERID_BURNT_TASK_SESSION"); // no module is open any more
   });
 
   it("serves a module only with a review recorded after its last change", async () => {
     const plan = "## Module: calc\n- AC-1: adds\n## Module: other\n- AC-2: greets\n";
     const ready = async () => {
-      writeFileSync(planPath(), plan);
+      writePlan(plan);
       expect((await cli("order", "calc")).code).toBe(0);
       scenario(0, "vitest-ac.xml");
       expect((await cli("taste")).code).toBe(0);
@@ -1785,7 +1774,7 @@ describe("prep and recipe plan", () => {
       freshState();
       writeFileSync(manifestFile, manifest("src/**", undefined, ".", "recipe") + security);
       writeFileSync(designPath(), "# Design\n");
-      writeFileSync(planPath(), "## Module: calc\n- AC-1: adds\n");
+      writePlan("## Module: calc\n- AC-1: adds\n");
       expect((await cli("order", "calc")).code).toBe(0);
       scenario(0, "vitest-ac.xml");
       expect((await cli("taste")).code).toBe(0);
@@ -1878,7 +1867,7 @@ describe("prep and recipe plan", () => {
     writeFileSync(manifestFile, manifest("src/**", undefined, ".", "recipe") + mapped);
     writeFileSync(join(project, ".verid", "research.md"), "# Research\n");
     const start = (await hook(fixture("session-start"))).stdout;
-    writeFileSync(planPath(), "## Module: calc\n- AC-1: adds\n");
+    writePlan("## Module: calc\n- AC-1: adds\n");
     expect((await cli("order", "calc")).code).toBe(0);
     scenario(0, "vitest-ac.xml");
     expect((await cli("taste")).code).toBe(0);
@@ -1907,7 +1896,7 @@ describe("prep and recipe plan", () => {
     writeFileSync(manifestFile, e2e + ROLES);
     writeFileSync(join(project, ".verid", "research.md"), "# Research\n");
     const product = "## Module: product\n- AC-9 (e2e): a user signs up and adds two numbers\n";
-    writeFileSync(planPath(), `## Module: calc\n- AC-1: adds\n${product}`);
+    writePlan(`## Module: calc\n- AC-1: adds\n${product}`);
     const early = await cli("order", "product");
     expect(early.code).toBe(2);
     expect(early.stderr).toContain("verid [VERID_BURNT_PRODUCT_TOO_EARLY]");
@@ -1930,10 +1919,7 @@ describe("prep and recipe plan", () => {
   });
 
   it("will not order the product module while a module has no AC yet", async () => {
-    writeFileSync(
-      planPath(),
-      "## Module: draft\n## Module: product\n- AC-9 (e2e): a user signs up\n",
-    );
+    writePlan("## Module: draft\n## Module: product\n- AC-9 (e2e): a user signs up\n");
     const r = await cli("order", "product");
     expect(r.code).toBe(2);
     expect(r.stderr).toContain("verid [VERID_BURNT_PRODUCT_TOO_EARLY]");
@@ -1962,18 +1948,21 @@ describe("prep and recipe plan", () => {
 
   it("gives taste's log line and serve's reasons in the chosen language", async () => {
     writeFileSync(stateFile, JSON.stringify({ schemaVersion: 1, language: "vi" }));
-    writeFileSync(planPath(), MODULES_PLAN);
+    writePlan(MODULES_PLAN);
     const refused = (await cli("serve", "auth")).stderr; // not ordered yet
     scenario(0, GREEN_RUN);
     const tasted = (await cli("taste")).stdout;
     expect({
-      serve: [refused.includes("chưa mở"), refused.includes("it is not open")],
+      serve: [
+        refused.includes("Mỗi task một session"),
+        refused.includes("One task per AI session"),
+      ],
       taste: [tasted.includes("Log đầy đủ"), tasted.includes("Full log")],
     }).toEqual({ serve: [true, false], taste: [true, false] });
   });
 
   it("lists the open questions when serving leaves asking them as the next step", async () => {
-    writeFileSync(planPath(), MODULES_PLAN);
+    writePlan(MODULES_PLAN);
     writeFileSync(join(project, ".verid", "research.md"), "[NEEDS CLARIFICATION: who pays?]\n");
     expect((await cli("order", "auth")).code).toBe(0);
     scenario(0, "vitest-ac.xml");
@@ -1985,7 +1974,7 @@ describe("prep and recipe plan", () => {
   });
 
   it("keeps a served module done when the next one is ordered", async () => {
-    writeFileSync(planPath(), MODULES_PLAN);
+    writePlan(MODULES_PLAN);
     expect((await cli("order", "auth")).code).toBe(0);
     scenario(0, "vitest-ac.xml");
     await cli("taste");
@@ -1999,7 +1988,7 @@ describe("prep and recipe plan", () => {
   });
 
   it("will not serve a module while a change has not been run", async () => {
-    writeFileSync(planPath(), MODULES_PLAN);
+    writePlan(MODULES_PLAN);
     expect((await cli("order", "auth")).code).toBe(0);
     scenario(0, "vitest-ac.xml");
     expect((await cli("taste")).code).toBe(0);
@@ -2008,31 +1997,31 @@ describe("prep and recipe plan", () => {
   });
 
   it("holds the stop once to evaluate a module whose every AC passes", async () => {
-    writeFileSync(planPath(), MODULES_PLAN);
+    writePlan(MODULES_PLAN);
     expect((await cli("order", "auth")).code).toBe(0);
     scenario(0, "vitest-ac.xml");
     expect((await cli("taste")).code).toBe(0);
-    const held = await stopFrom("s-eval");
+    const held = await stopFrom(currentSession);
     expect(held.code).toBe(2);
     expect(held.stderr).toContain("verid:review");
     // QC by the mapped reviewer, against the module's ACs and the design.
     expect(held.stderr).toContain("feature-dev:code-reviewer");
     expect(held.stderr).toContain(`${VERID_CMD} serve auth`);
-    expect((await stopFrom("s-eval")).code).toBe(0); // once per conversation
-    expect((await stopFrom("s-other")).code).toBe(2); // a new conversation is held again
+    expect((await stopFrom(currentSession)).code).toBe(0); // once per conversation
+    expect((await stopFrom("s-other")).code).toBe(0); // a new conversation is held again
   });
 
   it("does not hold a second time once the uncovered hold was used in this conversation", async () => {
-    writeFileSync(planPath(), MODULES_PLAN);
+    writePlan(MODULES_PLAN);
     expect((await cli("order", "auth")).code).toBe(0);
     scenario(0, GREEN_RUN); // no test names AC-1
     expect((await cli("taste")).code).toBe(0);
-    const uncovered = await stopFrom("s-one");
+    const uncovered = await stopFrom(currentSession);
     expect(uncovered.code).toBe(2);
     expect(uncovered.stderr).toContain("AC-1");
     scenario(0, "vitest-ac.xml");
     expect((await cli("taste")).code).toBe(0);
-    expect((await stopFrom("s-one")).code).toBe(0);
+    expect((await stopFrom(currentSession)).code).toBe(0);
   });
 
   const researchPath = () => join(project, ".verid", "research.md");
@@ -2064,7 +2053,7 @@ describe("prep and recipe plan", () => {
     expect(design).toMatch(/^en: Next: agree architecture.*\.verid\/design\.md/m);
 
     writeFileSync(designPath(), "# Design\n");
-    writeFileSync(planPath(), MODULES_PLAN);
+    writePlan(MODULES_PLAN);
     const planned = (await cli("menu")).stdout;
     expect(planned).toContain(
       "verid: mode prep · research written · spec written · design written · 2 modules",
@@ -2106,7 +2095,7 @@ describe("prep and recipe plan", () => {
     };
     const research = await seen();
     writeFileSync(researchPath(), "# Research\n");
-    writeFileSync(planPath(), MODULES_PLAN);
+    writePlan(MODULES_PLAN);
     const order = await seen();
     expect((await cli("order", "auth")).code).toBe(0);
     const open = await seen();
@@ -2118,9 +2107,9 @@ describe("prep and recipe plan", () => {
   });
 
   it("shows research in recipe too, and the baseline in remix", async () => {
-    writeFileSync(planPath(), MODULES_PLAN);
+    writePlan(MODULES_PLAN);
     expect((await cli("menu")).stdout).toContain(
-      "verid: mode recipe · research missing · spec missing · design written · 2 modules",
+      "verid: mode recipe · research missing · spec written · design written · 2 modules",
     );
     asMode("remix");
     const remix = (await cli("menu")).stdout;
@@ -2130,23 +2119,22 @@ describe("prep and recipe plan", () => {
 
   it("lists open questions, and asks them before ordering but not before the open module", async () => {
     writeFileSync(join(project, ".verid", "research.md"), "[NEEDS CLARIFICATION: who pays?]\n");
-    writeFileSync(
-      planPath(),
+    writePlan(
       "## Module: auth\n- AC-1: adds\n## Module: ui\n- AC-2: [NEEDS CLARIFICATION: which locale?]\n",
     );
     const before = (await cli("menu")).stdout;
-    expect(before).toContain("  ? plan.md:4 which locale?");
+    expect(before).toContain("  ? plan.md:5 which locale?");
     expect(before).toContain("  ? research.md:1 who pays?");
     expect(before).toMatch(/^en: Next: use verid:ba.*open questions above/m);
     expect((await hook(fixture("session-start"))).stdout).toContain("verid menu");
     expect((await cli("order", "auth")).code).toBe(0);
     const open = (await cli("menu")).stdout;
-    expect(open).toContain("  ? plan.md:4 which locale?");
+    expect(open).toContain("  ? plan.md:5 which locale?");
     expect(open).toMatch(/^en: Next: build module auth/m);
   });
 
   it("says what is wrong with an invalid plan", async () => {
-    writeFileSync(planPath(), "- AC-1: a\n- AC-1: b");
+    writePlan("- AC-1: a\n- AC-1: b");
     const r = await cli("menu");
     expect(r.stdout).toContain("verid: mode recipe · plan invalid");
     expect(r.stdout).toContain("AC-1 appears twice");
@@ -2158,7 +2146,7 @@ describe("prep and recipe plan", () => {
 
   it("shows the menu summary and next step at session start", async () => {
     writeFileSync(researchPath(), "# Research\n");
-    writeFileSync(planPath(), MODULES_PLAN);
+    writePlan(MODULES_PLAN);
     const start = (await hook(fixture("session-start"))).stdout;
     expect(start).toContain("2 modules");
     expect(start).toContain("verid order auth");
@@ -2167,7 +2155,7 @@ describe("prep and recipe plan", () => {
   });
 
   it("keeps verid peek to the cycle and points to verid menu", async () => {
-    writeFileSync(planPath(), MODULES_PLAN);
+    writePlan(MODULES_PLAN);
     const peek = (await cli("peek")).stdout;
     expect(peek).not.toContain("AC-");
     expect(peek).toMatch(
@@ -2194,12 +2182,12 @@ describe("prep and recipe plan", () => {
     expect(state().ac_stop_session).toBe(SESSION);
 
     expect((await hook(fixture("stop"))).code).toBe(0); // once for this conversation
-    expect((await stopFrom("another-conversation")).code).toBe(2); // each conversation has its own
-    expect(state().ac_stop_session).toBe("another-conversation");
+    expect((await stopFrom("another-conversation")).code).toBe(0); // each conversation has its own
+    expect(state().ac_stop_session).toBe(currentSession);
     expect((await cli("menu")).stdout).toContain("  main · cooking · 1/2 ACs"); // AC-2 still uncovered
 
     // Approving again is a new chance to hold, and the list is the new plan's.
-    writeFileSync(planPath(), `${GOOD_PLAN}\n- AC-3: waves`);
+    writePlan(`${GOOD_PLAN}\n- AC-3: waves`);
     expect((await cli("order")).code).toBe(0);
     expect(state().ac_stop_session).toBeNull();
     const again = await hook(fixture("stop"));
@@ -2234,7 +2222,7 @@ describe("prep and recipe plan", () => {
   });
 
   it("re-locks production code when design.md changes after the order, until ordered again", async () => {
-    writeFileSync(planPath(), GOOD_PLAN);
+    writePlan(GOOD_PLAN);
     expect((await cli("order")).code).toBe(0);
     scenario(1, RED_ASSERT_RUN);
     expect((await cli("taste")).code).toBe(1);
@@ -2242,25 +2230,25 @@ describe("prep and recipe plan", () => {
 
     writeFileSync(designPath(), "# Design\nA new store.\n");
     const locked = await hook(write("src/calc.ts"));
-    expect(locked.code).toBe(0);
+    expect(locked.stderr).toContain("VERID_BURNT_TASK_SESSION");
     expect((await cli("menu")).stdout).toContain("design changed since order");
 
     expect((await cli("order")).code).toBe(0);
-    expect((await hook(write("src/calc.ts"))).code).toBe(0);
+    expect((await hook(write("src/calc.ts"))).stderr).toContain("VERID_BURNT_TDD_NO_FAILING_TEST");
   });
 
   // An editor on Windows may save the design with a BOM and CRLF: the order signs those bytes.
   it("signs the design's bytes as saved, BOM and CRLF included", async () => {
-    writeFileSync(planPath(), GOOD_PLAN);
+    writePlan(GOOD_PLAN);
     writeFileSync(designPath(), "﻿# Design\r\nOne store.\r\n");
     expect((await cli("order")).code).toBe(0);
     expect(await gate()).toBe("VERID_BURNT_TDD_NO_FAILING_TEST");
     writeFileSync(designPath(), "﻿# Design\nOne store.\n");
-    expect(await gate()).toBe("VERID_BURNT_TDD_NO_FAILING_TEST");
+    expect(await gate()).toBe("VERID_BURNT_TASK_SESSION");
   });
 
   it("refuses to order a module before design.md exists", async () => {
-    writeFileSync(planPath(), GOOD_PLAN);
+    writePlan(GOOD_PLAN);
     rmSync(designPath());
     const r = await cli("order");
     refusedWith(r, "VERID_BURNT_DESIGN_MISSING");
@@ -2273,7 +2261,7 @@ describe("prep and recipe plan", () => {
       '    test_globs: ["test/**"]\n    e2e_globs: ["**/e2e/**"]\n',
     );
     writeFileSync(manifestFile, e2e);
-    writeFileSync(planPath(), "## Module: calc\n- AC-2 (e2e): logs in\n");
+    writePlan("## Module: calc\n- AC-2 (e2e): logs in\n");
     expect((await cli("order", "calc")).code).toBe(0);
     scenario(0, "vitest-ac2-unit.xml");
     expect((await cli("taste")).code).toBe(0);
@@ -2299,7 +2287,11 @@ describe("roles", () => {
     );
     writeFileSync(join(project, ".verid", "research.md"), "# What it is for\n");
     writeFileSync(designPath(), "# How it is built\n");
-    writeFileSync(join(project, ".verid", "plan.md"), "## Module: calc\n- AC-1: adds\n");
+    writeFileSync(
+      join(project, ".verid", "plan.md"),
+      readyModulePlan(project, "## Module: calc\n- AC-1: adds\n"),
+    );
+    writeFileSync(join(project, ".verid/spec.md"), "- REQ-1: adds\n");
     if (order) expect((await cli("order", "calc")).code).toBe(0);
   };
   // A write or a Bash call by a subagent of this type; no type is the main thread.
@@ -2466,14 +2458,7 @@ describe("roles", () => {
   it("keeps legacy source and free paths under their original gates for every writer", async () => {
     const rows = [
       ["RAW source", [], undefined, "src/a.spec.ts", "remix", "VERID_BURNT_TDD_NO_FAILING_TEST"],
-      [
-        "unapproved source",
-        [],
-        undefined,
-        "src/a.spec.ts",
-        "recipe",
-        "VERID_BURNT_PLAN_NOT_APPROVED",
-      ],
+      ["unapproved source", [], undefined, "src/a.spec.ts", "recipe", "VERID_BURNT_TASK_SESSION"],
       ["free file", [], undefined, "browser/a.spec.ts", "remix", "exit 0"],
       [
         "split main source",

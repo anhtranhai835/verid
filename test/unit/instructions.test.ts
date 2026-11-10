@@ -116,7 +116,7 @@ describe("provider instruction blocks", () => {
         expect(text).toContain("exceptions require Claude Code");
         expect(text).toContain("Advisory");
       }
-      expect(text.length).toBeLessThan(3400);
+      expect(text.length, provider).toBeLessThan(3400);
     }
   });
 
@@ -143,9 +143,7 @@ describe("provider instruction blocks", () => {
         "### Feedback on verid",
       ]);
       expect(lines[lines.indexOf("### Rules") + 1]).toMatch(new RegExp(`^${first}`));
-      expect(lines).toContain(
-        "- Never bypass or work around a denial: read its reason and follow it.",
-      );
+      expect(lines).toContain("- Never bypass a denial; follow its reason.");
     }
   });
 
@@ -159,15 +157,14 @@ describe("provider instruction blocks", () => {
     for (const provider of ["claude-code", "codex"] as const) {
       const lines = renderInstructions(parsed.manifest, provider).split("\n");
       for (const line of [
-        "- RAW: production code is locked. Write one failing test, then run verid taste.",
-        "- COOKING: tests are frozen. Write the minimum production code to pass them, then run verid taste.",
-        "- PLATED: all tests pass. Refactor without new behaviour; the next test starts RAW.",
-        "- Session start gives the cycle and next step; else run verid peek.",
-        "- Inputs: the developer's documents in .verid/docs/ (agents read them, never write them).",
-        "- Session log: .verid/log/<module>.md; read it at session start, and the main thread appends after each AC.",
-        "- State: .verid/manifest.yaml; .verid/research.md, spec.md, design.md and plan.md; local evidence and audit in .verid/.state/.",
-        "- Agent: verid taste (the only test runs that count as evidence), verid peek, verid menu, verid doctor.",
-        "- Developer only, in their own terminal: verid cook, upgrade, stock, order [module], serve <module>, garnish, halt, resume.",
+        "- RAW: code locked; write a failing test, then verid taste.",
+        "- COOKING: tests frozen; implement, then verid taste.",
+        "- PLATED: refactor passing code; new behaviour starts RAW.",
+        "- .verid/docs/: developer inputs, read-only.",
+        "- Session log .verid/log/<module>.md: read at startup; main appends after each AC.",
+        "- Inputs: .verid/{manifest.yaml,research.md,spec.md,design.md,plan.md}; evidence/audit: .verid/.state/.",
+        "- Agent: verid taste (evidence), verid peek, verid menu, verid doctor.",
+        "- Developer terminal only: verid cook, upgrade, stock, order [module], serve <module>, garnish, halt, resume.",
       ])
         expect(lines, provider).toContain(line);
     }
@@ -187,8 +184,8 @@ describe("provider instruction blocks", () => {
           .find((line) => line.includes("verid:onboard")),
       ),
     ).toEqual([
-      "- New developer or workspace: verid:onboard reads repos, health and status, and writes nothing.",
-      "- New developer or workspace: verid:onboard → plugin/skills/onboard/SKILL.md reads repos, health and status, and writes nothing.",
+      "- Onboarding: verid:onboard; read-only health/status.",
+      "- Onboarding: verid:onboard → plugin/skills/onboard/SKILL.md; read-only health/status.",
     ]);
   });
 
@@ -241,7 +238,7 @@ describe("provider instruction blocks", () => {
     expect(both[1]!.block).toBe(imported);
     const lines = both[0]!.block.split("\n");
     for (const line of [
-      "- Never bypass or work around a denial: read its reason and follow it.",
+      "- Never bypass a denial; follow its reason.",
       "- (Claude Code) Research, then spec: verid:ba in the main conversation.",
       "- (Codex) Research/spec: verid:ba → S/ba/SKILL.md.",
     ])

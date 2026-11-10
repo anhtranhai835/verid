@@ -1,3 +1,4 @@
+import { readyModulePlan } from "./helpers.js";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -143,8 +144,18 @@ it("points every session at the open module's log, and lets the main thread writ
     ["design.md", "# Design\n"],
     ["plan.md", "## Module: calc\n- AC-1: adds\n"],
   ] as const)
-    writeFileSync(join(project, ".verid", file), text);
-  const closed = await session("startup");
+    writeFileSync(
+      join(project, ".verid", file),
+      file === "plan.md" ? readyModulePlan(project, text) : text,
+    );
+  const closed = await runHook(
+    JSON.stringify({
+      hook_event_name: "SessionStart",
+      session_id: "planning-context",
+      cwd: project,
+      source: "startup",
+    }),
+  );
   expect(closed.stdout).not.toContain(".verid/log/");
   expect((await runCli(["order", "calc"], project)).code).toBe(0);
   for (const source of ["startup", "clear", "compact", "resume"]) {

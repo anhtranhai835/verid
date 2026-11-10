@@ -1,3 +1,4 @@
+import { readyModulePlan, startTaskSession } from "./helpers.js";
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -31,7 +32,10 @@ const git = (cwd: string, ...args: string[]) => {
 };
 const put = (path: string, text: string) => {
   mkdirSync(dirname(join(project, path)), { recursive: true });
-  writeFileSync(join(project, path), text);
+  writeFileSync(
+    join(project, path),
+    path === ".verid/plan.md" ? readyModulePlan(project, text) : text,
+  );
 };
 /** A repository with one commit on main, then checked out on `branch`. */
 const repoAt = (folder: string, branch: string, main = "main") => {
@@ -174,9 +178,11 @@ describe("verid menu --commits: the module's work history for the reviewer", () 
     manifest('roles:\n  reviewer: ["verid:reviewer"]\n');
     put(".verid/research.md", "# Research\n");
     put(".verid/design.md", "# Design\n");
+    put(".verid/spec.md", "- REQ-1: arithmetic\n");
     put(".verid/plan.md", "## Module: calc\n- AC-1: sums\n");
     repoAt(".", "main");
     expect((await runCli(["order", "calc"], project, env())).code).toBe(0);
+    await startTaskSession(project, SESSION);
     put("src/calc.ts", "export const sum = (a: number, b: number) => a + b;\n");
     put(".env", "TOKEN=packet-secret\n");
     const stateFile = join(project, ".verid/.state/state.json");
@@ -241,10 +247,12 @@ describe("verid menu --commits: the module's work history for the reviewer", () 
     manifest('roles:\n  reviewer: ["verid:reviewer"]\n');
     put(".verid/research.md", "# Research\n");
     put(".verid/design.md", "# Design\n");
+    put(".verid/spec.md", "- REQ-1: arithmetic\n");
     put(".verid/plan.md", "## Module: calc\n- AC-1: sums\n");
     repoAt(".", "main");
     const before = await runCli(["menu", "--commits"], project, env());
     expect((await runCli(["order", "calc"], project, env())).code).toBe(0);
+    await startTaskSession(project, SESSION);
     git(project, "switch", "-q", "-c", "feat/calc");
     put("src/calc.ts", "export const sum = (a: number) => a + 1;\n");
     put(".env", "TOKEN=hunter2\n");

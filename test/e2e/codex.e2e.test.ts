@@ -1,3 +1,4 @@
+import { readyModulePlan, startTaskSession } from "./helpers.js";
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
@@ -99,7 +100,11 @@ describe("Codex hook transport and policy", () => {
   it("records the mapped reviewer's final text as the open module's review", async () => {
     manifest({ mode: "recipe" });
     writeFileSync(join(project, ".verid/design.md"), "# Design\n");
-    writeFileSync(join(project, ".verid/plan.md"), "## Module: feature\n- AC-1: adds\n");
+    writeFileSync(
+      join(project, ".verid/plan.md"),
+      readyModulePlan(project, "## Module: feature\n- AC-1: adds\n"),
+    );
+    writeFileSync(join(project, ".verid/spec.md"), "- REQ-1: adds\n");
     const env = Object.fromEntries(
       Object.entries(process.env).filter(([k]) => !/^(CLAUDE|CODEX)/.test(k)),
     );
@@ -109,6 +114,7 @@ describe("Codex hook transport and policy", () => {
       encoding: "utf8",
     });
     expect(approved.status, approved.stderr).toBe(0);
+    await startTaskSession(project, "codex-session", "codex");
     await hook(envelope("SubagentStart", { agent_id: "review-1", agent_type: "verid_reviewer" }));
     const message = "AC-1 and design checked against the diff.\nVerdict: pass";
     const r = await hook(

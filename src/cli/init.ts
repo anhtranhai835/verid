@@ -16,6 +16,7 @@ import {
   resourceRoles,
   ROLE_NAMES,
   parseManifest,
+  planned,
   providerRoles,
   renderManifest,
   suggestManifest,
@@ -70,6 +71,8 @@ import {
 } from "../adapters/state-store.js";
 import { repoResources, resourceTree, skillsFor } from "../adapters/repo-resources.js";
 import { antigravityPluginDir, antigravityPluginFiles } from "../adapters/antigravity-settings.js";
+import { moduleDrafts } from "../adapters/module-scaffold.js";
+import { upgradeModulePlan } from "../adapters/plan-upgrade.js";
 
 import type { CliResult } from "./test.js";
 
@@ -216,7 +219,9 @@ export async function planCook(
   const settingsFile = join(project, ".claude", "settings.local.json");
   const existing = await loadManifest(project, { readOnly: true, checkPaths: false });
   if (flags.workflow !== undefined && !WORKFLOWS.some((value) => value === flags.workflow))
-    throw invalid("--workflow", "must be classic, modular or kanban");
+    throw invalid("--workflow", "verid has one flow; drop this flag");
+  if (["classic", "kanban"].includes(flags.workflow ?? ""))
+    notes.push(bilingual("init.workflow_ignored", {}));
   if (flags.resources !== undefined && !RESOURCE_MODES.some((value) => value === flags.resources))
     throw invalid("--resources", "must be installed or repo");
   const resources = existing ? existing.resources : flags.resources;
@@ -347,7 +352,7 @@ export async function planCook(
     if (flags.upgrade) roles = providerRoles(roles ?? undefined, providers);
     const missingDefaults = await missingManifestDefaults(readText(manifestFile(project)) ?? "");
     const items = manifestUpgradeLines(existing, missingDefaults);
-    if (upgrade && items.length > 0 && flags.upgrade) {
+    if (upgrade && (items.length > 0 || existing.workflow !== undefined) && flags.upgrade) {
       // Edited on what is there now, checked before anything is written.
       let text = readText(manifestFile(project)) ?? "";
       for (const [i, up] of upgrades.entries()) text = await upgradeManifestText(text, up, i);
@@ -375,8 +380,11 @@ export async function planCook(
       throw new VeridError("VERID_BURNT_INIT_NO_MODE", { suggested: suggestMode(facts) });
     const mode = MODES.find((m) => m === (flags.mode ?? suggestMode(facts)));
     if (!mode) throw invalid("--mode", "must be prep, recipe or remix");
-    const drive = flags.drive === undefined ? undefined : DRIVES.find((d) => d === flags.drive);
-    if (flags.drive !== undefined && !drive) throw invalid("--drive", "must be human or auto");
+    const drive =
+      flags.drive === undefined
+        ? undefined
+        : DRIVES.find((d) => d === (flags.drive === "ai" ? "auto" : flags.drive));
+    if (flags.drive !== undefined && !drive) throw invalid("--drive", "must be human or ai");
     if (
       !flags.iterations &&
       [flags.duration, flags.startDate, flags.demoDay].some((v) => v !== undefined)
@@ -399,7 +407,6 @@ export async function planCook(
       mode,
       architecture: flags.architecture ?? "ddd",
       roles: selectedRoles,
-      workflow: flags.workflow,
       resources: flags.resources,
       drive,
       layout,
@@ -442,7 +449,7 @@ export async function planCook(
       checked.manifest.iterations,
       providers,
       checked.manifest.architecture,
-      { workflow: checked.manifest.workflow, resources: checked.manifest.resources },
+      { resources: checked.manifest.resources },
     );
     effective = checked.manifest;
     if (checked.manifest.iterations) {
@@ -490,7 +497,7 @@ export async function planCook(
     );
     notes.push(bilingual("cook.resources_repo", {}));
   }
-  if (effective?.workflow === "modular") {
+  if (effective && planned(effective)) {
     for (const file of resourceTree(join(contentRoot(), "templates"), ".verid/templates"))
       addResource(file.rel, file.content);
     for (const rel of [
@@ -517,6 +524,26 @@ export async function planCook(
         `# ${phase}\n\nRead .verid/workflow.md for this phase. Store project evidence and decisions here.\n`,
       );
     notes.push(bilingual("cook.workflow_modular", {}));
+    if (flags.upgrade && existing) {
+      const planPath = join(project, ".verid/plan.md");
+      const before = readText(planPath);
+      if (before !== null) {
+        const state = readState(paths);
+        const migration = upgradeModulePlan(before, state, effective.iterations !== undefined);
+        for (const name of migration.pending)
+          for (const file of moduleDrafts(project, name)) addResource(file.rel, file.content);
+        if (migration.text !== before) {
+          checkWritePath(".verid/plan.md");
+          step("updated", ".verid/plan.md", {
+            content: migration.text,
+            apply: () => writeFileSync(planPath, migration.text),
+          });
+          notes.push(
+            bilingual("init.module_reapproval", { modules: migration.pending.join(", ") }),
+          );
+        }
+      }
+    }
   }
   for (const [name, text] of Object.entries(projectRules(effective?.architecture ?? "ddd"))) {
     const rel = `.verid/rules/${name}`;
@@ -872,10 +899,14 @@ export function projectFacts(project: string, repos: readonly string[] = ["."]):
 
 /** What manifestUpgrade() would change, a line per key: `+` adds globs or roles. */
 export function manifestUpgradeLines(
-  manifest: Pick<Manifest, "repos" | "roles"> & Partial<Pick<Manifest, "providers" | "resources">>,
+  manifest: Pick<Manifest, "repos" | "roles"> &
+    Partial<Pick<Manifest, "providers" | "resources" | "workflow">>,
   missing: readonly string[] = [],
 ): string[] {
   return [
+    ...(manifest.workflow !== undefined
+      ? [`  - workflow: ${manifest.workflow} (retired; run verid upgrade)`]
+      : []),
     ...(manifest.providers?.includes("codex") &&
     !manifest.roles?.reviewer?.includes("verid_reviewer")
       ? ['  + roles.reviewer: "verid_reviewer"']

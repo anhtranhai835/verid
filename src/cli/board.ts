@@ -4,7 +4,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { parseArgs } from "node:util";
 import { inAgentShell } from "../adapters/agent-environment.js";
 import { boardChat, type Spawner } from "../adapters/board-chat.js";
-import { boardSnapshot, saveBoardDocument, taskPrompt } from "../adapters/kanban.js";
+import { boardSnapshot, moveTask, saveBoardDocument, taskPrompt } from "../adapters/kanban.js";
 import { boardHtml } from "./board-page.js";
 import type { CliResult } from "./test.js";
 
@@ -69,6 +69,14 @@ export async function startBoard(project: string, command: Command, port = 0, sp
       return send(res, 200, await chat.status());
     }
     const snapshot = await boardSnapshot(project);
+    if (snapshot.notice) return send(res, 409, { error: snapshot.notice });
+    if (
+      snapshot.drive === "auto" &&
+      ["select", "serve", "prompt", "chat"].includes(String(input.action))
+    )
+      return send(res, 409, {
+        error: "AI drive làm theo hàng đợi trong session đã ký. Chạy verid order từ terminal.",
+      });
     if (input.action === "chat") {
       const task = snapshot.tasks.find((item) => item.id === input.task);
       if (!task?.selected) return send(res, 409, { error: "Chọn task này trước khi chat." });
@@ -92,7 +100,15 @@ export async function startBoard(project: string, command: Command, port = 0, sp
         project,
         input.action,
         typeof input.content === "string" ? input.content : "",
+        snapshot.drive,
       );
+    } else if (input.action === "move") {
+      if (
+        typeof input.task !== "string" ||
+        (input.direction !== "up" && input.direction !== "down")
+      )
+        return send(res, 400, { error: "Invalid task or direction" });
+      await moveTask(project, input.task, input.direction, snapshot.revision);
     } else if (input.action === "select" || input.action === "serve") {
       const task = snapshot.tasks.find((item) => item.id === input.task);
       if (!task) return send(res, 400, { error: "Task không tồn tại." });
@@ -146,8 +162,9 @@ export async function boardCommand(
   if (!Number.isInteger(port) || port < 0 || port > 65535)
     throw new Error("--port cần là số từ 0 đến 65535.");
   const board = await startBoard(project, command, port);
+  const snapshot = await boardSnapshot(project);
   process.stdout.write(
-    `Verid Kanban: ${board.url}\nMỗi task một session AI. Giữ terminal này mở; Ctrl+C để dừng board.\n`,
+    `Verid Kanban: ${board.url}\n${snapshot.notice ?? (snapshot.drive === "auto" ? "Drive ai: xếp ưu tiên rồi chạy verid order; một session làm hết hàng đợi." : "Drive human: mỗi task một session AI mới.")} Giữ terminal này mở; Ctrl+C để dừng board.\n`,
   );
   if (!values["no-open"]) {
     // No shell interpolation. Windows URL is a generated loopback address with a hex fragment.

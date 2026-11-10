@@ -1,3 +1,6 @@
+import { autoFactsOf } from "../../src/adapters/plan-file.js";
+import { readState, statePaths } from "../../src/adapters/state-store.js";
+import { readyModulePlan, startTaskSession } from "./helpers.js";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
@@ -39,7 +42,10 @@ beforeEach(() => {
 afterEach(() => rmSync(temp, { recursive: true, force: true }));
 const put = (rel: string, text = "x") => {
   mkdirSync(dirname(join(project, rel)), { recursive: true });
-  writeFileSync(join(project, rel), text);
+  writeFileSync(
+    join(project, rel),
+    rel === ".verid/plan.md" ? readyModulePlan(project, text) : text,
+  );
 };
 const git = (cwd: string, ...args: string[]) => {
   const result = spawnSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], {
@@ -615,9 +621,7 @@ describe("workspace auto and doctor", () => {
     put(".verid/design.md", "design");
     put(".verid/plan.md", "## Module: product\n- AC-9 (e2e): works end to end\n");
     expect((await cli(["order"])).code).toBe(0);
-    const hash = createHash("sha256")
-      .update(readFileSync(join(project, ".verid/plan.md")))
-      .digest("hex");
+    const hash = autoFactsOf(project, readState(statePaths(project)), false, true).planHash;
     writeState({
       auto: { ...state().auto, plan_sha256: hash },
       tdd: {

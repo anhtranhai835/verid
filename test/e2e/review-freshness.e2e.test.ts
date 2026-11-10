@@ -1,3 +1,4 @@
+import { readyModulePlan, startTaskSession } from "./helpers.js";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -7,8 +8,16 @@ import { runCli, runHook } from "./in-process.js";
 let project: string;
 const stateFile = () => join(project, ".verid/.state/state.json");
 const state = () => JSON.parse(readFileSync(stateFile(), "utf8"));
-const put = (rel: string, text: string) => writeFileSync(join(project, rel), text);
-const cli = (...args: string[]) => runCli(args, project);
+const put = (rel: string, text: string) =>
+  writeFileSync(
+    join(project, rel),
+    rel === ".verid/plan.md" ? readyModulePlan(project, text) : text,
+  );
+const cli = async (...args: string[]) => {
+  const result = await runCli(args, project);
+
+  return result;
+};
 const manifest = (drive = "human") => ({
   schemaVersion: 1,
   mode: "recipe",
@@ -51,6 +60,8 @@ beforeEach(async () => {
     JSON.stringify({ exit: 0, junit: "vitest-ac.xml", output: "passing evidence" }),
   );
   expect((await cli("order", "calc")).code).toBe(0);
+  expect((await cli("taste")).code).toBe(0);
+  expect((await cli("garnish")).code).toBe(0);
 });
 afterEach(() => rmSync(project, { recursive: true, force: true }));
 
@@ -60,8 +71,10 @@ const cases = [
   ["codex", "reviewer", "verid_reviewer"],
   ["codex", "security", "codex_security"],
 ] as const;
-const call = (provider: string, event: string, extra = {}) =>
-  runHook(
+const call = async (provider: string, event: string, extra = {}) => {
+  if (state().kanban.active?.session === null)
+    await startTaskSession(project, "review-session", provider);
+  return runHook(
     JSON.stringify({
       hook_event_name: event,
       cwd: project,
@@ -76,6 +89,7 @@ const call = (provider: string, event: string, extra = {}) =>
     { CLAUDE_PROJECT_DIR: project },
     provider === "codex" ? ["--provider", "codex"] : [],
   );
+};
 const start = (provider: string, type: string, id = "r1") =>
   call(provider, "SubagentStart", { agent_id: id, agent_type: type });
 const stop = (provider: string, type: string, id = "r1") =>
@@ -116,8 +130,8 @@ it.each(cases)(
             tool_input: { file_path: "src/add.ts", content: "export const add = () => 0;" },
           },
     );
-    expect(result.code).toBe(0);
-    expect(result.stdout).toBe("");
+    expect(result.code, result.stdout + result.stderr).toBe(0);
+    expect(result.stdout, result.stdout).toBe("");
     put("src/add.ts", "export const add = () => 0;\n");
     expect((await cli("taste")).code).toBe(0);
     // Duplicate start notifications cannot make an old review current again.

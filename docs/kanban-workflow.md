@@ -1,11 +1,13 @@
 # Kanban workflow
 
-The developer controls priority and opens a fresh provider session for each task.
+Every prep/recipe project has a board. Human drive opens a fresh provider session per task; AI drive runs one session through the developer’s priority queue. Monorepo and multi-repository workspaces use the same shared board and evidence gates.
 
 The browser board uses a restaurant kitchen theme: a chef mascot, paper order
 tickets, warm colours, and a little kitchen humour. The task IDs, acceptance
 criteria and evidence gates keep their existing meaning.
 [Desktop preview](images/kanban-kitchen-desktop.png) · [Mobile preview](images/kanban-kitchen-mobile.png).
+
+In human drive, each task follows this loop:
 
 ```text
 research → spec → design → task plan → browser selection → NEW AI session
@@ -15,11 +17,11 @@ research → spec → design → task plan → browser selection → NEW AI sess
                                           end that session
 ```
 
-Choose `--workflow kanban` in `verid cook` (prep or recipe, human drive), then run
+Run `verid cook` in prep or recipe mode with drive `human` or `ai`, then run
 `verid board`. The browser is a local interface to the project's existing plan,
-approval state, evidence and reviews. Nothing starts on its own: only a message the
-developer sends from a task's chat box runs a provider. No new browser dependencies
-are required.
+approval state, evidence and reviews. In human drive, sending a message from a
+task's chat box runs a provider. AI drive uses the priority queue described below.
+No new browser dependencies are required.
 
 Write `.verid/research.md`, `.verid/spec.md` and `.verid/design.md` before ordering
 a task. Spec and plan can be edited from the board while no task is open.
@@ -32,6 +34,8 @@ For example:
 
 ```markdown
 ## Module: sign-in
+
+Artifacts: .verid/artifacts/03-modules/sign-in
 
 Title: Sign in with email and password
 Depends: user-storage
@@ -54,7 +58,7 @@ The columns reflect real state:
 | Nếm & duyệt | The current task's ACs have passing test evidence; review and acceptance follow. |
 | Lên bàn     | `serve` accepted the evidence and closed the task.                               |
 
-Selection calls the same `order` implementation as the CLI. It signs the task's
+In human drive, selection calls the same `order` implementation as the CLI. It signs the task's
 plan section and design and stores the spec hash, resets TDD for new work, and
 clears previous reviews. Hook `SessionStart` binds the selected task to a new
 provider/session ID. Session IDs observed during planning or used for another
@@ -68,7 +72,7 @@ keeps ownership. The state and session history live in protected local
 `.verid/.state/state.json` under the existing schema with backward-compatible
 defaults. Hook denials use `VERID_BURNT_TASK_SESSION`, which has no agent override.
 
-The board's session prompt identifies only the selected task. The selected task's
+In human drive, the board's session prompt identifies only the selected task. The selected task's
 dialog has a chat box with that prompt prefilled. Sending it runs the chosen
 provider's CLI headless in the project, one run at a time:
 
@@ -104,6 +108,11 @@ process with Ctrl+C. Server errors and evidence failures are shown in the UI.
 
 For a source checkout, build first and use `node /path/to/aeriq/dist/cli.js` instead
 of `verid`. For repo resources, use `node .verid/verid.mjs`. Existing projects can
-set `workflow: kanban` and `drive: human` in the manifest and run `upgrade --yes`
-to regenerate instructions; pinned repo runtime files need an explicit update
+run `verid upgrade --dry-run` then `verid upgrade --yes` to migrate pending module dossiers and regenerate instructions; pinned repo runtime files need an explicit update
 when moving from an older version.
+
+## Priority queue and AI drive
+
+Use the ↑/↓ buttons or Alt+↑/↓ on a focused pending card. The queue survives restarts in protected local state, without changing plan signatures or review approval. The current task and served tasks cannot move; product stays last. Human drive shows the next pending task but permits any selection. AI drive hides selection and chat; run `verid order` in your terminal to sign, then follow `verid menu` in one AI session. Module dossiers must be complete before order in either drive. Splitting the spec creates those drafts and their Artifacts references; cards report missing files and unresolved clarifications.
+
+Remix keeps baseline behaviour; its board displays a no-task notice.

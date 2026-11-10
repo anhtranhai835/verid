@@ -1,6 +1,6 @@
 ---
 name: modules
-description: Use when workflow is modular to prepare module dossiers from repo templates and carry their contracts through verid order, TDD, review and release.
+description: Use in prep or recipe mode to prepare module dossiers from repo templates and carry their contracts through verid order, TDD, review and release.
 ---
 
 Read `.verid/workflow.md` and the manifest. Follow the phase sequence there.
@@ -18,3 +18,5 @@ that module's order. Review and release records hold actual evidence after the w
 Follow the usual mapped writers, order, taste, independent read-only review and serve
 gates. On Codex main writes tests and code; only its configured reviewer is spawned.
 The main thread records reviewer reports. Never invent approvals or test evidence.
+
+For prep/recipe, the developer arranges the priority queue in `verid board`. Complete module dossiers before order. Human drive binds one fresh session per selected task and stops after serve. AI drive follows that queue in one session after `verid order`; reprioritizing never interrupts current work. Remix keeps its baseline flow.

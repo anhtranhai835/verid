@@ -36,7 +36,7 @@ của provider. Không có cơ sở khẳng định một tỷ lệ giảm chi p
 | React `AGENTS.md` tổng hợp |         60.499 | Chỉ tốn context nếu được mở; đã có từng rule riêng    |
 | Review history             | Tối đa 400.000 | Giới hạn output, không phải kích thước mọi lần review |
 
-Các mẫu instruction được render trực tiếp từ code, workflow classic:
+Các mẫu instruction được render trực tiếp từ code, luồng module:
 
 | Provider       | Resources installed | Resources repo |
 | -------------- | ------------------: | -------------: |
@@ -171,7 +171,7 @@ chia review packet. Chưa có benchmark usage để cam kết mức giảm token
 
 - Thêm `plugin/templates/skill-routing.md`: mỗi skill trong 25 skills và mỗi agent
   trong 14 agents đều có tình huống kích hoạt và đường trở lại flow chính. Generated
-  instructions dẫn tới index này cho cả classic/modular/kanban, cả hai providers và
+  instructions dẫn tới index này cho cả prep/recipe, cả hai providers và
   hai chế độ resources. Tìm trigger/heading rồi chỉ nạp nhánh liên quan; dùng lại
   phần routing còn trong context, chỉ mở toàn bộ index khi chưa rõ nhánh cần chọn.
 - Khi user báo lỗi, vào debugging trước; khi điều tra bế tắc hoặc các cách thử liên tục

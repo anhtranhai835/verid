@@ -4,24 +4,16 @@ Luồng này dùng cây workspace và hồ sơ module từ `10-repo-structure.md
 đổi tên workspace thành `.verid/` để tích hợp các gate TDD đang có của verid.
 Không yêu cầu chuyển source code dự án sang monorepo Haren/Bun.
 
-## Chọn trong cook
+## Luồng module duy nhất
 
-| Lựa chọn  | Giá trị                | Tác dụng                                                                              |
-| --------- | ---------------------- | ------------------------------------------------------------------------------------- |
-| Workflow  | `classic` (mặc định)   | Research, spec, design, plan chung như hiện tại                                       |
-| Workflow  | `modular`              | Thêm hồ sơ từng module và cây artifact theo phase của mẫu                             |
-| Resources | `installed` (mặc định) | Dùng plugin/skills từ bản cài trên máy                                                |
-| Resources | `repo`                 | Đưa agents, skills, templates, hooks, bản dịch và policies vào repo; dùng các bản này |
+Prep và recipe luôn dùng hồ sơ module và board. Cook hỏi layout monorepo/workspace, resources installed/repo và drive human/ai; không hỏi workflow. Monorepo là một Git repo; workspace gồm các repo con và dùng một harness chung, một vòng TDD tổng hợp các runner. Thư mục workspace không được có .git hoặc nằm trong repo Git cha; phải có repo con.
 
-Hai lựa chọn độc lập. `modular` dùng với `prep` hoặc `recipe`; `remix` vẫn dùng baseline.
-Cook lưu lựa chọn trong manifest. Khi chạy lại, manifest đang có quyết định cấu hình;
-CLI báo các flag cấu hình bị bỏ qua. Để chuyển project đã cook, developer chỉnh
-`workflow: modular` và/hoặc `resources: repo` trong manifest rồi chạy lại cook.
-Nếu chuyển sang repo resources, đổi các role Claude `verid:<name>` thành `verid-<name>`;
-Codex giữ reviewer `verid_reviewer`. Cook giữ những role đã được người dùng ánh xạ.
+Human: chọn task trên board hoặc order từ terminal, rồi mở session AI mới cho đúng task đó. AI: xếp ưu tiên trên board, ký research/spec/design bằng verid order; một session đi hết hàng đợi, không cắt ngang module đang làm. Dùng ↑/↓ hoặc Alt+↑/↓ để đổi thứ tự task chưa bắt đầu; product luôn cuối.
+
+Resources installed dùng tài nguyên đã cài; repo pin tài nguyên trong project và giữ các tùy chỉnh đã có. Chạy verid upgrade để chuyển project 1.x; module đã serve giữ nguyên, module chưa serve nhận hồ sơ nháp cần điền và order lại.
 
 ```sh
-verid cook --mode prep --workflow modular --resources repo --provider codex --yes
+verid cook --mode prep --resources repo --provider codex --yes
 node .verid/verid.mjs module identity
 node .verid/verid.mjs menu
 ```
@@ -114,7 +106,7 @@ gate tiếp tục chờ tài liệu thật. `verid module` chỉ tạo bản nh�
    ```
 
 4. Human drive: developer chạy `verid order identity`. Auto drive: developer chạy
-   `verid order` để ký research/spec/design rồi agent tiếp tục vòng auto hiện có.
+   `verid order` để ký research/spec/design rồi agent tiếp tục vòng ai hiện có.
    Cả hai dùng hồ sơ module khi xét plan. Signature của module gồm section plan
    và sáu file BA/UI/spec/design/test-plan/security; thay đầu vào làm approval cũ
    hết hiệu lực. Review/release là đầu ra, không thay signature này.

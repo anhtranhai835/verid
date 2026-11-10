@@ -66,12 +66,13 @@ export function autoModules(
   const at = modules.map((m) => servedAt(m.name, hashes, approvals));
   const p = modules.findIndex((m) => m.name === PRODUCT);
   const productAt = at[p] ?? null;
-  if (productAt !== null && at.some((t) => t !== null && t > productAt)) at[p] = null;
+  if (productAt !== null && at.some((t, i) => i !== p && (t === null || t > productAt)))
+    at[p] = null;
   const first = at.indexOf(null);
   return modules.map(({ name, acs, e2e }, i) => {
     const uncovered = uncoveredAcs(acs, e2e, evidence);
     const phase =
-      i < first || first < 0
+      at[i] !== null
         ? "done"
         : i > first
           ? "planned"

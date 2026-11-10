@@ -1,6 +1,9 @@
-import { readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { parsePlan } from "../../src/core/plan.js";
+import { MODULE_INPUTS, readPlan } from "../../src/adapters/plan-file.js";
+import { runHook } from "./in-process.js";
 
 /**
  * A developer's terminal: this process's environment without CLAUDE_* variables, so the test
@@ -30,4 +33,58 @@ export function claudeFixture(project: string, name: string, edit?: (p: Payload)
   const payload = JSON.parse(text) as Payload;
   edit?.(payload);
   return JSON.stringify(payload);
+}
+
+/** Legacy feature fixtures still exercise real dossier hashing and approval gates in v2. */
+export function readyModulePlan(project: string, text: string): string {
+  const parsed = parsePlan(text);
+  if (!parsed.ok) return text;
+  for (const module of parsed.modules) {
+    const base = `.verid/artifacts/03-modules/${module.name}`;
+    for (const input of MODULE_INPUTS) {
+      const file = join(project, base, input);
+      mkdirSync(join(file, ".."), { recursive: true });
+      if (!existsSync(file) || readFileSync(file, "utf8").includes("[NEEDS CLARIFICATION"))
+        writeFileSync(file, `Agreed ${module.name}: ${input}\n`);
+    }
+    if (!/^Artifacts:/m.test(module.text)) {
+      const section =
+        module.text + (module.text.endsWith("\n") ? "" : "\n") + `Artifacts: ${base}\n`;
+      text = text.replace(module.text, () => section);
+    }
+  }
+  return text;
+}
+
+export function moduleHash(project: string, name: string): string {
+  const plan = readPlan(project, false, true);
+  if (!plan?.ok || !plan.hashes[name]) throw new Error(`invalid fixture module: ${name}`);
+  return plan.hashes[name];
+}
+
+/** A real startup after terminal order, never a fabricated session claim in state. */
+export function startTaskSession(
+  project: string,
+  session = FIXTURE_SESSION,
+  provider = "claude-code",
+) {
+  if (provider === "antigravity")
+    return runHook(
+      JSON.stringify({ conversationId: session, workspacePaths: [project], source: "startup" }),
+      {},
+      ["--provider", "antigravity", "--event", "SessionStart"],
+    );
+  return runHook(
+    JSON.stringify({
+      hook_event_name: "SessionStart",
+      cwd: project,
+      session_id: session,
+      source: "startup",
+      model: "test",
+      transcript_path: null,
+      permission_mode: "default",
+    }),
+    {},
+    provider === "claude-code" ? [] : ["--provider", provider],
+  );
 }

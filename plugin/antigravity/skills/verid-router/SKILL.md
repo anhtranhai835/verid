@@ -33,6 +33,8 @@ Locate the skills root `<SKILLS_ROOT>`:
 | **Repeatedly stuck implementation / circular fixes**   | Read `<SKILLS_ROOT>/problem-solving/SKILL.md` -> `references/when-stuck.md`.                                                                      |
 | **DOCX / PDF / large spec extraction**                 | Read `<SKILLS_ROOT>/context-engineering/references/document-reading.md` and run `scripts/document_reader.py`.                                     |
 | **TDD rule detail (RED/GREEN evidence, test naming)**  | Read `<SKILLS_ROOT>/tdd/SKILL.md` only when `verid-build`'s short loop leaves a TDD question open.                                                |
-| **Modular workflow: module dossiers and contracts**    | Read `<SKILLS_ROOT>/modules/SKILL.md` when the manifest has `workflow: modular`.                                                                  |
+| **Modular workflow: module dossiers and contracts**    | Read `<SKILLS_ROOT>/modules/SKILL.md` for every prep/recipe project.                                                                              |
 | **Full security method for `verid-security` review**   | Read `<SKILLS_ROOT>/security/SKILL.md` -> matching file in `references/` (STRIDE/OWASP, supply chain, LLM/agentic).                               |
 | **Missing external library/API documentation**         | Read `<SKILLS_ROOT>/docs-seeker/SKILL.md` or use Antigravity's `search_web`.                                                                      |
+
+For prep/recipe, the developer arranges the priority queue in `verid board`. Complete module dossiers before order. Human drive binds one fresh session per selected task and stops after serve. AI drive follows that queue in one session after `verid order`; reprioritizing never interrupts current work. Remix keeps its baseline flow.

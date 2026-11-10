@@ -1,3 +1,4 @@
+import { planned, taskSessions } from "../core/manifest.js";
 import type { ErrorCode, MessageKey } from "../core/errors.js";
 import { inAgentShell } from "../adapters/agent-environment.js";
 import { existsSync, readFileSync, rmSync } from "node:fs";
@@ -39,6 +40,7 @@ import {
   researchFile,
   specFile,
   unservedDependencies,
+  servedSections,
 } from "../adapters/plan-file.js";
 import {
   languageOf,
@@ -293,7 +295,7 @@ function usage(project: string, wrong: Misuse | null): CliResult {
       who: dev,
     },
     { emoji: "🩺", command: `${v} doctor`, what: say("usage.doctor") },
-    { emoji: "📁", command: `${v} module <name>`, what: say("usage.module"), who: "modular" },
+    { emoji: "📁", command: `${v} module <name>`, what: say("usage.module"), who: "prep, recipe" },
     { emoji: "👅", command: `${v} taste`, what: say("usage.taste") },
     { emoji: "👀", command: `${v} peek`, what: say("usage.peek") },
     { emoji: "📋", command: `${v} menu [--commits [--file]]`, what: say("usage.menu") },
@@ -336,8 +338,6 @@ async function menu(project: string): Promise<CliResult> {
     throw new VeridError("VERID_BURNT_MANIFEST_MISSING", { path: manifestFile(project) });
   const state = readState(statePaths(project));
   const lines = menuLines(project, manifest.mode, state, manifest.roles, manifest.drive, manifest);
-  if (manifest.workflow === "kanban" && !state.kanban.active)
-    lines[lines.length - 1] = "Next: chọn task trong verid board rồi mở session AI mới.";
   return {
     exit: 0,
     stdout: `${lines.join("\n")}\n`,
@@ -475,7 +475,7 @@ async function approve(project: string, wanted: string | undefined): Promise<Cli
     const state = readState(paths);
     const views = planViews(project, plan, state);
     const open = openModule(views);
-    const kanban = manifest?.workflow === "kanban";
+    const kanban = manifest && taskSessions(manifest);
     const specHash = kanban ? readFileHash(specFile(project)) : null;
     if (kanban && specHash === null)
       throw new VeridError("VERID_BURNT_PLAN_NO_SPEC", { target: specFile(project) });
@@ -603,12 +603,7 @@ function signAuto(project: string, manifest: Manifest, wanted: string | undefine
   const paths = statePaths(project);
   return withLock(paths, () => {
     const state = readState(paths);
-    const facts = autoFactsOf(
-      project,
-      state,
-      manifest.iterations !== undefined,
-      manifest.workflow === "modular",
-    );
+    const facts = autoFactsOf(project, state, manifest.iterations !== undefined, planned(manifest));
     const { researchHash, specHash, designHash } = facts;
     if (researchHash === null)
       throw new VeridError("VERID_BURNT_RESEARCH_MISSING", { path: researchFile(project) });
@@ -692,7 +687,7 @@ async function serve(project: string, wanted: string): Promise<CliResult> {
     const views = planViews(project, plan, state);
     const view = views.find((v) => v.name === name) as ModuleView;
     if (
-      manifest.workflow === "kanban" &&
+      taskSessions(manifest) &&
       (state.kanban.active?.module !== name ||
         state.kanban.active.spec_sha256 !== readFileHash(specFile(project)) ||
         state.modules[name]?.sha256 !== plan.hashes[name] ||
@@ -734,7 +729,7 @@ async function serve(project: string, wanted: string): Promise<CliResult> {
     const next = {
       ...state,
       modules: { ...state.modules, [name]: served },
-      ...(manifest.workflow === "kanban" ? { kanban: { ...state.kanban, active: null } } : {}),
+      ...(taskSessions(manifest) ? { kanban: { ...state.kanban, active: null } } : {}),
     };
     // The next step is worked out before anything is written, so a file that cannot be read
     // fails the command without serving half of it.
@@ -759,9 +754,12 @@ async function serve(project: string, wanted: string): Promise<CliResult> {
         : []),
       ...auditLines(project, manifest, state),
       ...questions,
-      manifest.workflow === "kanban"
-        ? "Next: dừng session này. Chọn task tiếp theo trong verid board và mở session AI mới."
-        : bilingual(step.key, "module" in step ? { module: step.module } : {}),
+      ...(taskSessions(manifest)
+        ? [
+            "verid: stop this session. Select the next task in verid board or your terminal, then open a fresh AI session.",
+          ]
+        : []),
+      bilingual(step.key, "module" in step ? { module: step.module } : {}),
     ];
     return { exit: 0, stdout: `${lines.join("\n")}\n`, stderr: "" };
   });
@@ -779,10 +777,12 @@ async function planModule(project: string, command: string, wanted: string | und
   const { mode } = manifest;
   if (mode === "remix") throw new VeridError("VERID_BURNT_MODE_MISMATCH", { command, mode });
   const file = planFile(project);
+  const state = readState(statePaths(project));
   const plan = readPlan(
     project,
     manifest.iterations !== undefined,
-    manifest.workflow === "modular",
+    planned(manifest),
+    servedSections(state),
   );
   if (plan === null) throw new VeridError("VERID_BURNT_PLAN_MISSING", { path: file });
   if (!plan.ok)

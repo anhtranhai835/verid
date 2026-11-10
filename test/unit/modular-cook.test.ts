@@ -94,12 +94,8 @@ it("maps Claude local agents and skills to repo copies with no plugin dependency
   expect(plan.notes.join("\n")).not.toContain("claude plugin install");
 });
 
-it("rejects bad choices and names before writing, and keeps classic setup lightweight", async () => {
-  for (const extra of [
-    { workflow: "unknown" },
-    { resources: "unknown" },
-    { workflow: "modular", mode: "remix" },
-  ])
+it("rejects bad choices and names before writing, and always scaffolds planned projects", async () => {
+  for (const extra of [{ workflow: "unknown" }, { resources: "unknown" }])
     await expect(planCook(project, { ...flags, ...extra })).rejects.toMatchObject({
       code: "VERID_BURNT_INIT_INVALID",
     });
@@ -109,16 +105,14 @@ it("rejects bad choices and names before writing, and keeps classic setup lightw
     classic.files.some(
       (file) => file.rel.startsWith(".verid/artifacts/") || file.rel.startsWith(".verid/skills/"),
     ),
-  ).toBe(false);
+  ).toBe(true);
   expect(classic.apply().failed).toBe(false);
   const repeated = await planCook(project, { mode: "prep", resources: "repo", src: [], tests: [] });
   expect(repeated.apply().failed).toBe(false);
   expect(read(".claude/settings.local.json")).not.toContain(".verid");
   expect(existsSync(join(project, ".verid/hooks/hook.js"))).toBe(false);
   await expect(moduleCommand(project, "../escape")).rejects.toBeDefined();
-  await expect(moduleCommand(project, "identity")).rejects.toMatchObject({
-    code: "VERID_BURNT_INIT_INVALID",
-  });
+  expect((await moduleCommand(project, "identity")).exit).toBe(0);
 });
 
 it("signs module inputs independently, blocks unfinished drafts and keeps review output out of the signature", async () => {

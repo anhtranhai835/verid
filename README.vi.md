@@ -89,7 +89,7 @@ npm run build
 Từ project đích, chạy CLI đã build một lần, thay đường dẫn bằng checkout của bạn:
 
 ```sh
-node /path/to/aeriq/dist/cli.js cook --mode prep --workflow modular --resources repo --provider codex --yes
+node /path/to/aeriq/dist/cli.js cook --mode prep --resources repo --provider codex --yes
 ```
 
 Sau cook, repo có CLI và các thư viện runtime đi kèm. Từ gốc project:
@@ -115,7 +115,7 @@ cd your-project
 verid cook
 ```
 
-Cook hỏi ngôn ngữ, provider, workflow, nơi lưu tài nguyên, mode, drive và kiến trúc.
+Cook hỏi ngôn ngữ, provider, layout, nơi lưu tài nguyên, mode, drive và kiến trúc.
 Lệnh tự nhận diện layout và test runner, rồi hiện danh sách file sẽ ghi.
 Xác nhận bản xem trước để áp dụng.
 
@@ -134,7 +134,7 @@ Nếu dùng mode `remix` cho code có sẵn, chạy `verid stock` trước khi a
 ### Bắt đầu với hồ sơ modular và tài nguyên trong repo
 
 ```sh
-verid cook --mode prep --workflow modular --resources repo --provider codex --yes
+verid cook --mode prep --resources repo --provider codex --yes
 node .verid/verid.mjs module identity
 ```
 
@@ -147,29 +147,23 @@ Xem [thiết lập Codex](#thiết-lập-codex).
 
 ---
 
-## Workflow và nơi lưu tài nguyên
+## Luồng module và tài nguyên
 
-Hai lựa chọn này độc lập:
+`prep` và `recipe` luôn có hồ sơ module và board, cho cả monorepo (một Git repo) và workspace (nhiều repo con). Cook cho chọn layout, mặc định theo tự nhận diện. Workspace phải nằm ngoài repo Git và có ít nhất một repo con. Project đã có manifest giữ layout đã chọn.
 
-| Cấu hình    | Giá trị                | Kết quả                                                                         |
-| ----------- | ---------------------- | ------------------------------------------------------------------------------- |
-| `workflow`  | `classic` — mặc định   | Research, spec, design và plan chung cho project.                               |
-| `workflow`  | `modular`              | Hồ sơ từng module và thư mục phase theo template cấu trúc repo.                 |
-| `workflow`  | `kanban`               | Bảng task trên trình duyệt, người dùng chọn ưu tiên, mỗi task một session AI.   |
-| `resources` | `installed` — mặc định | Skills và agents từ bản đã cài hoặc plugin Claude.                              |
-| `resources` | `repo`                 | Chép agents, skills, templates, policies, bản dịch và hook runtime vào project. |
+| Cấu hình  | Giá trị     | Hành vi                                                                       |
+| --------- | ----------- | ----------------------------------------------------------------------------- |
+| Drive     | `human`     | Người dùng chọn task; mỗi task một session AI mới; người dùng serve.          |
+| Drive     | `ai`        | Người dùng xếp ưu tiên và ký bằng `verid order`; một session đi hết hàng đợi. |
+| Resources | `installed` | Dùng skills và agents đã cài.                                                 |
+| Resources | `repo`      | Pin skills, agents, templates và runtime trong project; giữ tùy chỉnh đã có.  |
 
-`modular` và `kanban` dùng với `prep` và `recipe`. `kanban` cần `drive: human`.
-`remix` dùng workflow baseline hiện có.
+`remix` giữ luồng baseline; board báo không có task.
 
-Các entry tích hợp provider đọc bản tài nguyên trong repo. Cook thêm file thiếu và
-giữ những tùy chỉnh đã có. Khi nâng gói npm, bản tài nguyên repo được pin vẫn được
-giữ lại; developer xem diff rồi chủ động thay những bản cần cập nhật.
-
-### Kanban: mỗi task một session AI
+### Board: chọn task và xếp ưu tiên
 
 ```sh
-verid cook --mode prep --workflow kanban --provider codex --yes
+verid cook --mode prep --provider codex --yes
 verid board
 # Nếu dùng tài nguyên repo: node .verid/verid.mjs board
 ```
@@ -184,7 +178,7 @@ URL được in ra, hoặc `--port 4318` để chọn cổng.
    kiểm thử sản phẩm cuối cùng. Giữ nguyên plan đã tồn tại. Chỉnh scope, tiêu chí
    và phụ thuộc trong **Kế hoạch task**, hoặc để AI lập plan chi tiết.
    Mỗi `## Module: <tên>` là một card; `Title:` đặt tên dễ đọc.
-3. Chọn task muốn làm trước. Verid duyệt bằng `order`, chỉ mở một task mỗi lần.
+3. Với drive human, chọn task muốn làm trước. Verid duyệt bằng `order`, chỉ mở một task mỗi lần.
    Gửi nội dung session (đã điền sẵn) từ **khung chat** của task: bảng chạy CLI của
    provider ở chế độ headless (`claude -p`, `codex exec`, `agy -p`) trong project, tin
    sau nối tiếp đúng session đó. Hoặc sao chép sang session AI mới trong terminal/IDE.
@@ -196,10 +190,7 @@ khác đang mở và session từng làm task trước không được nhận ta
 giữ task hiện tại; clear context không cho session cũ nhận task tiếp theo. Sửa spec,
 scope trong plan hoặc design phải duyệt lại và mở session mới. AI không tự chọn task kế tiếp.
 
-Project hiện có: developer đặt `workflow: kanban`, `drive: human` trong
-`.verid/manifest.yaml`, rồi chạy `verid upgrade --yes` để cập nhật quy định AI.
-Nếu đang pin runtime cũ trong repo, cập nhật bản runtime đó. Xem thêm
-[hướng dẫn workflow](docs/kanban-workflow.md).
+Dùng ↑/↓ hoặc Alt+↑/↓ trên card để xếp task chưa bắt đầu. Thứ tự lưu cục bộ qua lần khởi động lại; `verid menu` dùng cùng thứ tự. Task đang làm được giữ nguyên, `product` luôn cuối. Drive human đánh dấu task tiếp theo nhưng vẫn cho chọn task khác. Drive ai ẩn nút chọn/chat; ký từ terminal để AI đi theo hàng đợi. Phụ thuộc vẫn là cảnh báo.
 
 ### Hồ sơ module
 
@@ -363,16 +354,15 @@ harness tự quản lý việc mở và đóng module.
 ### Flags của cook
 
 ```sh
-verid cook --mode prep --workflow modular --resources repo --provider codex --lang vi --yes
+verid cook --mode prep --resources repo --provider codex --lang vi --yes
 ```
 
 | Flag                                         | Giá trị hoặc tác dụng                                                    |
 | -------------------------------------------- | ------------------------------------------------------------------------ |
 | `--mode`                                     | `prep`, `recipe` hoặc `remix`.                                           |
-| `--workflow`                                 | `classic` hoặc `modular`.                                                |
 | `--resources`                                | `installed` hoặc `repo`.                                                 |
 | `--provider`                                 | `claude-code`, `codex` hoặc `antigravity`; lặp flag để chọn nhiều.       |
-| `--drive`                                    | `human` hoặc `auto` cho prep/recipe.                                     |
+| `--drive`                                    | `human` hoặc `ai` cho prep/recipe (`auto` là tên cũ).                    |
 | `--architecture`                             | `ddd`, `clean`, `layered` hoặc `none`.                                   |
 | `--layout`                                   | `monorepo` hoặc `workspace`; bỏ trống để tự nhận diện.                   |
 | `--lang`                                     | `en` hoặc `vi`; ngôn ngữ CLI trên máy này.                               |
@@ -394,7 +384,7 @@ Tên reviewer Codex vẫn là `verid_reviewer`.
 ### Xem trước khi ghi
 
 ```sh
-verid cook --mode prep --workflow modular --resources repo --provider codex --dry-run
+verid cook --mode prep --resources repo --provider codex --dry-run
 ```
 
 Bản xem trước hiện cây file: `+` tạo mới, `~` cập nhật, `=` giữ lại, `!` là ghi chú.
@@ -535,7 +525,6 @@ Ví dụ dùng workflow modular, tài nguyên repo và Codex:
 ```yaml
 schemaVersion: 1
 mode: prep
-workflow: modular
 resources: repo
 providers: [codex]
 architecture: ddd
@@ -618,3 +607,11 @@ Nguồn ghi nhận chi tiết nằm trong license của từng skill.
 ## Giấy phép
 
 MIT. Xem [LICENSE](LICENSE).
+
+## Nâng cấp từ 1.x
+
+Đây là bản 2.0.0. Manifest cũ với `workflow: classic`, `workflow: modular`, `workflow: kanban` hoặc thiếu trường này vẫn nạp được; `--workflow` chỉ còn là flag tương thích. `auto` vẫn là tên cũ của drive `ai`.
+
+Chạy `verid upgrade --dry-run` rồi `verid upgrade --yes`. Upgrade bỏ workflow cũ, thêm templates/cây artifacts, tạo hồ sơ nháp và dòng Artifacts cho module chưa serve. Điền hồ sơ rồi order lại; task đang mở cần session mới ở human drive. Section, approval và bằng chứng module đã serve được giữ nguyên. Chạy `verid doctor` để xem phần còn thiếu.
+
+Với resources repo, cập nhật runtime pin trong `.verid/hooks/` và tài nguyên cần thiết sau khi nâng gói; upgrade giữ tùy chỉnh đã có. Trước khi hạ về 1.x, bỏ trường `kanban.queue` trong state bằng terminal của người dùng.

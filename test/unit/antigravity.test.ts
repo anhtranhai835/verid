@@ -66,7 +66,7 @@ describe("Antigravity provider", () => {
     // Shared by the two single-writer hosts, labelled with both.
     expect(block).toContain("- (Codex, Antigravity) Call the installed skills by absolute path");
     // Every provider's line once, unlabelled.
-    expect(block.match(/- Never bypass or work around a denial/g)).toHaveLength(1);
+    expect(block.match(/- Never bypass a denial/g)).toHaveLength(1);
     // The order providers are listed in does not change the block.
     expect(instructionBlocks(manifest(["claude-code", "codex", "antigravity"]))[0]!.block).toBe(
       block,

@@ -269,8 +269,9 @@ const stateSchema = z.strictObject({
         }),
       ),
       sessions: z.record(z.string(), z.nullable(z.string())),
+      queue: z._default(z.array(z.string()), []),
     }),
-    { active: null, sessions: {} },
+    { active: null, sessions: {}, queue: [] },
   ),
 });
 

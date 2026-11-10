@@ -1,3 +1,4 @@
+import { readyModulePlan, startTaskSession } from "./helpers.js";
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
@@ -16,7 +17,10 @@ const state = () => JSON.parse(readFileSync(stateFile(), "utf8"));
 const audit = () => readFileSync(join(project, ".verid/.state/audit.jsonl"), "utf8");
 const put = (rel: string, text: string) => {
   mkdirSync(join(project, rel, ".."), { recursive: true });
-  writeFileSync(join(project, rel), text);
+  writeFileSync(
+    join(project, rel),
+    rel === ".verid/plan.md" ? readyModulePlan(project, text) : text,
+  );
 };
 const manifest = (extra: Record<string, unknown> = {}) => ({
   schemaVersion: 1,
@@ -64,6 +68,8 @@ beforeEach(async () => {
     JSON.stringify({ exit: 0, junit: "vitest-ac.xml", output: "passing evidence" }),
   );
   expect((await runCli(["order", "calc"], project)).code).toBe(0);
+  await startTaskSession(project, "agy-conversation", "antigravity");
+  expect((await runCli(["taste"], project)).code).toBe(0);
 });
 afterEach(() => {
   rmSync(project, { recursive: true, force: true });

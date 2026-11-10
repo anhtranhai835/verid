@@ -1,3 +1,4 @@
+import { readyModulePlan } from "./helpers.js";
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -51,7 +52,17 @@ function run(file: string, args: string[], input?: object, timezone = "UTC") {
   });
   return { code: result.status, stdout: result.stdout, stderr: result.stderr };
 }
-const cli = (...args: string[]) => run(CLI, args);
+const cli = (...args: string[]) => {
+  const result = run(CLI, args);
+  if (args[0] === "order" && args[1] && result.code === 0)
+    run(HOOK, [], {
+      hook_event_name: "SessionStart",
+      session_id: "iterations-session",
+      cwd: project,
+      source: "startup",
+    });
+  return result;
+};
 // The project on a Git main with everything committed: auto makes each module's branch from it.
 const gitMain = () => {
   for (const args of [
@@ -67,7 +78,13 @@ const gitMain = () => {
   }
 };
 const manifest = () => readFileSync(join(project, ".verid", "manifest.yaml"), "utf8");
-const put = (name: string, text: string) => writeFileSync(join(project, ".verid", name), text);
+const put = (name: string, text: string) => {
+  if (name === "plan.md") {
+    text = readyModulePlan(project, text);
+    writeFileSync(join(project, ".verid/spec.md"), "- REQ-1: works\n");
+  }
+  writeFileSync(join(project, ".verid", name), text);
+};
 const productionWrite = () =>
   run(HOOK, [], {
     hook_event_name: "PreToolUse",
@@ -399,7 +416,7 @@ describe("iterations through the real CLI and hook", () => {
       put("plan.md", "## Module: auth\nIteration: 2\n- AC-1: signs in\n");
       const denied = productionWrite();
       expect(denied.code).toBe(2);
-      expect(denied.stderr).toContain("VERID_BURNT_PLAN_NOT_APPROVED");
+      expect(denied.stderr).toContain("VERID_BURNT_TASK_SESSION");
       expect(cli("menu").stdout).toContain("auth · planned");
     }
   });

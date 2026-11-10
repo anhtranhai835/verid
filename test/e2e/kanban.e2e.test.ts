@@ -1,3 +1,4 @@
+import { readyModulePlan } from "./helpers.js";
 import { spawn } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -59,6 +60,11 @@ afterEach(async () => {
   rmSync(project, { recursive: true, force: true });
 });
 const state = () => readState(statePaths(project));
+const split = () => {
+  saveBoardDocument(project, "split");
+  const file = join(project, ".verid/plan.md");
+  readyModulePlan(project, readFileSync(file, "utf8"));
+};
 const cli = (...args: string[]) => runCli(args, project);
 const hook = (event: string, session: string, extra = {}, provider = "codex") =>
   (event === "SubagentStop" ? runReview : runHook)(
@@ -84,7 +90,7 @@ const patch = (session: string, path: string) =>
 
 it("uses developer-selected order and binds a new session, preserving resume and compact", async () => {
   await hook("SessionStart", "planning", { source: "startup" });
-  saveBoardDocument(project, "split");
+  split();
   expect((await cli("order", "req-2")).code).toBe(0);
   expect(state().kanban.active).toMatchObject({ module: "req-2", session: null });
   expect((await patch("planning", "test/subtract.test.ts")).stdout).toContain(
@@ -111,7 +117,7 @@ it("uses developer-selected order and binds a new session, preserving resume and
 });
 
 it("keeps TDD and independent review required, closes one task, and refuses session reuse", async () => {
-  saveBoardDocument(project, "split");
+  split();
   expect((await cli("order", "req-1")).code).toBe(0);
   await hook("SessionStart", "first", { source: "startup" });
   expect((await patch("first", "src/add.ts")).stdout).toContain("VERID_BURNT_TDD_NO_FAILING_TEST");
@@ -152,7 +158,7 @@ it("keeps TDD and independent review required, closes one task, and refuses sess
 });
 
 it("requires reapproval after a changed spec and prevents resetting documents during an open task", async () => {
-  saveBoardDocument(project, "split");
+  split();
   expect(() => saveBoardDocument(project, "split")).toThrow("Đã có plan");
   expect((await cli("order", "req-1")).code).toBe(0);
   await hook("SessionStart", "first", { source: "startup" });
@@ -185,7 +191,7 @@ it("enforces the same task boundary on Claude Code and does not allow implementa
       "claude-code",
     );
   expect((await write("planning")).stderr).toContain("VERID_BURNT_TASK_SESSION");
-  saveBoardDocument(project, "split");
+  split();
   expect((await cli("order", "req-1")).code).toBe(0);
   await hook("SessionStart", "claude-one", { source: "startup" }, "claude-code");
   expect(state().kanban.active?.session).toBe("claude-code:claude-one");
@@ -195,7 +201,7 @@ it("enforces the same task boundary on Claude Code and does not allow implementa
 it.each(["plan", "design"])(
   "requires a new task session after the approved %s changes",
   async (document) => {
-    saveBoardDocument(project, "split");
+    split();
     expect((await cli("order", "req-1")).code).toBe(0);
     await hook("SessionStart", "first", { source: "startup" });
     const file = join(project, `.verid/${document}.md`);
@@ -224,7 +230,7 @@ it.each(["plan", "design"])(
 );
 
 it("ignores review reports from a session that does not own the selected task", async () => {
-  saveBoardDocument(project, "split");
+  split();
   expect((await cli("order", "req-1")).code).toBe(0);
   await hook("SessionStart", "owner", { source: "startup" });
   await hook("SubagentStop", "old-task", {
@@ -239,7 +245,7 @@ it("ignores review reports from a session that does not own the selected task", 
 });
 
 it("serves a protected local board with real selection and rejects CSRF, stale revisions and premature completion", async () => {
-  saveBoardDocument(project, "split");
+  split();
   server = await startBoard(project, async (command, task) => {
     const result = await cli(command, task);
     return { exit: result.code, stdout: result.stdout, stderr: result.stderr };
@@ -286,7 +292,7 @@ it("serves a protected local board with real selection and rejects CSRF, stale r
 });
 
 it("chats with the selected task's AI from the board: new session first, then the bound one", async () => {
-  saveBoardDocument(project, "split");
+  split();
   const launches: Launch[] = [];
   // Stands in for the provider CLI: names its thread, echoes the prompt it read on stdin.
   const fake = `let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{console.log(JSON.stringify({type:"thread.started",thread_id:"t-1"}));console.log(JSON.stringify({type:"item.completed",item:{type:"agent_message",text:"got "+s}}))})`;

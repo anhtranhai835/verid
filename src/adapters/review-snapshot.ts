@@ -1,3 +1,4 @@
+import { planned } from "../core/manifest.js";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { autoPhase } from "../core/auto.js";
@@ -5,7 +6,7 @@ import { canonicalJson } from "../core/canonical-json.js";
 import type { Manifest } from "../core/manifest.js";
 import { openModule } from "../core/plan.js";
 import type { State } from "../core/state.js";
-import { autoFactsOf, planFile, planViews, readPlan } from "./plan-file.js";
+import { autoFactsOf, planFile, planViews, readPlan, servedSections } from "./plan-file.js";
 import { readFileHash } from "./state-store.js";
 
 /** Bind a reviewer to its actual subject and inputs, independently of later test runs. */
@@ -19,18 +20,12 @@ export function reviewSnapshot(
   const plan = readPlan(
     project,
     manifest.iterations !== undefined,
-    manifest.workflow === "modular",
+    planned(manifest),
+    servedSections(state),
   );
   const phase =
     manifest.drive === "auto"
-      ? autoPhase(
-          autoFactsOf(
-            project,
-            state,
-            manifest.iterations !== undefined,
-            manifest.workflow === "modular",
-          ),
-        )
+      ? autoPhase(autoFactsOf(project, state, manifest.iterations !== undefined, planned(manifest)))
       : null;
   const module =
     phase === null

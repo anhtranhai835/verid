@@ -1,3 +1,4 @@
+import { readyModulePlan, startTaskSession } from "./helpers.js";
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -6,9 +7,17 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { runCli, runHook, runReview } from "./in-process.js";
 
 let project: string;
+let sessionId = "rules";
 const put = (file: string, text: string) => {
+  if (file === ".verid/plan.md" && !existsSync(join(project, ".verid/spec.md"))) {
+    mkdirSync(join(project, ".verid"), { recursive: true });
+    writeFileSync(join(project, ".verid/spec.md"), "- REQ-1: works\n");
+  }
   mkdirSync(dirname(join(project, file)), { recursive: true });
-  writeFileSync(join(project, file), text);
+  writeFileSync(
+    join(project, file),
+    file === ".verid/plan.md" ? readyModulePlan(project, text) : text,
+  );
 };
 const state = () => JSON.parse(readFileSync(join(project, ".verid/.state/state.json"), "utf8"));
 const save = (value: unknown) => put(".verid/.state/state.json", JSON.stringify(value));
@@ -34,7 +43,7 @@ const hook = (event: string, extra: Record<string, unknown> = {}) =>
   (event === "SubagentStop" ? runReview : runHook)(
     JSON.stringify({
       hook_event_name: event,
-      session_id: "rules",
+      session_id: sessionId,
       cwd: project,
       ...extra,
     }),
@@ -79,6 +88,7 @@ const git = (...args: string[]) => {
 };
 
 beforeEach(() => {
+  sessionId = "rules";
   project = mkdtempSync(join(tmpdir(), "verid-rules-"));
   save({ schemaVersion: 1, language: "en" });
   manifest();
@@ -94,7 +104,7 @@ describe("rules and audit without relaxing TDD", () => {
       [".claude.json", "VERID_BURNT_HOOK_PROTECTED"],
       [".mcp.json", "VERID_BURNT_HOOK_PROTECTED"],
       [".env", "VERID_BURNT_SECRET_PROTECTED"],
-      ["src/a.ts", "VERID_BURNT_PLAN_NOT_APPROVED"],
+      ["src/a.ts", "VERID_BURNT_TASK_SESSION"],
     ];
     for (const [path, code] of rows) {
       const r = await write(path!);
@@ -163,13 +173,20 @@ describe("rules and audit without relaxing TDD", () => {
     git("add", "-A");
     git("commit", "-q", "-m", "chore: start");
     expect((await runCli(["order", "calc"], project)).code).toBe(0);
+    await startTaskSession(project, sessionId);
     put("src/a.ts", "export const value = 1;");
     git("add", "src/a.ts");
     git("commit", "-q", "-m", "bad message");
     evidence();
     expect((await review()).code).toBe(0);
-    // Changing a design is advisory and does not revoke the signed module.
+    // Human task sessions require a fresh approval and session after a design change.
     put(".verid/design.md", "updated design");
+    expect((await runCli(["serve", "calc"], project)).stderr).toContain("VERID_BURNT_TASK_SESSION");
+    expect((await runCli(["order", "calc"], project)).code).toBe(0);
+    sessionId = "rules-fresh";
+    await startTaskSession(project, sessionId);
+    evidence();
+    await review();
     const r = await runCli(["serve", "calc"], project);
     expect(r.code, r.stderr).toBe(0);
     expect(r.stdout + r.stderr).toContain("audit:");
@@ -272,6 +289,7 @@ describe("rules and audit without relaxing TDD", () => {
     git("commit", "-q", "-m", "chore: initialize calculator");
     git("switch", "-q", "-c", "feat/calculator");
     expect((await runCli(["order", "calc"], project)).code).toBe(0);
+    await startTaskSession(project, sessionId);
     expect(state().modules.calc.work["."].base).toBeTruthy();
     put("src/add.ts", "export const add = (a: number, b: number) => a + b;\n");
     git("add", "src/add.ts");
@@ -299,9 +317,9 @@ describe("rules and audit without relaxing TDD", () => {
       [".verid/research.md", "exit 0"],
       [".verid/log/calc.md", "exit 0"],
       [".verid/feedback.md", "exit 0"],
-      [".verid/lib.ts", "VERID_BURNT_ROLE_CODER_ONLY"],
+      [".verid/lib.ts", "VERID_BURNT_TASK_SESSION"],
       [".verid/.state/state.json", "VERID_BURNT_STATE_PROTECTED"],
-      ["src/a.ts", "VERID_BURNT_ROLE_CODER_ONLY"],
+      ["src/a.ts", "VERID_BURNT_TASK_SESSION"],
     ] as const;
     const got: Record<string, string> = {};
     for (const [path] of rows) {

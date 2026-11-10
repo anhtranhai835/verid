@@ -196,7 +196,7 @@ describe("parseManifest", () => {
       "no reviewer": "drive: auto needs roles reviewer, tester and coder",
       "no split": "drive: auto needs roles reviewer, tester and coder",
       "no roles": "drive: auto needs roles reviewer, tester and coder",
-      other: "drive: must be human or auto",
+      other: "drive: must be human or ai",
     });
   });
 
@@ -452,7 +452,7 @@ describe("renderManifest", () => {
   it("says in a comment that verid finds the runner when there is no test_cmd", () => {
     const repo = { path: ".", source_globs: ["**"], test_globs: ["test/**"] };
     const text = renderManifest("prep", repo);
-    expect(text.split("\n").slice(8, 11)).toEqual([
+    expect(text.split("\n").slice(9, 12)).toEqual([
       '  - path: "."',
       "    # test_cmd: verid finds the test runner from the build files; set one to choose it",
       '    source_globs: ["**"]',
@@ -492,6 +492,7 @@ describe("renderManifest", () => {
         "architecture: ddd # ddd | clean | layered | none",
         "allowed_skills: [] # additional exact names or prefix:*; verid:* is known by default",
         "allowed_agents: [] # roles are known by default",
+        'layout: "monorepo" # monorepo | workspace',
         "repos:",
         '  - path: "."',
         '    test_cmd: "npx vitest run --reporter=junit --outputFile={junit} # \\"quoted\\""',
@@ -560,7 +561,7 @@ describe("renderManifest", () => {
     const repo = suggestManifest({ src: [], tests: [] });
     expect({
       auto: renderManifest("prep", repo, DEFAULT_ROLES, "auto").includes(
-        'drive: "auto" # human | auto',
+        'drive: "ai" # human | ai',
       ),
       human: renderManifest("prep", repo, DEFAULT_ROLES, "human").includes("drive:"),
       unset: renderManifest("prep", repo, DEFAULT_ROLES).includes("drive:"),

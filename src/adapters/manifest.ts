@@ -134,6 +134,7 @@ export async function upgradeManifestText(
   const yaml = await import("yaml");
   const { parseDocument } = (yaml as unknown as { default?: typeof yaml }).default ?? yaml;
   const doc = parseDocument(raw);
+  doc.delete("workflow");
   if (!doc.has("providers")) doc.set("providers", doc.createNode(["claude-code"], { flow: true }));
   if (!doc.has("allowed_skills")) doc.set("allowed_skills", doc.createNode([], { flow: true }));
   if (!doc.has("allowed_agents")) doc.set("allowed_agents", doc.createNode([], { flow: true }));

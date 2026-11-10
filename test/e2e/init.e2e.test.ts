@@ -185,8 +185,8 @@ describe("verid cook", () => {
       ["verid:architect", ".verid/design.md", 0, ""],
       ["verid:architect", "notes.md", 0, ""],
       ["verid:planner", "notes.md", 0, ""],
-      ["verid:qa", "test/unit.test.ts", 0, ""],
-      ["verid:qa", "e2e/login.spec.ts", 0, ""],
+      ["verid:qa", "test/unit.test.ts", 2, "VERID_BURNT_TASK_SESSION"],
+      ["verid:qa", "e2e/login.spec.ts", 2, "VERID_BURNT_TASK_SESSION"],
       ["verid:security", "notes.md", 2, "VERID_BURNT_ROLE_READ_ONLY"],
     ] as const;
     for (const [agent, rel, code, message] of rows) {
@@ -484,9 +484,9 @@ describe("verid cook", () => {
       "src/test/java/AppTest.java": verdict("src/test/java/AppTest.java"),
       "README.md": verdict("README.md"),
     }).toEqual({
-      "src/a.ts": "VERID_BURNT_ROLE_CODER_ONLY",
-      "src/main/java/App.java": "VERID_BURNT_ROLE_CODER_ONLY",
-      "src/test/java/AppTest.java": "VERID_BURNT_ROLE_TESTER_ONLY",
+      "src/a.ts": "VERID_BURNT_TASK_SESSION",
+      "src/main/java/App.java": "VERID_BURNT_TASK_SESSION",
+      "src/test/java/AppTest.java": "VERID_BURNT_TASK_SESSION",
       "README.md": "allowed",
     });
 
@@ -542,7 +542,7 @@ describe("verid cook", () => {
       rmSync(file(project, ".verid"), { recursive: true, force: true });
       const r = init(project, "--lang", "en", ...flags);
       if (r.code === 0)
-        return read(project, ".verid/manifest.yaml").includes('drive: "auto"') ? "auto" : "human";
+        return read(project, ".verid/manifest.yaml").includes('drive: "ai"') ? "auto" : "human";
       // The refusal names the code, the flag it cannot use and why: `use <flag> (<why>) and`.
       return /verid \[(\w+)\][\s\S]*?use (\S+) \((.*?)\) and/.exec(r.stderr)?.slice(1).join(" ");
     };
@@ -557,7 +557,7 @@ describe("verid cook", () => {
       auto: "auto",
       recipe: "auto",
       remix: "VERID_BURNT_INIT_INVALID --drive drive: auto needs mode prep or recipe",
-      other: "VERID_BURNT_INIT_INVALID --drive must be human or auto",
+      other: "VERID_BURNT_INIT_INVALID --drive must be human or ai",
     });
   });
 

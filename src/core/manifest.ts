@@ -264,7 +264,13 @@ const manifestSchema = z
     allowed_skills: z._default(z.array(allowedSkill), []),
     allowed_agents: z._default(z.array(allowedName), []),
     roles: z.optional(roles),
-    drive: z._default(z.enum(DRIVES, { error: "must be human or auto" }), "human"),
+    drive: z._default(
+      z.pipe(
+        z.transform((value) => (value === "ai" ? "auto" : value)),
+        z.enum(DRIVES, { error: "must be human or ai" }),
+      ),
+      "human",
+    ),
     layout: z._default(z.enum(LAYOUTS, { error: "must be monorepo or workspace" }), "monorepo"),
     workflow: z.optional(z.enum(WORKFLOWS)),
     resources: z.optional(z.enum(RESOURCE_MODES)),
@@ -305,18 +311,6 @@ const manifestSchema = z
           path: ["iterations"],
           message: "needs mode prep or recipe",
         });
-      if ((m.workflow === "modular" || m.workflow === "kanban") && m.mode === "remix")
-        return ctx.addIssue({
-          code: "custom",
-          path: ["workflow"],
-          message: `${m.workflow} needs mode prep or recipe`,
-        });
-      if (m.workflow === "kanban" && m.drive === "auto")
-        return ctx.addIssue({
-          code: "custom",
-          path: ["drive"],
-          message: "kanban needs drive human: the developer selects each task",
-        });
       if (m.drive !== "auto") return;
       if (m.mode === "remix")
         return ctx.addIssue({
@@ -339,6 +333,12 @@ const manifestSchema = z
 export type Manifest = z.infer<typeof manifestSchema>;
 export type Iterations = NonNullable<Manifest["iterations"]>;
 export type Roles = NonNullable<Manifest["roles"]>;
+
+/** Prep and recipe walk a plan of modules; remix has none. */
+export const planned = (manifest: Pick<Manifest, "mode">): boolean => manifest.mode !== "remix";
+/** The developer selects each task and opens a fresh session in human drive. */
+export const taskSessions = (manifest: Pick<Manifest, "mode" | "drive">): boolean =>
+  planned(manifest) && manifest.drive === "human";
 
 /** The agents `verid cook` maps: verid's own, from its plugin. Any agent can take their place. */
 export const DEFAULT_ROLES: Roles = {
@@ -585,7 +585,7 @@ export function renderManifest(
   iterations?: Iterations,
   providers: readonly Provider[] = ["claude-code"],
   architecture: (typeof ARCHITECTURES)[number] = "ddd",
-  options: Pick<Manifest, "workflow" | "resources"> = {},
+  options: Pick<Manifest, "resources"> = {},
 ): string {
   const repos: readonly Repo[] = Array.isArray(repo) ? repo : [repo as Repo];
   return [
@@ -594,13 +594,12 @@ export function renderManifest(
     `mode: ${JSON.stringify(mode)} # ${MODES.join(" | ")}`,
     `providers: ${JSON.stringify(providers)} # ${PROVIDERS.join(" | ")}`,
     `architecture: ${architecture} # ddd | clean | layered | none`,
-    ...(options.workflow ? [`workflow: ${options.workflow} # classic | modular | kanban`] : []),
     ...(options.resources ? [`resources: ${options.resources} # installed | repo`] : []),
     "allowed_skills: [] # additional exact names or prefix:*; verid:* is known by default",
     "allowed_agents: [] # roles are known by default",
-    ...(layout === "workspace" ? ['layout: "workspace" # monorepo | workspace'] : []),
+    `layout: ${JSON.stringify(layout)} # monorepo | workspace`,
     // human is the default, so only auto is written.
-    ...(drive === "auto" ? [`drive: ${JSON.stringify(drive)} # ${DRIVES.join(" | ")}`] : []),
+    ...(drive === "auto" ? ['drive: "ai" # human | ai'] : []),
     ...(iterations
       ? [
           "iterations:",

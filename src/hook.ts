@@ -1,3 +1,4 @@
+import { planned, taskSessions } from "./core/manifest.js";
 import { createHash, randomInt } from "node:crypto";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import type * as z from "zod/mini";
@@ -46,6 +47,7 @@ import {
 import {
   cycleHint,
   cycleLabel,
+  fileRole,
   decideTdd,
   keyId,
   TDD_STRICTNESS,
@@ -81,6 +83,7 @@ import {
   readPlan,
   researchMissing,
   specMissing,
+  servedSections,
 } from "./adapters/plan-file.js";
 import {
   languageOf,
@@ -204,30 +207,31 @@ async function preToolUse(p: z.infer<typeof preToolUseSchema>): Promise<Result> 
   );
   // A broken manifest must still allow reads; existing write gates report its error in order.
   const taskManifest = await loadManifest(project, { readOnly: true }).catch(() => null);
-  if (taskManifest?.workflow === "kanban") {
+  let taskProblem: string | null = null;
+  if (taskManifest && taskSessions(taskManifest)) {
     const key = sessionKey(p.session_id);
+    const layouts = tddLayouts(project, taskManifest);
+    const guardedWrite = writes.some(
+      (write) =>
+        !isUnder(write.path, normalizePath(project)) ||
+        (write.written !== undefined && !isUnder(write.written, writtenPath(project))) ||
+        [
+          ...layouts.real.map((layout) => ({ layout, path: write.path })),
+          ...layouts.written.map((layout) => ({ layout, path: write.written ?? write.path })),
+        ].some(
+          ({ layout, path }) =>
+            isUnder(path, layout.repoRoot) &&
+            fileRole(relative(layout.repoRoot, path).replaceAll("\\", "/"), layout) !== "free",
+        ),
+    );
     const problem = withLock(paths, () => {
       const state = readState(paths);
       const used = state.kanban.sessions[key];
       // Planning may inspect the repo and write documents before a task is selected.
-      if (
-        !state.kanban.active &&
-        !used &&
-        !writes.some((w) => !isUnder(w.path, normalizePath(join(project, ".verid"))))
-      )
-        return null;
-      const problem = kanbanSessionProblem(project, state, key, taskManifest);
-      if (problem)
-        appendAudit(paths.audit, {
-          event: "denied",
-          session: p.session_id,
-          tool: p.tool_name,
-          rule: "VERID_BURNT_TASK_SESSION",
-          target: problem,
-        });
-      return problem;
+      if (!state.kanban.active && !used && !guardedWrite) return null;
+      return kanbanSessionProblem(project, state, key, taskManifest);
     });
-    if (problem) return deny("VERID_BURNT_TASK_SESSION", { target: problem });
+    taskProblem = problem;
   }
   const base = policyContext(project, p.cwd);
   // A security review read the module as it was, dependency, config and .env files included, so
@@ -324,6 +328,13 @@ async function preToolUse(p: z.infer<typeof preToolUseSchema>): Promise<Result> 
     }
     const instructions = decideInstructions(p, writes, project, lifted);
     if (instructions.kind === "deny") return instructions;
+    if (taskProblem)
+      return {
+        kind: "deny",
+        code: "VERID_BURNT_TASK_SESSION",
+        target: taskProblem,
+        reason: taskProblem,
+      };
     const dispatched = dispatch(lifted);
     if (dispatched.kind === "deny") return dispatched;
     const gated = gate.judge(lifted);
@@ -477,12 +488,7 @@ async function tddGate(
   // cannot go on without the developer.
   const facts =
     manifest.drive === "auto"
-      ? autoFactsOf(
-          project,
-          state,
-          manifest.iterations !== undefined,
-          manifest.workflow === "modular",
-        )
+      ? autoFactsOf(project, state, manifest.iterations !== undefined, planned(manifest))
       : null;
   // A write is judged before it runs, so a Bash `rm .verid/blocked.md` latches the file first.
   if (facts !== null && toLatch(state, facts.blockedFile))
@@ -713,7 +719,15 @@ async function lifecycle(p: z.infer<typeof lifecycleSchema>): Promise<Result> {
   const manifest = await loadManifest(project);
   if (!manifest) return { exit: 0 };
   let taskContext: string[] = [];
-  if (manifest.workflow === "kanban") {
+  if (planned(manifest))
+    taskContext.push(
+      "verid: module dossiers in .verid/artifacts/03-modules/<name> are required before order. Read .verid/workflow.md; use verid board for priorities.",
+    );
+  if (planned(manifest) && manifest.drive === "auto")
+    taskContext.push(
+      "verid: AI drive follows the developer's priority queue in one session. Finish the current task before moving to the next.",
+    );
+  if (taskSessions(manifest)) {
     const key = sessionKey(p.session_id);
     const kanban = withLock(paths, () => {
       const state = readState(paths);
@@ -725,11 +739,11 @@ async function lifecycle(p: z.infer<typeof lifecycleSchema>): Promise<Result> {
       return kanban;
     });
     const problem = kanbanSessionProblem(project, { ...readState(paths), kanban }, key, manifest);
-    taskContext = [
+    taskContext.push(
       problem
         ? `verid: ${problem}`
         : `verid: task ${kanban.active!.module}; ONE TASK PER SESSION. Read its plan section and log; TDD → review → developer serve → STOP. Never start another task in this session.`,
-    ];
+    );
     if (p.hook_event_name === "Stop" && problem) return { exit: 0 };
   }
   const { mode } = manifest;
@@ -759,7 +773,8 @@ async function lifecycle(p: z.infer<typeof lifecycleSchema>): Promise<Result> {
       const plan = readPlan(
         project,
         manifest.iterations !== undefined,
-        manifest.workflow === "modular",
+        planned(manifest),
+        servedSections(state),
       );
       const views = plan?.ok ? planViews(project, plan, state) : [];
       const open = openModule(views);
@@ -784,7 +799,7 @@ async function lifecycle(p: z.infer<typeof lifecycleSchema>): Promise<Result> {
   // cycle starts over in RAW. Resuming or compacting goes on with the same work.
   let cycle: Cycle = tdd;
   if (
-    manifest.workflow !== "kanban" &&
+    !taskSessions(manifest) &&
     tdd.state === "PLATED" &&
     (p.source === "startup" || p.source === "clear")
   ) {
@@ -808,10 +823,7 @@ async function lifecycle(p: z.infer<typeof lifecycleSchema>): Promise<Result> {
   );
   // Session context is an index, not a second copy of the full menu or skill instructions.
   // Keep its size independent of the number of modules, questions and audit findings.
-  const next =
-    manifest.workflow === "kanban" && !readState(paths).kanban.active
-      ? "Next: người dùng chọn task trong verid board, sau đó mở session AI mới."
-      : standing.at(-1)!;
+  const next = standing.at(-1)!;
   const command = veridName();
   // The open module's log carries the last session's decisions into this one.
   const open = loggedModule(project, manifest, readState(paths));
@@ -884,7 +896,12 @@ function kanbanSessionProblem(
   );
   if (problem) return problem;
   const name = state.kanban.active!.module;
-  const plan = readPlan(project, manifest.iterations !== undefined);
+  const plan = readPlan(
+    project,
+    manifest.iterations !== undefined,
+    planned(manifest),
+    servedSections(state),
+  );
   const approval = state.modules[name];
   if (
     !plan?.ok ||
@@ -913,12 +930,7 @@ function autoStop(
   return withLock(paths, () => {
     let state = readState(paths);
     if (state.auto.signed === null) return null;
-    let facts = autoFactsOf(
-      project,
-      state,
-      manifest.iterations !== undefined,
-      manifest.workflow === "modular",
-    );
+    let facts = autoFactsOf(project, state, manifest.iterations !== undefined, planned(manifest));
     const session = p.session_id;
     state = latchBlocked(paths, state, facts.blockedFile, session);
     state = advance(project, paths, state, { ...facts, auto: state.auto }, manifest);
@@ -1032,12 +1044,7 @@ function observe(project: string, paths: StatePaths, manifest: Manifest): void {
   withLock(paths, () => {
     const state = readState(paths);
     if (state.auto.signed === null) return;
-    const facts = autoFactsOf(
-      project,
-      state,
-      manifest.iterations !== undefined,
-      manifest.workflow === "modular",
-    );
+    const facts = autoFactsOf(project, state, manifest.iterations !== undefined, planned(manifest));
     const moved = advance(project, paths, state, facts, manifest);
     if (moved !== state) writeState(paths, moved);
   });
@@ -1127,7 +1134,7 @@ async function subagentStop(p: z.infer<typeof lifecycleSchema>): Promise<Result>
   const manifest = await loadManifest(project);
   if (!manifest) return { exit: 0 };
   const paths = statePaths(project);
-  if (manifest.workflow === "kanban") {
+  if (taskSessions(manifest)) {
     const problem = kanbanSessionProblem(
       project,
       readState(paths),
@@ -1180,7 +1187,7 @@ async function subagentStop(p: z.infer<typeof lifecycleSchema>): Promise<Result>
             state,
             p,
             manifest.iterations !== undefined,
-            manifest.workflow === "modular",
+            planned(manifest),
           )
         : null;
     if (!wrote && rounds === null) return { exit: 0 };
@@ -1260,12 +1267,7 @@ function recordReview(
     }
     const identity = started.identity;
     const known = auto
-      ? autoFactsOf(
-          project,
-          read,
-          manifest.iterations !== undefined,
-          manifest.workflow === "modular",
-        )
+      ? autoFactsOf(project, read, manifest.iterations !== undefined, planned(manifest))
       : null;
     // Capture audit bases before recording a module review.
     const advanced =
@@ -1358,7 +1360,8 @@ function openModuleName(project: string, state: State, manifest?: Manifest): str
   const plan = readPlan(
     project,
     manifest?.iterations !== undefined,
-    manifest?.workflow === "modular",
+    manifest ? planned(manifest) : false,
+    servedSections(state),
   );
   if (!plan?.ok) return undefined;
   const views = planViews(project, plan, state);
@@ -1382,7 +1385,7 @@ function loggedModule(project: string, manifest: Manifest, state: State): string
   if (manifest.mode === "remix") return undefined;
   if (manifest.drive !== "auto") return openModuleName(project, state, manifest);
   const phase = autoPhase(
-    autoFactsOf(project, state, manifest.iterations !== undefined, manifest.workflow === "modular"),
+    autoFactsOf(project, state, manifest.iterations !== undefined, planned(manifest)),
   );
   return phase.kind === "module" ? phase.view.name : undefined;
 }

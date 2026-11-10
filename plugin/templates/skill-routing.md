@@ -31,7 +31,7 @@ they neither approve work nor replace a required reviewer.
 - Agreed design needs delivery slices → [plan](../skills/plan/SKILL.md), mapped
   [planner](../agents/planner.md): every requirement/component has an AC or explicit
   Review Focus.
-- Manifest selects modular workflow → [modules](../skills/modules/SKILL.md)
+- Prep or recipe module planning → [modules](../skills/modules/SKILL.md)
   alongside BA → design → plan: sourced dossiers before developer order.
 
 ## Implementation
@@ -86,3 +86,5 @@ locations and missing questions. Expand into relevant dependencies and exception
 Keep source-version checks, full initial BA coverage, all gates and complete fresh
 independent reviews. Reload shared rules only when changed or missing. A short
 summary never justifies dropping a requirement, finding or missing evidence.
+
+For prep/recipe, the developer arranges the priority queue in `verid board`. Complete module dossiers before order. Human drive binds one fresh session per selected task and stops after serve. AI drive follows that queue in one session after `verid order`; reprioritizing never interrupts current work. Remix keeps its baseline flow.

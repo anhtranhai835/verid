@@ -25,7 +25,7 @@ function scriptedTerminal(
   keys: (string | (() => string))[],
   providerKeys = ENTER,
   architectureKeys = ENTER,
-  workflowKeys = ENTER,
+  layoutKeys: string | (string | (() => string))[] = ENTER,
   resourceKeys = ENTER,
 ) {
   const input = Object.assign(new PassThrough(), { isTTY: true, setRawMode: () => undefined });
@@ -34,8 +34,9 @@ function scriptedTerminal(
   let screen = "";
   output.on("data", (d) => {
     screen += d;
-    if (/\? (Choose cook workflow|Chọn luồng cook)/.test(String(d))) {
-      setImmediate(() => input.write(workflowKeys));
+    if (/\? (How are your repositories organized|Repo của bạn tổ chức thế nào)/.test(String(d))) {
+      const next = Array.isArray(layoutKeys) ? (layoutKeys.shift() ?? ENTER) : layoutKeys;
+      setImmediate(() => input.write(typeof next === "function" ? next() : next));
       return;
     }
     if (/\? (Where should cook resources live|Lưu tài nguyên cook ở đâu)/.test(String(d))) {
@@ -60,9 +61,11 @@ function scriptedTerminal(
 }
 
 let project: string;
+let fixtureRoot: string;
 let agent: string | undefined;
 beforeEach(() => {
   project = mkdtempSync(join(tmpdir(), "verid-cook-screen-"));
+  fixtureRoot = project;
   agent = process.env.CLAUDECODE; // the developer's terminal, not an agent's
   delete process.env.CLAUDECODE;
   vi.stubEnv("CODEX_HOME", join(project, "codex home"));
@@ -72,7 +75,7 @@ afterEach(() => {
   vi.unstubAllEnvs();
   if (agent !== undefined) process.env.CLAUDECODE = agent;
   setLanguage(null);
-  rmSync(project, { recursive: true, force: true });
+  rmSync(fixtureRoot, { recursive: true, force: true });
 });
 
 const put = (rel: string, text = "") => {
@@ -89,26 +92,110 @@ const state = () =>
   JSON.parse(readFileSync(join(project, ".verid", ".state", "state.json"), "utf8"));
 
 describe("interactiveCook: verid cook in the developer's terminal", () => {
-  it("selects modular workflow and repo resources for Codex before writing", async () => {
+  it.each(["1", "2"])(
+    "AC-5: prep/recipe choice %s offers human and ai and writes the ai pick",
+    async (mode) => {
+      const terminal = scriptedTerminal([ENTER, mode + ENTER, "2" + ENTER, ENTER, ENTER, ENTER]);
+      expect((await interactiveCook(project, terminal.io, "en-US")).exit).toBe(0);
+      expect(parse(manifest())).toMatchObject({
+        mode: mode === "1" ? "prep" : "recipe",
+        drive: "ai",
+        layout: "monorepo",
+      });
+      expect(terminal.screen()).toContain("human");
+      expect(terminal.screen()).toContain("ai");
+      expect(terminal.screen()).not.toContain("Choose cook workflow");
+    },
+  );
+
+  it.each(["own git", "ancestor git", "no children"])(
+    "AC-33: rejects workspace with %s before writing and asks again",
+    async (reason) => {
+      if (reason !== "no children") {
+        const cwd = reason === "own git" ? project : dirname(project);
+        // Give the ancestor case its own temporary parent; never initialize Git in the shared temp directory.
+        if (reason === "ancestor git") {
+          const parent = join(project, "parent");
+          mkdirSync(join(parent, "child"), { recursive: true });
+          expect(
+            spawnSync("git", ["init", "-q", "-b", "main"], { cwd: parent, encoding: "utf8" })
+              .status,
+          ).toBe(0);
+          project = join(parent, "child");
+        } else
+          expect(
+            spawnSync("git", ["init", "-q", "-b", "main"], { cwd, encoding: "utf8" }).status,
+          ).toBe(0);
+      }
+      const terminal = scriptedTerminal([ENTER, ENTER, ENTER, ENTER, ENTER, ENTER], ENTER, ENTER, [
+        DOWN + ENTER,
+        () => {
+          expect(existsSync(join(project, ".verid"))).toBe(false);
+          return ENTER;
+        },
+      ]);
+      expect((await interactiveCook(project, terminal.io, "en-US")).exit).toBe(0);
+      expect(terminal.screen()).toContain(
+        reason === "own git"
+          ? "must not have its own .git"
+          : reason === "ancestor git"
+            ? "ancestor git repo"
+            : "no direct child git repos",
+      );
+      expect(parse(manifest()).layout).toBe("monorepo");
+    },
+  );
+
+  it("AC-32, AC-34: workspace detection lists its repos; choosing monorepo changes runner/mode scope and the saved layout", async () => {
+    for (const name of ["api", "web"]) {
+      mkdirSync(join(project, name));
+      expect(
+        spawnSync("git", ["init", "-q", "-b", "main"], {
+          cwd: join(project, name),
+          encoding: "utf8",
+        }).status,
+      ).toBe(0);
+      put(`${name}/src/app.ts`);
+      put(`${name}/package.json`, '{"devDependencies":{"vitest":"^5.0.0"}}');
+    }
+    const terminal = scriptedTerminal(
+      [ENTER, ENTER, ENTER, ENTER, ENTER, ENTER],
+      ENTER,
+      ENTER,
+      "1" + ENTER,
+    );
+    expect((await interactiveCook(project, terminal.io, "en-US")).exit).toBe(0);
+    expect(terminal.screen()).toContain("api, web");
+    expect(parse(manifest())).toMatchObject({
+      layout: "monorepo",
+      mode: "prep",
+      repos: [{ path: "." }],
+    });
+    const repeat = scriptedTerminal([ENTER, ENTER]);
+    await interactiveCook(project, repeat.io, "en-US");
+    expect(repeat.screen()).not.toContain("How are your repositories organized");
+  });
+  it("AC-4, AC-32: selects layout and repo resources without a workflow question", async () => {
     vitestProject();
     const terminal = scriptedTerminal(
-      [ENTER, ENTER, ENTER, ENTER, ENTER],
+      [ENTER, "1" + ENTER, ENTER, ENTER, ENTER],
       DOWN + ENTER,
       ENTER,
-      DOWN + ENTER,
+      ENTER,
       DOWN + ENTER,
     );
     const result = await interactiveCook(project, terminal.io, "en-US");
     expect(result.exit).toBe(0);
     expect(parse(manifest())).toMatchObject({
-      workflow: "modular",
       resources: "repo",
       providers: ["codex"],
     });
     expect(existsSync(join(project, ".verid/workflow.md"))).toBe(true);
     expect(existsSync(join(project, ".agents/skills/verid-modules/SKILL.md"))).toBe(true);
     expect(existsSync(join(project, "codex home/config.toml"))).toBe(false);
-    expect(terminal.screen()).toContain("Choose cook workflow");
+    expect(parse(manifest())).not.toHaveProperty("workflow");
+    expect(terminal.screen()).not.toContain("Choose cook workflow");
+    expect(terminal.screen()).toContain("How are your repositories organized");
     expect(terminal.screen()).toContain("Where should cook resources live?");
   });
   it("offers all architecture profiles with DDD selected by default", async () => {
@@ -609,9 +696,9 @@ describe("interactiveCook: verid cook in the developer's terminal", () => {
       results[name] = {
         asked: t.screen().includes("Who runs the kitchen?"),
         iterations: t.screen().includes("Plan in iterations?"),
-        hint: t.screen().includes("stops only when stuck"),
+        hint: t.screen().includes("one session follows your priority queue"),
         mode: /^mode: "(\w+)"/m.exec(manifest())?.[1],
-        drive: manifest().includes('drive: "auto"') ? "auto" : "human",
+        drive: manifest().includes('drive: "ai"') ? "auto" : "human",
       };
     }
     expect(results).toEqual({

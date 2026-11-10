@@ -1,11 +1,23 @@
 import { describe, expect, it } from "vitest";
-import { claimTaskSession, planFromSpec, taskSessionProblem } from "../../src/core/kanban.js";
+import {
+  claimTaskSession,
+  effectiveOrder,
+  moveInQueue,
+  planFromSpec,
+  taskSessionProblem,
+} from "../../src/core/kanban.js";
 import { parseManifest } from "../../src/core/manifest.js";
 import { moduleProblem, parsePlan } from "../../src/core/plan.js";
 import { specTrace } from "../../src/core/spec.js";
 import { parseState, type State } from "../../src/core/state.js";
 
 describe("spec to task plan", () => {
+  it("AC-18: every generated module, including product, links its dossier", () => {
+    const plan = parsePlan(planFromSpec("- REQ-1: Sign in\n"));
+    if (!plan.ok) throw new Error(plan.detail);
+    for (const module of plan.modules)
+      expect(module.text).toContain(`Artifacts: .verid/artifacts/03-modules/${module.name}`);
+  });
   it("creates traceable tasks with unique ACs and a final product task", () => {
     const spec =
       "- REQ-2: Sign in with valid credentials\n- NFR-1: Respond within 200ms\n- SEC-1: Do not leak credentials\n- REQ-9: Retired\n  Dropped in v2\nDropped twice must not remove SEC-1\n";
@@ -28,6 +40,7 @@ describe("spec to task plan", () => {
 
 describe("one task per session", () => {
   const selected = (): State["kanban"] => ({
+    queue: [],
     active: { module: "first", session: null, spec_sha256: "spec" },
     sessions: {},
   });
@@ -41,7 +54,10 @@ describe("one task per session", () => {
     expect(taskSessionProblem(bound, "codex:one", "changed")).toContain("Spec đã thay đổi");
   });
   it("never reuses a planning session, prior task session, or an unbound resumed conversation", () => {
-    const planning = claimTaskSession({ active: null, sessions: {} }, "claude-code:plan");
+    const planning = claimTaskSession(
+      { active: null, sessions: {}, queue: [] },
+      "claude-code:plan",
+    );
     const next = { ...selected(), sessions: planning.sessions };
     expect(claimTaskSession(next, "claude-code:plan").active?.session).toBeNull();
     const prior = claimTaskSession(selected(), "codex:one");
@@ -72,6 +88,32 @@ it("requires human task selection in prep or recipe mode", () => {
     repos: [{ path: ".", source_globs: ["src/**"], test_globs: ["test/**"] }],
   };
   expect(parseManifest(input).ok).toBe(true);
-  expect(parseManifest({ ...input, mode: "remix" }).ok).toBe(false);
+  expect(parseManifest({ ...input, mode: "remix" }).ok).toBe(true);
   expect(parseManifest({ ...input, drive: "auto" }).ok).toBe(false);
+});
+
+it("AC-20, AC-21, AC-25, AC-26: priority order pins current work and keeps product last", () => {
+  const modules = ["a", "b", "c", "product"].map((name) => ({ name }));
+  expect(effectiveOrder([], modules)).toEqual(["a", "b", "c", "product"]);
+  expect(effectiveOrder(["product", "unknown", "b", "b", "a"], modules)).toEqual([
+    "b",
+    "a",
+    "c",
+    "product",
+  ]);
+  expect(effectiveOrder(["a", "c", "b"], modules, new Set(), "b")).toEqual([
+    "b",
+    "a",
+    "c",
+    "product",
+  ]);
+  expect(moveInQueue(["a", "b", "product"], "b", "up")).toEqual(["b", "a", "product"]);
+  expect(moveInQueue(["a", "b", "product"], "b", "down")).toEqual(["a", "b", "product"]);
+  expect(moveInQueue(["a", "b", "product"], "a", "up")).toEqual(["a", "b", "product"]);
+});
+
+it("AC-23: old task state defaults to an empty queue", () => {
+  expect(
+    parseState(JSON.stringify({ schemaVersion: 1, kanban: { active: null, sessions: {} } })),
+  ).toMatchObject({ ok: true, state: { kanban: { queue: [] } } });
 });

@@ -85,6 +85,19 @@ describe("autoModules and changedServed: modules in plan order", () => {
   const mods = modules(
     `## Module: calc\n- AC-1: adds\n## Module: report\n- AC-2: prints\n${PRODUCT_MODULE}`,
   );
+  it("AC-21, AC-26: serving a prioritized task keeps it done after the pending queue moves ahead", () => {
+    const views = autoModules(
+      mods,
+      hashes,
+      { report: { ...served, sha256: "h2" } },
+      { passedAcs: [], passedE2eAcs: [] },
+    );
+    expect(views.map((view) => `${view.name}:${view.phase}`)).toEqual([
+      "calc:cooking",
+      "report:done",
+      "product:planned",
+    ]);
+  });
 
   it("opens the first module not served, in plan order", () => {
     const phases = (approvals: Record<string, Approval>, passed: string[]) =>

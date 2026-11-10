@@ -132,5 +132,5 @@ Get-Content $log | ForEach-Object { $_ | ConvertFrom-Json } |
 ### Giới hạn đã biết
 
 - Định dạng payload dựa trên những gì bridge cũ giả định; chưa có fixture ghi lại từ Antigravity thật như `test/fixtures/codex/`. Nếu Antigravity đặt tên trường khác (ví dụ không gửi `toolCall.id` hoặc kết quả `invoke_subagent` trong `PostToolUse`), review sẽ không được ghi nhận: an toàn, nhưng cần fixture để sửa.
-- Với `workflow: kanban`, tool call của subagent mang `conversationId` riêng nên có thể bị coi là session khác.
+- Ở human drive của prep/recipe, tool call của subagent mang `conversationId` riêng nên có thể bị coi là session khác.
 - Antigravity chưa có biến môi trường đánh dấu shell của agent, nên `verid` không tự nhận ra nó đang chạy trong agent; các lệnh chỉ dành cho developer vẫn bị chặn bằng luật shell.

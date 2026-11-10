@@ -89,7 +89,7 @@ npm run build
 Run the built CLI once from the target project, replacing the path with your checkout:
 
 ```sh
-node /path/to/aeriq/dist/cli.js cook --mode prep --workflow modular --resources repo --provider codex --yes
+node /path/to/aeriq/dist/cli.js cook --mode prep --resources repo --provider codex --yes
 ```
 
 After cook, the repo includes its own CLI and bundled dependencies. From the project root:
@@ -115,7 +115,7 @@ cd your-project
 verid cook
 ```
 
-Cook asks for language, providers, workflow, resource location, mode, drive and
+Cook asks for language, providers, layout, resource location, mode, drive and
 architecture. It detects the layout and test runners, then previews the files to write.
 Confirm the preview to apply it.
 
@@ -134,7 +134,7 @@ For an existing codebase in `remix` mode, run `verid stock` before agent changes
 ### Start with modular documents and repo resources
 
 ```sh
-verid cook --mode prep --workflow modular --resources repo --provider codex --yes
+verid cook --mode prep --resources repo --provider codex --yes
 node .verid/verid.mjs module identity
 ```
 
@@ -147,29 +147,23 @@ For Codex, trust the project and the generated hooks through `/hooks`, then run
 
 ---
 
-## Workflows and resource location
+## Module flow and resources
 
-These are independent choices:
+`prep` and `recipe` always include module dossiers and a browser board, in a monorepo (one Git repository) or a workspace (multiple child repositories). Cook asks for the layout, defaulting to detection. A workspace must be outside a Git repository and contain child repositories. Existing manifests retain their layout.
 
-| Setting     | Value                 | Result                                                                                      |
-| ----------- | --------------------- | ------------------------------------------------------------------------------------------- |
-| `workflow`  | `classic` — default   | Shared research, spec, design and plan documents.                                           |
-| `workflow`  | `modular`             | Module dossiers and phase directories based on the repo structure template.                 |
-| `workflow`  | `kanban`              | Local browser task board, developer-selected priorities, and one AI session per task.       |
-| `resources` | `installed` — default | Skills and agents from the installed distribution or Claude plugin.                         |
-| `resources` | `repo`                | Agents, skills, templates, policies, translations and hook runtime copied into the project. |
+| Setting   | Value       | Behaviour                                                                                   |
+| --------- | ----------- | ------------------------------------------------------------------------------------------- |
+| Drive     | `human`     | Developer selects each task; one fresh AI session per task; developer serves.               |
+| Drive     | `ai`        | Developer arranges priorities and signs with `verid order`; one session follows the queue.  |
+| Resources | `installed` | Use installed skills and agents.                                                            |
+| Resources | `repo`      | Pin skills, agents, templates and runtime in the project; existing customizations are kept. |
 
-`modular` and `kanban` support `prep` and `recipe`. `kanban` requires `drive: human`.
-`remix` uses the existing baseline workflow.
+`remix` keeps its baseline workflow; the board reports that it has no tasks.
 
-Repo copies are the source read by the generated native provider entries. Cook creates
-missing files and keeps existing resource customizations. Updating the npm package does
-not replace pinned repo resources; review and replace those copies explicitly.
-
-### Kanban: one task per AI session
+### Board: task selection and priorities
 
 ```sh
-verid cook --mode prep --workflow kanban --provider codex --yes
+verid cook --mode prep --provider codex --yes
 verid board
 # With repo resources: node .verid/verid.mjs board
 ```
@@ -184,7 +178,7 @@ to open the printed URL yourself, or `--port 4318` to choose a port.
    final product task. Existing plans are kept. Refine task scope, ACs and
    dependencies in **Kế hoạch task**, or let the planning agent write the plan.
    Each `## Module: <name>` becomes a card; `Title:` supplies its display title.
-3. Select the task you want first. Selection uses `verid order` and keeps one task
+3. In human drive, select the task you want first. Selection uses `verid order` and keeps one task
    open. Send the prefilled session prompt from the task's **chat box**: the board
    runs the provider's CLI headless (`claude -p`, `codex exec`, `agy -p`) in the
    project and later messages resume that same session. Or copy the prompt into a
@@ -199,10 +193,7 @@ current task; clearing context does not let a used session take the next task.
 Changed spec, plan scope or design requires reapproval and a new task session.
 Nothing automatically selects or starts the next task.
 
-For an existing project, set `workflow: kanban` and `drive: human` in the
-developer-owned `.verid/manifest.yaml`, then run `verid upgrade --yes` to refresh
-the generated AI instructions. Update pinned repo runtime resources if using an
-older installed copy. See [the workflow guide](docs/kanban-workflow.md).
+Use ↑/↓ or Alt+↑/↓ on a card to reorder pending tasks. The local queue survives board restarts; `verid menu` uses the same order. Current work stays in place and `product` stays last. Human drive marks the next task while allowing another selection. AI drive hides manual selection/chat; sign from your terminal to follow the queue. Dependencies remain advisory.
 
 ### Module dossiers
 
@@ -365,16 +356,15 @@ drive, the harness manages module order and closure.
 ### Cook flags
 
 ```sh
-verid cook --mode prep --workflow modular --resources repo --provider codex --lang en --yes
+verid cook --mode prep --resources repo --provider codex --lang en --yes
 ```
 
 | Flag                                         | Values or effect                                                          |
 | -------------------------------------------- | ------------------------------------------------------------------------- |
 | `--mode`                                     | `prep`, `recipe` or `remix`.                                              |
-| `--workflow`                                 | `classic` or `modular`.                                                   |
 | `--resources`                                | `installed` or `repo`.                                                    |
 | `--provider`                                 | `claude-code`, `codex` or `antigravity`; repeat for several.              |
-| `--drive`                                    | `human` or `auto` for prep/recipe.                                        |
+| `--drive`                                    | `human` or `ai` for prep/recipe (`auto` remains an alias).                |
 | `--architecture`                             | `ddd`, `clean`, `layered` or `none`.                                      |
 | `--layout`                                   | `monorepo` or `workspace`; otherwise detected.                            |
 | `--lang`                                     | `en` or `vi`; this machine's CLI language.                                |
@@ -396,7 +386,7 @@ The Codex reviewer name stays `verid_reviewer`.
 ### Preview before writing
 
 ```sh
-verid cook --mode prep --workflow modular --resources repo --provider codex --dry-run
+verid cook --mode prep --resources repo --provider codex --dry-run
 ```
 
 The preview shows a file tree: `+` creates, `~` updates, `=` keeps, and `!` introduces
@@ -538,7 +528,6 @@ This example uses the modular workflow, repo resources and Codex:
 ```yaml
 schemaVersion: 1
 mode: prep
-workflow: modular
 resources: repo
 providers: [codex]
 architecture: ddd
@@ -622,3 +611,11 @@ See each bundled skill's license for attribution.
 ## License
 
 MIT. See [LICENSE](LICENSE).
+
+## Upgrading from 1.x
+
+This is version 2.0.0. Legacy manifests with `workflow: classic`, `workflow: modular`, `workflow: kanban` or no workflow still load; `--workflow` is a compatibility flag. `auto` remains an alias of drive `ai`.
+
+Run `verid upgrade --dry-run`, then `verid upgrade --yes`. Upgrade removes the retired workflow, adds templates/artifact directories, and drafts dossiers and Artifacts references for unserved modules. Complete those inputs and order again; open human tasks require a fresh session. Served sections, approvals and evidence stay intact. Run `verid doctor` to find remaining gaps.
+
+With repo resources, update the pinned runtime in `.verid/hooks/` and relevant resources after upgrading the package; upgrade preserves existing customizations. Before downgrading to 1.x, remove `kanban.queue` from state in the developer's terminal.

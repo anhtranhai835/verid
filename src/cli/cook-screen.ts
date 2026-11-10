@@ -12,9 +12,9 @@ import {
 import type { MessageKey } from "../core/errors.js";
 import {
   DRIVES,
+  LAYOUTS,
   IGNORE_GLOBS,
   MODES,
-  WORKFLOWS,
   RESOURCE_MODES,
   parseManifest,
   suggestManifest,
@@ -31,7 +31,7 @@ import { loadManifest, manifestFile, missingManifestDefaults } from "../adapters
 import { findRunners } from "../adapters/test-runner.js";
 import { languageOf, VeridError } from "../adapters/state-store.js";
 import { ARCHITECTURES } from "../core/rules.js";
-import { detectLayout } from "../adapters/workspace.js";
+import { checkWorkspaceRoot, detectLayout } from "../adapters/workspace.js";
 import { ask, select, type Io } from "../adapters/terminal.js";
 import { planCook, projectFacts, servedLine, setupDoneLine, manifestUpgradeLines } from "./init.js";
 import type { CliResult } from "./test.js";
@@ -170,11 +170,10 @@ export async function interactiveCook(
   const flags: InitFlags = { lang, src: [], tests: [], ignore: [] };
 
   const manifest = await loadManifest(project, { readOnly: true, checkPaths: false });
-  const detected = manifest ? null : detectLayout(project);
+  let detected = manifest ? null : detectLayout(project);
   let layout = manifest?.layout ?? detected?.layout ?? "monorepo";
   let providers = manifest?.providers ?? ["claude-code"];
-  const repoPaths =
-    layout === "workspace" ? (detected?.repos.map((repo) => repo.path) ?? []) : ["."];
+  let repoPaths = manifest ? manifest.repos.map((repo) => repo.path) : ["."];
   const existing = manifest?.repos[0];
   if (existing) {
     // A manifest from an older verid: the defaults it lacks, added only if the developer says so.
@@ -204,14 +203,45 @@ export async function interactiveCook(
     );
     if (provider === null) return cancelled();
     flags.providers = [...PROVIDER_CHOICES[provider]!.providers];
-    const workflow = await select(
-      io,
-      say("cook.workflow"),
-      WORKFLOWS.map((value) => ({ label: value, hint: say(`cook.workflow.${value}`) })),
-      0,
-    );
-    if (workflow === null) return cancelled();
-    flags.workflow = WORKFLOWS[workflow];
+    const children = detectLayout(project, "workspace").repos;
+    for (;;) {
+      const choice = await select(
+        io,
+        say("cook.layout"),
+        LAYOUTS.map((value) => ({
+          label: value,
+          hint:
+            value === "monorepo"
+              ? say("cook.layout.monorepo")
+              : children.length
+                ? say("cook.layout.workspace", {
+                    repos: children.map((repo) => repo.path).join(", "),
+                  })
+                : say("cook.layout.workspace_none"),
+        })),
+        LAYOUTS.indexOf(layout),
+      );
+      if (choice === null) return cancelled();
+      const selected = LAYOUTS[choice]!;
+      if (selected === "workspace") {
+        try {
+          checkWorkspaceRoot(project);
+          if (!children.length) {
+            line(say("cook.invalid", { detail: say("cook.layout.no_children") }));
+            continue;
+          }
+        } catch (error) {
+          if (!(error instanceof VeridError)) throw error;
+          line(say("cook.invalid", { detail: error.params.detail ?? error.code }));
+          continue;
+        }
+      }
+      layout = selected;
+      flags.layout = selected;
+      detected = { layout, repos: selected === "workspace" ? children : [] };
+      repoPaths = selected === "workspace" ? children.map((repo) => repo.path) : ["."];
+      break;
+    }
     const resources = await select(
       io,
       say("cook.resources"),
@@ -224,16 +254,11 @@ export async function interactiveCook(
     const mode = await select(
       io,
       say("cook.mode"),
-      (flags.workflow === "modular" || flags.workflow === "kanban"
-        ? MODES.filter((m) => m !== "remix")
-        : MODES
-      ).map((m) => ({
+      MODES.map((m) => ({
         label: `${MODE_EMOJI[m]} ${m}`,
         hint: say(`cook.mode.${m}`),
       })),
-      flags.workflow === "modular" || flags.workflow === "kanban"
-        ? 0
-        : MODES.indexOf(suggestMode(facts)),
+      MODES.indexOf(suggestMode(facts)),
     );
     if (mode === null) return cancelled();
     flags.mode = MODES[mode];
@@ -243,7 +268,7 @@ export async function interactiveCook(
       const drive = await select(
         io,
         say("cook.drive"),
-        (flags.workflow === "kanban" ? (["human"] as const) : DRIVES).map((d) => ({
+        (["human", "ai"] as const).map((d) => ({
           label: d,
           hint: say(`cook.drive.${d}`),
         })),

@@ -1,42 +1,89 @@
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
-import { planFromSpec } from "../core/kanban.js";
+import { moveInQueue, planFromSpec } from "../core/kanban.js";
+import { autoModules, autoPhase } from "../core/auto.js";
+import { planned, taskSessions, type Manifest } from "../core/manifest.js";
+import type { State } from "../core/state.js";
 import { moduleProblem, parsePlan, PRODUCT } from "../core/plan.js";
 import { specTrace } from "../core/spec.js";
 import { loadManifest } from "./manifest.js";
-import { planFile, planViews, readPlan, specFile } from "./plan-file.js";
+import {
+  autoFactsOf,
+  dossierStatus,
+  orderedModules,
+  planFile,
+  planViews,
+  readPlan,
+  servedSections,
+  servedModules,
+  specFile,
+} from "./plan-file.js";
+import { scaffoldModule, moduleDrafts } from "./module-scaffold.js";
 import { appendAudit } from "./audit-log.js";
-import { readFileHash, readState, statePaths, withLock } from "./state-store.js";
+import { readFileHash, readState, statePaths, withLock, writeState } from "./state-store.js";
 import { checkSetupPath } from "./workspace.js";
 
 const textOf = (file: string) => (existsSync(file) ? readFileSync(file, "utf8") : "");
 
 export async function boardSnapshot(project: string) {
-  const manifest = await loadManifest(project);
-  if (manifest?.workflow !== "kanban")
-    throw new Error(
-      "Bảng task cần workflow: kanban. Khởi tạo bằng verid cook --mode prep --workflow kanban.",
-    );
+  const manifest = await loadManifest(project, { readOnly: true });
+  if (!manifest) throw new Error("Chưa có manifest. Chạy verid cook trước khi mở board.");
   const state = readState(statePaths(project));
-  const plan = readPlan(project, manifest.iterations !== undefined);
+  return snapshotOf(project, manifest, state);
+}
+
+function snapshotOf(project: string, manifest: Manifest, state: State) {
+  const plan = planned(manifest)
+    ? readPlan(project, manifest.iterations !== undefined, false, servedSections(state), true)
+    : null;
+  const facts =
+    manifest.drive === "auto" && planned(manifest)
+      ? autoFactsOf(project, state, manifest.iterations !== undefined, true)
+      : null;
+  const phase = facts ? autoPhase(facts) : null;
   const spec = textOf(specFile(project));
   const planText = textOf(planFile(project));
-  const active = state.kanban.active;
+  const autoTask =
+    phase?.kind === "module"
+      ? phase.view.name
+      : state.auto.signed !== null &&
+          state.auto.work &&
+          !servedModules(state).has(state.auto.work.module)
+        ? state.auto.work.module
+        : null;
+  const active = taskSessions(manifest)
+    ? state.kanban.active
+    : autoTask
+      ? { module: autoTask, session: "ai", spec_sha256: state.auto.signed?.spec_sha256 ?? "" }
+      : null;
   const specChanged = active !== null && active.spec_sha256 !== readFileHash(specFile(project));
   const missing = ["research.md", "spec.md", "design.md"].filter(
     (file) => !textOf(join(project, ".verid", file)).trim(),
   );
-  const views = plan?.ok ? planViews(project, plan, state) : [];
+  const views = plan?.ok
+    ? facts && facts.plan?.ok
+      ? autoModules(facts.plan.modules, facts.plan.hashes, state.modules, facts.evidence)
+      : planViews(project, plan, state)
+    : [];
+  let next = false;
   const tasks = plan?.ok
-    ? plan.modules.map((module) => {
+    ? orderedModules(plan.modules, state).map((module) => {
         const view = views.find((item) => item.name === module.name)!;
         const selected = active?.module === module.name;
+        const dossier =
+          view.phase === "done" && !/^Artifacts:/m.test(module.text)
+            ? { missing: [], unresolved: 0, problem: null }
+            : dossierStatus(project, module);
         const needsReapproval =
           selected &&
           (specChanged ||
-            state.modules[module.name]?.sha256 !== plan.hashes[module.name] ||
-            state.modules[module.name]?.design_sha256 !==
+            (manifest.drive === "auto"
+              ? state.auto.plan_sha256 !== facts?.planHash
+              : state.modules[module.name]?.sha256 !== plan.hashes[module.name]) ||
+            (manifest.drive === "auto"
+              ? state.auto.signed?.design_sha256
+              : state.modules[module.name]?.design_sha256) !==
               readFileHash(join(project, ".verid/design.md")));
         const column =
           view.phase === "done"
@@ -59,11 +106,14 @@ export async function boardSnapshot(project: string) {
               ? `Hoàn tất ${active.module} trước khi chọn task tiếp theo`
               : missing.length
                 ? `Cần hoàn thiện .verid/${missing.join(", .verid/")}`
-                : (moduleProblem(module) ??
+                : (dossier.problem ??
+                  moduleProblem(module) ??
                   (module.name === PRODUCT &&
                   views.some((item) => item.name !== PRODUCT && item.phase !== "done")
                     ? "Hoàn tất các task khác trước khi kiểm thử sản phẩm"
                     : null));
+        const isNext = !next && column === "backlog";
+        if (isNext) next = true;
         return {
           id: module.name,
           title: /^Title:\s*(.+)$/m.exec(module.text)?.[1] ?? module.name,
@@ -80,7 +130,15 @@ export async function boardSnapshot(project: string) {
           selected,
           specChanged: selected && specChanged,
           needsReapproval,
+          dossier: { missing: dossier.missing, unresolved: dossier.unresolved },
+          next: isNext,
+          canMove:
+            column === "backlog" &&
+            module.name !== PRODUCT &&
+            !Object.hasOwn(state.modules, module.name) &&
+            state.auto.work?.module !== module.name,
           canServe:
+            taskSessions(manifest) &&
             selected &&
             !needsReapproval &&
             view.phase === "evaluating" &&
@@ -96,10 +154,14 @@ export async function boardSnapshot(project: string) {
     : [];
   return {
     project: basename(project),
-    workflow: "kanban",
+    drive: manifest.drive,
+    notice: planned(manifest)
+      ? null
+      : "Mode remix không có task; dùng verid stock và luồng baseline.",
     spec,
     plan: planText,
-    planError: plan && !plan.ok ? plan.detail : null,
+    planError:
+      plan && !plan.ok ? plan.detail : facts?.plan && !facts.plan.ok ? facts.plan.detail : null,
     active,
     tasks,
     missing,
@@ -108,7 +170,19 @@ export async function boardSnapshot(project: string) {
     lastRun: state.tdd.last_run,
     dirty: state.tdd.dirty,
     revision: createHash("sha256")
-      .update(JSON.stringify([spec, planText, state]))
+      .update(
+        JSON.stringify([
+          manifest,
+          spec,
+          planText,
+          state,
+          plan?.ok ? plan.hashes : null,
+          tasks.map((task) => task.dossier),
+          ...["research.md", "design.md"].map((file) =>
+            readFileHash(join(project, ".verid", file)),
+          ),
+        ]),
+      )
       .digest("hex"),
   };
 }
@@ -118,11 +192,21 @@ export function saveBoardDocument(
   project: string,
   kind: "spec" | "plan" | "split",
   content = "",
+  drive?: Manifest["drive"],
 ): void {
   const paths = statePaths(project);
   withLock(paths, () => {
     const state = readState(paths);
-    if (state.kanban.active || Object.values(state.modules).some((item) => item.served_at === null))
+    const aiOpen =
+      drive !== "human" &&
+      state.auto.signed !== null &&
+      ((state.auto.work !== null && !servedModules(state).has(state.auto.work.module)) ||
+        autoPhase(autoFactsOf(project, state, false, true)).kind === "module");
+    if (
+      state.kanban.active ||
+      aiOpen ||
+      Object.values(state.modules).some((item) => item.served_at === null)
+    )
       throw new Error("Đang có task mở. Hoàn tất và nghiệm thu task trước khi sửa tài liệu.");
     const rel = `.verid/${kind === "spec" ? "spec" : "plan"}.md`;
     checkSetupPath(project, rel);
@@ -143,11 +227,43 @@ export function saveBoardDocument(
           `Plan cần bao phủ các yêu cầu trong spec. Chưa có AC: ${trace.uncovered.join(", ") || "—"}. ID không tồn tại: ${trace.unknown.join(", ") || "—"}.`,
         );
     }
+    if (kind === "split") {
+      const parsed = parsePlan(content);
+      if (parsed.ok) for (const module of parsed.modules) moduleDrafts(project, module.name);
+    }
     appendAudit(paths.audit, { event: "board_document_saved", document: rel });
     // wx prevents replacing a plan created by another process during decomposition.
     writeFileSync(join(project, rel), content.endsWith("\n") ? content : `${content}\n`, {
       flag: kind === "split" ? "wx" : "w",
     });
+    if (kind === "split") {
+      const parsed = parsePlan(content);
+      if (parsed.ok) for (const module of parsed.modules) scaffoldModule(project, module.name);
+    }
+  });
+}
+
+/** Developer mutation. The server has already verified credential, origin and revision. */
+export async function moveTask(
+  project: string,
+  task: string,
+  direction: "up" | "down",
+  revision: string,
+): Promise<void> {
+  const paths = statePaths(project);
+  // Resolve manifest before taking the lock: the snapshot itself is read-only under it.
+  const manifest = await loadManifest(project, { readOnly: true });
+  if (!manifest || !planned(manifest)) throw new Error("Mode remix không có task.");
+  withLock(paths, () => {
+    const snapshot = snapshotOf(project, manifest, readState(paths));
+    if (snapshot.revision !== revision) throw new Error("Bảng đã thay đổi. Tải lại rồi thử lại.");
+    const item = snapshot.tasks.find((item) => item.id === task);
+    if (!item?.canMove) throw new Error("Chỉ đổi ưu tiên task chưa bắt đầu; product luôn cuối.");
+    const state = readState(paths);
+    const movable = snapshot.tasks.filter((item) => item.canMove).map((item) => item.id);
+    const queue = moveInQueue(movable, task, direction);
+    appendAudit(paths.audit, { event: "board_task_moved", task, direction });
+    writeState(paths, { ...state, kanban: { ...state.kanban, queue } });
   });
 }
 

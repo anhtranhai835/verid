@@ -1,3 +1,4 @@
+import { planned, taskSessions } from "./manifest.js";
 import { skillAllowlist } from "./dispatch.js";
 import { PROVIDERS, type Manifest, type Provider, type RoleName } from "./manifest.js";
 
@@ -136,7 +137,7 @@ export function renderInstructions(
       : antigravity
         ? "- Antigravity hooks from verid's plugin enforce TDD (RAW → COOKING → PLATED), module approval and protected files; run verid doctor to check the plugin."
         : "- Claude Code hooks enforce TDD (RAW → COOKING → PLATED), module approval, roles and protected files.",
-    "- Never bypass or work around a denial: read its reason and follow it.",
+    "- Never bypass a denial; follow its reason.",
     codex
       ? "- Only the developer edits the manifest; /verid tip and /verid confirm have no effect on Codex; exceptions require Claude Code."
       : antigravity
@@ -154,27 +155,30 @@ export function renderInstructions(
       : []),
     "",
     "### TDD cycle",
-    "- RAW: production code is locked. Write one failing test, then run verid taste.",
-    "- COOKING: tests are frozen. Write the minimum production code to pass them, then run verid taste.",
-    "- PLATED: all tests pass. Refactor without new behaviour; the next test starts RAW.",
+    "- RAW: code locked; write a failing test, then verid taste.",
+    "- COOKING: tests frozen; implement, then verid taste.",
+    "- PLATED: refactor passing code; new behaviour starts RAW.",
     "",
     "### Workflow",
-    `- For each new request or symptom, follow ${routing}: choose matching skills and mapped agents; load only relevant branches.`,
-    ...(manifest.workflow === "kanban"
+    `- Routing: ${routing}; matching branches only.`,
+    ...(taskSessions(manifest)
       ? [
-          "- Kanban: spec → task plan → developer selection in verid board → a fresh AI session for exactly one task → TDD → independent review → developer serve → stop. Never select, approve or start the next task yourself.",
-          "- ONE TASK PER SESSION: only work on the selected task named by SessionStart. Planning sessions and sessions used for another task cannot claim it. Resume/compact keeps the same task; /clear does not authorize switching tasks. After serve, stop and let the developer choose another task and open a new session.",
-          "- Break .verid/spec.md into small independently reviewable ## Module: <task-name> sections in .verid/plan.md. Each task lists testable ACs citing REQ/NFR/SEC IDs, scope and dependencies. Use Title: for a readable card title; keep product as the final end-to-end task. The board can seed one draft task per requirement; refine broad criteria before approval.",
+          "- Human: developer order → fresh session → TDD/review → developer serve → stop.",
+          "- ONE TASK PER SESSION: only the selected task; fresh session required. Resume/compact keeps it; /clear never authorizes switching.",
         ]
       : []),
-    ...(manifest.workflow === "modular"
+    ...(planned(manifest)
       ? [
-          `- Modular cook: read .verid/workflow.md and ${skill("modules")} first. Run verid module <name>, fill .verid/artifacts/03-modules/<name>/{ba,ui,spec,tests,security}, publish canonical requirements/design/ACs, then order → TDD → independent review → serve. Include Artifacts: .verid/artifacts/03-modules/<name> in every plan module.`,
-          "- Follow .verid/templates/ for contracts, data, errors, UI states, security and traceability. Main records actual review/release reports; read-only reviewers write nothing.",
+          `- Modules: read .verid/workflow.md and ${skill("modules")}. Run verid module <name>; fill BA/UI/spec/tests/security before order. Every plan module needs Artifacts: .verid/artifacts/03-modules/<name>.`,
+          "- Templates: .verid/templates/; main records review/release evidence; reviewers only read.",
+          ...(manifest.drive === "auto"
+            ? [
+                "- AI: developer sets priorities in verid board and signs with verid order. One session follows that queue through TDD/review/serve; current work stays first.",
+              ]
+            : []),
         ]
       : []),
-    "- Session start gives the cycle and next step; else run verid peek.",
-    `- New developer or workspace: verid:onboard${single ? ` → ${skill("onboard")}` : ""} reads repos, health and status, and writes nothing.`,
+    `- Onboarding: verid:onboard${single ? ` → ${skill("onboard")}` : ""}; read-only health/status.`,
     ...(single
       ? [
           `- Research/spec: verid:ba → ${skill("ba")}.`,
@@ -188,7 +192,7 @@ export function renderInstructions(
                 "- Antigravity dispatches the verid-* agents of verid's plugin; verid:* agents are Claude Code plugin entries.",
               ]
             : [
-                `- Review/serve: verid:review → ${skill("review")}; spawn verid_reviewer with agent_type and fork_turns: "none", module/AC identifiers, plan/design paths and .verid/review/work.md from verid menu --commits --file. Reviewer mappings: ${agents("reviewer")}.`,
+                `- Review/serve: verid:review → ${skill("review")}; spawn verid_reviewer, agent_type and fork_turns: "none"; send module/ACs, plan/design and .verid/review/work.md (verid menu --commits --file). Reviewer mappings: ${agents("reviewer")}.`,
                 "- Codex spawns configured agents only; verid:* agents are Claude Code plugin entries.",
               ]),
         ]
@@ -199,23 +203,21 @@ export function renderInstructions(
           `- Build: verid:build → tester ${agents("tester")}, qa ${agents("qa")} for end-to-end tests, coder ${agents("coder")}; verid:tdd for each cycle, verid:debugging for unclear failures.`,
           `- Review/serve: verid:review → reviewer ${agents("reviewer")}${manifest.roles?.security ? `, then security reviewer ${agents("security")}` : ""}.`,
         ]),
-    "- In the bundled debugging skill, TDD and verification mean verid:tdd and a passing verid taste after the last change.",
+    "- Debugging: verid:tdd; verify with verid taste.",
     `- ClaudeKit skills: ${skillsRoot.replaceAll("\\", "/")}/`,
     "",
     "### Commands",
-    "- Agent: verid taste (the only test runs that count as evidence), verid peek, verid menu, verid doctor.",
-    "- Developer only, in their own terminal: verid cook, upgrade, stock, order [module], serve <module>, garnish, halt, resume.",
-    ...(manifest.workflow === "kanban"
-      ? [
-          "- Developer only: verid board opens the local task selection UI; the agent never starts it.",
-        ]
+    "- Agent: verid taste (evidence), verid peek, verid menu, verid doctor.",
+    "- Developer terminal only: verid cook, upgrade, stock, order [module], serve <module>, garnish, halt, resume.",
+    ...(planned(manifest)
+      ? ["- Developer only: verid board; agents never select or reorder tasks."]
       : []),
     "",
     "### Files",
-    "- Inputs: the developer's documents in .verid/docs/ (agents read them, never write them).",
-    "- Session log: .verid/log/<module>.md; read it at session start, and the main thread appends after each AC.",
-    "- State: .verid/manifest.yaml; .verid/research.md, spec.md, design.md and plan.md; local evidence and audit in .verid/.state/.",
-    "- Rules (advisory): .verid/rules/git.md, architecture.md, workflow.md. Keep commits small and feature-scoped; no unrelated changes.",
+    "- .verid/docs/: developer inputs, read-only.",
+    "- Session log .verid/log/<module>.md: read at startup; main appends after each AC.",
+    "- Inputs: .verid/{manifest.yaml,research.md,spec.md,design.md,plan.md}; evidence/audit: .verid/.state/.",
+    "- Advisory rules: .verid/rules/{git,architecture,workflow}.md. Small feature commits; no unrelated changes.",
     "",
     // The defaults (verid:* and the roles above) need no list; only additions are worth the tokens.
     ...(extras

@@ -35,6 +35,17 @@ const hashes = () => {
 };
 
 describe("readPlan", () => {
+  it("AC-8, AC-12: requires dossiers for pending modules and preserves served legacy sections", () => {
+    writeFileSync(planFile(project), "## Module: first\n- AC-1: works\n");
+    expect(readPlan(project, false, true)).toMatchObject({
+      ok: false,
+      detail: expect.stringContaining("requires Artifacts"),
+    });
+    expect(readPlan(project, false, true, new Set(["first"]))).toMatchObject({
+      ok: true,
+      hashes: hashes(),
+    });
+  });
   it("hashes a plan without headings exactly as the file's bytes, as 0.1.0-beta.1 did", () => {
     // sha256 of "abc", written without a trailing newline.
     writeFileSync(planFile(project), "abc");
