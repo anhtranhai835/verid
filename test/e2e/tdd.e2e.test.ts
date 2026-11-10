@@ -1,4 +1,5 @@
-import { moduleHash, readyModulePlan, startTaskSession } from "./helpers.js";
+import { tempProject, manifest, FRESH_STATE, CLI, RUNNER, type Run } from "../support/project.js";
+import { moduleHash, readyModulePlan } from "./helpers.js";
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
@@ -15,102 +16,35 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { verifyAuditChain } from "../../src/adapters/audit-log.js";
 import { MODES } from "../../src/core/manifest.js";
-import { runCli, runHook, runReview } from "./in-process.js";
-import { developerEnv, claudeFixture, type Payload } from "./helpers.js";
+import { runCli } from "./in-process.js";
+import { type Payload } from "./helpers.js";
 
-// Runs the CLI and hook in process, and the built CLI for a few runs. The test command is a fake runner
-// that copies recorded vitest JUnit reports, so scenario.json picks each run's outcome.
-// Paths are built with join(), so these tests run on Windows and POSIX alike.
-const root = join(import.meta.dirname, "..", "..");
-const CLI = join(root, "dist", "cli.js");
 // What verid's messages tell the agent to run: works without `npm link`.
 const VERID_CMD = `node "${CLI.replaceAll("\\", "/")}"`;
-const RUNNER = join(import.meta.dirname, "fake-runner.mjs");
+
 const SESSION = "11111111-2222-3333-4444-555555555555";
 
 let project: string;
 let currentSession = SESSION;
-let sessionCount = 0;
+
 let stateFile: string;
 let auditFile: string;
 let manifestFile: string;
 
-// A remix project that has taken its baseline: the cycle starts from a clean slate.
-const FRESH_STATE = '{"schemaVersion":1,"baseline":[]}';
-
-const manifest = (
-  sourceGlob = "src/**",
-  testCmd = `"${process.execPath}" "${RUNNER}" {junit}`,
-  repoPath = ".",
-  mode = "remix",
-) =>
-  [
-    "schemaVersion: 1",
-    `mode: ${mode}`,
-    "repos:",
-    `  - path: ${repoPath}`,
-    `    test_cmd: ${JSON.stringify(testCmd)}`,
-    `    source_globs: ["${sourceGlob}"]`,
-    '    test_globs: ["test/**"]',
-    "",
-  ].join("\n");
-
-beforeEach(() => {
-  // `$$` in the path: it must reach the test command unchanged ({junit} replacement).
-  project = mkdtempSync(join(tmpdir(), "verid-tdd-$$-"));
-  stateFile = join(project, ".verid", ".state", "state.json");
-  auditFile = join(project, ".verid", ".state", "audit.jsonl");
-  manifestFile = join(project, ".verid", "manifest.yaml");
-  freshState();
+const t = tempProject("verid-tdd-$$-", {
+  state: FRESH_STATE,
+  manifest: () => manifest(),
+  review: true,
+  taskSession: true,
+  sessionChanged: (value) => (currentSession = value),
+  bind: (p) => ({ dir: project, stateFile, auditFile, manifestFile } = p),
 });
-afterEach(() => rmSync(project, { recursive: true, force: true }));
+const { fixture, env, hook, cliWith, cli } = t;
+const { state, audit, write, readTool: read, reset: freshState } = t;
 
-// A new .verid with the fresh state and manifest, so each case of a table starts from the same place.
-function freshState(): void {
-  currentSession = SESSION;
-  sessionCount = 0;
-  rmSync(join(project, ".verid"), { recursive: true, force: true });
-  mkdirSync(join(project, ".verid", ".state"), { recursive: true });
-  writeFileSync(stateFile, FRESH_STATE);
-  writeFileSync(manifestFile, manifest());
-}
-
-const fixture = (name: string, edit?: (p: Payload) => void): string =>
-  claudeFixture(project, name, (p) => {
-    p.session_id = currentSession;
-    edit?.(p);
-  });
-
-// Claude Code sets CLAUDE_* for hooks and Bash; start clean so the test machine's session leaks nothing.
-function env(extra: Record<string, string> = {}): NodeJS.ProcessEnv {
-  return { ...developerEnv(), CLAUDE_PROJECT_DIR: project, ...extra };
-}
-
-interface Run {
-  code: number | null;
-  stdout: string;
-  stderr: string;
-}
-
-// In process; the spawned runs in this file and hook.e2e prove the built CLI and hook run this code.
-const hook = (input: string, extra: Record<string, string> = {}): Promise<Run> =>
-  (JSON.parse(input).hook_event_name === "SubagentStop" ? runReview : runHook)(input, {
-    CLAUDE_PROJECT_DIR: project,
-    ...extra,
-  });
-const cliWith = async (extra: Record<string, string>, ...args: string[]): Promise<Run> => {
-  const result = await runCli(args, project, { CLAUDE_PROJECT_DIR: project, ...extra });
-  if (args[0] === "order" && result.code === 0 && state().kanban?.active?.session === null) {
-    if (Object.hasOwn(state().kanban.sessions, "claude-code:" + currentSession))
-      currentSession = SESSION + "-" + ++sessionCount;
-    await startTaskSession(project, currentSession);
-  }
-  return result;
-};
-const cli = (...args: string[]): Promise<Run> => cliWith({}, ...args);
 // In-process calls share process state, so a table's rows run one after another, never at once.
 async function serially<T, R>(items: readonly T[], fn: (item: T) => Promise<R>): Promise<R[]> {
   const out: R[] = [];
@@ -155,24 +89,15 @@ const RED_ASSERT_RUN = "vitest-red-assert.xml";
 // A project with code and no test yet.
 const NO_TESTS_RUN = "vitest-no-tests.xml";
 
-const state = () => JSON.parse(readFileSync(stateFile, "utf8"));
 const setTdd = (s: string) =>
   writeFileSync(
     stateFile,
     JSON.stringify({ schemaVersion: 1, tdd: { state: s, last_run: null }, baseline: [] }),
   );
-const audit = (): Payload[] =>
-  readFileSync(auditFile, "utf8")
-    .trim()
-    .split("\n")
-    .map((l) => JSON.parse(l));
+
 const runDir = (id: string) => join(project, ".verid", ".state", "runs", id);
 const designPath = () => join(project, ".verid", "design.md");
 
-const write = (rel: string) =>
-  fixture("pre-tool-use-write", (p) => (p.tool_input.file_path = join(project, ...rel.split("/"))));
-const read = (rel: string) =>
-  fixture("pre-tool-use-read", (p) => (p.tool_input.file_path = join(project, ...rel.split("/"))));
 const prompt = (text: string) => fixture("user-prompt-submit-verid-tip", (p) => (p.prompt = text));
 const bash = (command: string) =>
   fixture("pre-tool-use-bash", (p) => (p.tool_input.command = command));
