@@ -1,9 +1,10 @@
+import { tempProject } from "../support/project.js";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
+
+import { join } from "node:path";
+import { expect, it, vi } from "vitest";
 import { parse, stringify } from "yaml";
 import { autoPhase } from "../../src/core/auto.js";
 import { parsePlan } from "../../src/core/plan.js";
@@ -15,32 +16,44 @@ import {
   readPlan,
   servedSections,
 } from "../../src/adapters/plan-file.js";
-import { readState, statePaths, writeState } from "../../src/adapters/state-store.js";
+import { statePaths, writeState } from "../../src/adapters/state-store.js";
 import { planCook } from "../../src/cli/init.js";
 import { startBoard } from "../../src/cli/board.js";
 import { boardHtml } from "../../src/cli/board-page.js";
 import { readyModulePlan, startTaskSession } from "./helpers.js";
-import { runCli, runHook, runReview } from "./in-process.js";
+import { runReview } from "./in-process.js";
 
 let fixture: string;
 let project: string;
 let server: Awaited<ReturnType<typeof startBoard>> | undefined;
-const read = (rel: string) => readFileSync(join(project, rel), "utf8");
-const put = (rel: string, text: string) => {
-  mkdirSync(dirname(join(project, rel)), { recursive: true });
-  writeFileSync(join(project, rel), text);
-};
-const state = () => readState(statePaths(project));
-const cli = (...args: string[]) =>
-  runCli(args, project, { CODEX_HOME: join(fixture, "user-codex") });
+
 const roots = () =>
   parse(read(".verid/manifest.yaml")).repos.map((repo: { path: string }) => repo.path) as string[];
-beforeEach(() => {
-  fixture = mkdtempSync(join(tmpdir(), "verid-v2-"));
-  project = join(fixture, "project");
-  mkdirSync(project);
-  vi.stubEnv("CODEX_HOME", join(fixture, "user-codex"));
+const t = tempProject("verid-v2-", {
+  subdir: "project",
+  cwd: () => project,
+  claudeProject: false,
+  cliEnv: () => ({ CODEX_HOME: join(fixture, "user-codex") }),
+  payload: {
+    model: "test",
+    transcript_path: null,
+    permission_mode: "default",
+    turn_id: "turn",
+    tool_use_id: "call",
+  },
+  bind: (p) => {
+    fixture = p.root;
+    project = join(fixture, "project");
+  },
+  setup: () => {
+    vi.stubEnv("CODEX_HOME", join(fixture, "user-codex"));
+  },
+  teardown: async () => {
+    await closeBoard();
+    vi.unstubAllEnvs();
+  },
 });
+const { read, put, loadState: state, cliBound: cli, sessionEvent: hook, payloadFor: payload } = t;
 async function closeBoard() {
   if (!server) return;
   server.server.closeAllConnections();
@@ -49,11 +62,6 @@ async function closeBoard() {
   );
   server = undefined;
 }
-afterEach(async () => {
-  await closeBoard();
-  vi.unstubAllEnvs();
-  rmSync(fixture, { recursive: true, force: true });
-});
 
 async function cook(drive = "human", layout = "monorepo", mode = "prep") {
   if (layout === "workspace")
@@ -84,20 +92,7 @@ function splitReady() {
   saveBoardDocument(project, "split");
   readyModulePlan(project, read(".verid/plan.md"));
 }
-const payload = (event: string, session: string, extra = {}) =>
-  JSON.stringify({
-    hook_event_name: event,
-    cwd: project,
-    session_id: session,
-    model: "test",
-    transcript_path: null,
-    permission_mode: "default",
-    turn_id: "turn",
-    tool_use_id: "call",
-    ...extra,
-  });
-const hook = (event: string, session: string, extra = {}) =>
-  runHook(payload(event, session, extra), {}, ["--provider", "codex"]);
+
 const review = (session: string, id: string) =>
   runReview(
     payload("SubagentStop", session, {
