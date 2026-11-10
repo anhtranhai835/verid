@@ -10,7 +10,7 @@ Clarify assumptions; keep edits local and meet the AC with observable tests.
 Read verid:tdd once for this build loop; use verid:debugging for unclear failures.
 Settle ambiguous ACs through verid:ba in the main conversation.
 
-Use `verid peek` for cycle and uncovered ACs; `verid menu` when module-wide status is needed.
+Use `verid peek` for cycle and uncovered ACs; `verid menu` for module-wide status.
 Read `.verid/log/<module>.md` first if present, then `.verid/manifest.yaml` for roles,
 repos and globs. Follow relevant `.verid/rules/` (advisory).
 
@@ -22,14 +22,14 @@ For each uncovered AC, dispatch one writer at a time because repos share one cyc
 
 1. Give the mapped tester the module name, AC code, `.verid/plan.md` path,
    `.verid/design.md` path and relevant design row names and code paths.
-   For `(e2e)`, prefer the mapped qa; otherwise the tester handles it. When the module
+   For `(e2e)`, prefer the mapped qa; otherwise the tester. When the module
    has `Screens:`, the e2e test checks the chosen wireframe's elements, labels and states.
 2. Give the mapped coder the same identifiers and failing test path. It handles a
    permitted stub, implementation and refactoring under verid:tdd.
 3. Read the reports, append to `.verid/log/<module>.md`, and continue with the next
    uncovered AC.
 
-The main conversation alone writes the log; agents report to it. One entry per AC:
+Main alone writes the log; agents report to it. One entry per AC:
 
 ```markdown
 ## 2026-11-05 AC-2 (REQ-3)
@@ -37,12 +37,12 @@ The main conversation alone writes the log; agents report to it. One entry per A
 - Done: what passes now, test and code paths.
 - Decided: each choice and why; anything the developer settled.
 - Deviation: what differs from the plan or design and why, or none.
+- Tried: what failed and why, or none.
 - Commits: repo@sha, or none yet.
 - Next: the next AC, or "module ready for review".
 ```
 
-Never rewrite earlier entries, and keep source, test output, secrets and personal data
-out of the log.
+Never rewrite earlier entries; keep source, test output, secrets and personal data out.
 
 Dispatch identifiers, paths and exact sections; agents read those and expand through
 relevant dependencies. Use verid:context-engineering's `references/flow-context.md`
@@ -54,7 +54,7 @@ Read UI source to derive Playwright selectors. Keep Playwright under `e2e/` and
 exclude `e2e/**` from the unit runner; another runner needs matching `e2e_globs`.
 Evidence requires a JUnit report.
 
-In a workspace, in remix mode or in auto drive, read `references/modes.md` in this
-skill's folder first.
+In a workspace, remix mode or auto drive, read `references/modes.md` first.
 
-Once all module ACs pass, continue with verid:review.
+Once all module ACs pass, continue with verid:review. After a failed review, follow
+`references/review-findings.md`.

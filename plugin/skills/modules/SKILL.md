@@ -18,5 +18,3 @@ that module's order. Review and release records hold actual evidence after the w
 Follow the usual mapped writers, order, taste, independent read-only review and serve
 gates. On Codex main writes tests and code; only its configured reviewer is spawned.
 The main thread records reviewer reports. Never invent approvals or test evidence.
-
-For prep/recipe, the developer arranges the priority queue in `verid board`. Complete module dossiers before order. Human drive binds one fresh session per selected task and stops after serve. AI drive follows that queue in one session after `verid order`; reprioritizing never interrupts current work. Remix keeps its baseline flow.

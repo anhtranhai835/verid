@@ -3,51 +3,24 @@ name: edge-cases
 description: Use when an AC has input, state, permission or timing boundaries.
 ---
 
-# verid:edge-cases — Edge Case & Scenario Explorer
+# verid:edge-cases
 
 Decompose an acceptance criterion (an `AC-n` line of the open module in `.verid/plan.md`), or the code
-path it reaches, across 12 dimensions to surface edge cases, risks, and test targets before its tests
-are written.
+path it reaches, across the dimensions below to surface edge cases, risks and test targets before its
+tests are written.
 
-Supports two modes:
+Use it before tests for an AC with input, state, permission or timing boundaries, for complex or
+stateful features, and for API contract or risk review. For a simple AC, skip this skill and list 3–5
+cases in the test report. Skip it for trivial or cosmetic changes, pure configuration, and stable
+well-tested code nobody is changing.
 
-- **One-shot** (default): single pass, 3–5 scenarios per relevant dimension. Fast.
-- **Iterative**: loop for a bounded count, or until novelty is exhausted (saturation), when coverage must be exhaustive.
+The default is one pass. For a fixed number of iterations, a run until no new scenario appears, or
+another domain, focus or output format, read `references/iterative-mode.md`.
 
-## When to Use
+## Dimensions
 
-- Before tests for an AC with input, state, permission or timing boundaries
-- For a simple AC, skip this skill and list 3–5 cases in the test report
-- Before implementing complex or stateful features
-- Risk assessment during planning or code review
-- API design review — surface contract edge cases early
-- Deep pre-release coverage audit (saturation)
-
-## When NOT to Use
-
-- Trivial single-line changes or cosmetic UI tweaks
-- Already well-tested, stable code with no recent modifications
-- Pure configuration changes with no logic paths
-
----
-
-## Options
-
-| Option       | Default | Purpose                                                                                   |
-| ------------ | ------- | ----------------------------------------------------------------------------------------- |
-| Iterations N | —       | Bounded loop: run exactly N iterations, then stop with summary                            |
-| Saturation   | off     | Saturation loop: keep iterating until 2 consecutive iterations produce no novel scenarios |
-| Domain       | auto    | Domain hint: `software`, `product`, `business`, `security`, `marketing`                   |
-| Focus        | auto    | Prioritize dimension: `edge-cases`, `failures`, `security`, `scale`                       |
-| Format       | table   | Output format: `table`, `use-cases`, `test-scenarios`, `threat-scenarios`                 |
-
-When neither iterations nor saturation is asked for: one-shot mode (the default).
-
----
-
-## 12 Decomposition Dimensions
-
-Not all 12 apply to every feature. Identify relevant dimensions first, then generate scenarios only for those.
+Not all 12 apply to every feature. Identify the relevant ones first, then generate scenarios only for
+those.
 
 | #   | Dimension             | What to Look For                                                                               |
 | --- | --------------------- | ---------------------------------------------------------------------------------------------- |
@@ -64,45 +37,14 @@ Not all 12 apply to every feature. Identify relevant dimensions first, then gene
 | 11  | **Compliance**        | GDPR deletion request, audit logging gap, data retention, accidental PII exposure              |
 | 12  | **Business Logic**    | edge pricing (zero/negative), coupon stacking, refund after partial delivery, free tier limits |
 
----
-
-## Workflow
-
-### One-Shot Mode (default)
+## One pass
 
 1. **Read** the AC and the code it reaches, or parse the feature description
 2. **Filter dimensions** — mark which of the 12 apply; skip irrelevant ones explicitly
 3. **Generate 3–5 scenarios** per relevant dimension
 4. **Categorize severity** — Critical / High / Medium / Low
-5. **Output** as structured table (see format below)
+5. **Output** the table below
 6. **Summarize** total scenario count by severity
-
-### Iterative Mode (iterations or saturation)
-
-Iterative mode runs the loop described in `references/saturation-loop.md`. Summary:
-
-1. **Read** target and build understanding (actors, components, preconditions)
-2. **Filter dimensions** — same as one-shot
-3. **Loop** — each iteration:
-   a. Pick highest-priority unexplored dimension or combination
-   b. Generate **one** concrete situation (specific trigger, flow, expected outcome)
-   c. **Classify** against all previously kept situations:
-   - **New**: different dimension AND different trigger/precondition → KEEP
-   - **Variant**: same dimension but different actor, data, or outcome → KEEP
-   - **Duplicate**: same dimension + same trigger + same outcome → DISCARD
-   - **Out of scope / Low value** → DISCARD, note the reason
-     d. If kept: expand edge cases (what-if, boundary, interruption, ordering, missing data, stale data)
-     e. Add a row to the scenario log in your reply (you write no file for it)
-     f. Every 5 iterations: print progress summary (see format below)
-4. **Halt**:
-   - iterations N: stop after N iterations
-   - saturation: stop when 2 consecutive iterations produce zero `New` classifications
-5. **Output** final summary with coverage matrix and composite score
-
-**Force dimension rotation** after 3 consecutive same-dimension iterations. Rotate through:
-Dimension walk → Combination → Negation → Amplification → Persona shift → Temporal shift
-
-### Severity Criteria
 
 | Level        | Meaning                                                    |
 | ------------ | ---------------------------------------------------------- |
@@ -110,12 +52,6 @@ Dimension walk → Combination → Negation → Amplification → Persona shift 
 | **High**     | Feature broken for a subset of users, data inconsistency   |
 | **Medium**   | Degraded UX, recoverable error not surfaced to user        |
 | **Low**      | Minor visual glitch, non-blocking warning                  |
-
----
-
-## Output Format
-
-### One-Shot
 
 ```
 ## Scenario Report: AC-1 [target]
@@ -137,43 +73,7 @@ Dimensions skipped: [list + reason]
 - Total: N scenarios across X dimensions
 ```
 
-### Iterative — Progress Summary (every 5 iterations)
-
-Use the format in `references/saturation-loop.md`.
-
-### Iterative — Scenario Log (in the reply)
-
-```
-iteration	dimension	classification	severity	title	description	parent
-1	happy_path	new	-	Successful checkout	User completes standard checkout	-
-2	error_path	new	HIGH	Payment declined	Card rejected during checkout	-
-3	edge_case	duplicate	-	Empty cart	Already covered by #1	#1
-```
-
-### Iterative — Final Summary
-
-```
-## Scenario Report: AC-1 [target]  (iterations: N)
-
-[Full table of kept scenarios, grouped by dimension]
-
-### Coverage Matrix
-[dimension × severity grid]
-
-### Composite Score: NNN
-  scenarios_generated * 10  = X
-  edge_cases_found * 15     = X
-  dimensions_covered * 30   = X
-  unique_actors * 5         = X
-  high_severity * 3         = X
-
-### Saturation
-Halted: [after N iterations — bounded] | [saturation — 2 consecutive iterations with no novel cases]
-```
-
----
-
-## In verid's Loop
+## In verid's loop
 
 The scenarios are test targets, not tests. In verid one behaviour gets one failing test at a time
 (verid:tdd):
@@ -187,10 +87,3 @@ The scenarios are test targets, not tests. In verid one behaviour gets one faili
 A scenario becomes a test only when the AC asks for that behaviour, whatever its severity. A Critical
 or High scenario the AC does not cover goes to your report as a question for the plan, so nobody
 writes code no AC asks for.
-
----
-
-## Reference
-
-Saturation loop mechanics, novelty detection algorithm, and generation strategies:
-→ `references/saturation-loop.md`
