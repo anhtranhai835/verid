@@ -146,11 +146,9 @@ export async function lifecycle(
   if (event === "stop") {
     const held = manifest.drive === "auto" ? autoStop(p, project, paths, manifest) : null;
     if (held) return held;
-    // Each stop is held at most once: Claude Code sets stop_hook_active on the stop that follows
-    // a hold, which always goes through.
+    // stop_hook_active marks the allowed retry after a human-drive hold.
     if (p.stop_hook_active) return { exit: 0 };
-    // Evidence before claims: the last run failed, a test still cannot load, or no run shows the
-    // latest change, so the work is not done.
+    // Failed, unloadable or unverified changes still need passing evidence.
     if (tdd.state === "COOKING" || tdd.stub || tdd.dirty) {
       withLock(paths, () =>
         appendAudit(paths.audit, { event: "stop_blocked", session: p.session_id }),
@@ -160,9 +158,8 @@ export async function lifecycle(
       return { exit: 2, stderr: `${line(tdd)}\n${bilingual(why, {})}\n` };
     }
     if (mode === "remix") return { exit: 0 };
-    // The open module asks for a passing test per AC, and once they all pass, for an evaluation
-    // before the developer serves it. Either hold is once per conversation, shared, and state
-    // remembers which one, since a conversation may stop many times.
+    // Hold once per conversation for uncovered ACs or a missing evaluation.
+    // State remembers the shared hold across later Stop events.
     return withLock(paths, () => {
       const state = readState(paths);
       const plan = readPlan(
@@ -190,8 +187,7 @@ export async function lifecycle(
     });
   }
   if (manifest.drive === "auto") observe(project, paths, manifest);
-  // A new conversation is a new task, and new behaviour needs a failing test first: a finished
-  // cycle starts over in RAW. Resuming or compacting goes on with the same work.
+  // New conversations reopen PLATED; resumes and compaction keep the current cycle.
   let cycle: Cycle = tdd;
   if (
     !taskSessions(manifest) &&
@@ -216,8 +212,7 @@ export async function lifecycle(
     undefined,
     shared.host().singleWriter,
   );
-  // Session context is an index, not a second copy of the full menu or skill instructions.
-  // Keep its size independent of the number of modules, questions and audit findings.
+  // Session context stays an index, independent of module, question and audit counts.
   const next = standing.at(-1)!;
   const command = veridName();
   // The open module's log carries the last session's decisions into this one.
@@ -237,9 +232,8 @@ export async function lifecycle(
       line(cycle),
       ...taskContext,
       ...(command === "verid" ? [] : [`verid = ${command}`]),
-      // Which agent to dispatch for each role, read from the manifest now: the instruction block
-      // carries the skill guide and the workflow, but only cook and upgrade rewrite it. The mode's
-      // own walk-through is in no block.
+      // Resolve mapped agents now: only cook/upgrade refresh the block's role guide.
+      // The mode walk-through belongs to session context.
       ...(roles && !shared.host().singleWriter
         ? [
             `verid: roles ${Object.entries(agents)
@@ -309,12 +303,9 @@ export function kanbanSessionProblem(
 }
 
 /**
- * Stop in an auto drive the developer signed; null before that, for the human holds. The open
- * module is served if it is ready, then every stop is held with the next step until the drive is
- * done or stuck, or waits on the developer: for a module's merge, or for Git to allow its branch.
- * stop_hook_active does not matter here: a hold that finds the outcome unchanged counts as no
- * progress, and the LIMIT-th in a row leaves the drive stuck and lets the agent go. A wait is not
- * a hold and never counts.
+ * A signed auto drive closes ready modules and holds Stop until done or stuck.
+ * Unsigned drives use human holds. Unchanged holds count toward LIMIT even with
+ * stop_hook_active; waits do not count.
  */
 function autoStop(
   p: z.infer<typeof lifecycleSchema>,
@@ -387,18 +378,12 @@ function autoStop(
   });
 }
 
-/** Only stuck and finished drives let the agent stop. */
 const over = (phase: AutoPhase): boolean => ["stuck", "done"].includes(phase.kind);
 
-/** Whether there is a blocked.md to latch: the drive is signed and not blocked already. */
 export const toLatch = (state: State, blocked: string | null): blocked is string =>
   blocked !== null && state.auto.signed !== null && state.auto.blocked === null;
 
-/**
- * blocked.md latched into state the first time a hook sees it: deleting the file does not resume
- * the drive, only `verid order` does. The state as given when there is nothing to latch. Audits
- * the latch; the caller writes the state, under the lock.
- */
+/** Latch blocked.md until verid order resumes the drive; caller writes under the lock. */
 export function latchBlocked(
   paths: StatePaths,
   state: State,

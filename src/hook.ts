@@ -9,10 +9,7 @@ import { type ErrorCode } from "./core/errors.js";
 import { subagentStart, subagentStop } from "./hook/review.js";
 
 /**
- * Single entry for tool, prompt, session and subagent lifecycle hooks.
- * exit 0 = allow, exit 2 = block (reason on stderr). PreToolUse fails closed;
- * UserPromptSubmit lets the prompt through on error but never creates an override;
- * Stop, SubagentStop and SessionStart never block on error.
+ * PreToolUse fails closed; prompt errors allow without overrides; lifecycle errors never block.
  */
 const LENIENT = new Set(["Stop", "SubagentStart", "SubagentStop", "SessionStart"]);
 
@@ -81,10 +78,7 @@ async function handle(payload: unknown): Promise<Result> {
   }
 }
 
-/**
- * Messages follow the language chosen on this machine, once a valid payload names the project;
- * a payload it cannot read gets both languages.
- */
+/** A valid project chooses its language; unreadable payloads use both. */
 function inProject<P extends { cwd: string }>(payload: P): P {
   setLanguage(languageOf(shared.projectDir(payload.cwd)));
   return payload;

@@ -25,9 +25,7 @@ import { createHash } from "node:crypto";
 import { relative, join } from "node:path";
 
 /**
- * A subagent that wrote code or a test is held once, as Stop holds the main thread, until a run
- * shows its change; the mapped reviewer is never held, and its final report becomes the review.
- * In an auto drive the coder's stop that goes through also ends a round on the module it builds.
+ * Hold writers once for evidence, except reviewers; an auto coder's allowed stop ends a round.
  */
 const reviewJobKey = (p: z.infer<typeof lifecycleSchema>): string =>
   JSON.stringify([shared.host().id, p.session_id, p.agent_id]);
@@ -124,10 +122,7 @@ export async function subagentStop(p: z.infer<typeof lifecycleSchema>): Promise<
   });
 }
 
-/**
- * The rounds each AC has had once a coder's stop goes through, or null when no module is being
- * built. Audits the ACs that gained one; the caller writes the state, under the lock.
- */
+/** Audit per-AC coder rounds for the active module; caller writes under the lock. */
 function coderRounds(
   project: string,
   paths: StatePaths,
@@ -149,11 +144,8 @@ function coderRounds(
 }
 
 /**
- * The mapped reviewer's final report becomes a review. verid writes it, not the agent, under
- * .state where no agent reads or writes. A human drive reviews the open module. An auto drive
- * reviews its plan until the plan passes, then the module it is building; in any other phase
- * there is nothing to review. Remix has no module to review. The security reviewer's report is
- * recorded the same way, under its own name, and never reviews the plan.
+ * Save mapped reviewers' reports under .state. Human drives review the open module;
+ * auto drives review the plan first, then modules. Security never reviews plans; remix has none.
  */
 function recordReview(
   p: z.infer<typeof lifecycleSchema>,

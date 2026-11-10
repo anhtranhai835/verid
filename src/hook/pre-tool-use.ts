@@ -62,8 +62,7 @@ export async function preToolUse(p: z.infer<typeof preToolUseSchema>): Promise<R
   const adapted = shared.host().action(p);
   const action = adapted?.action ?? toAction(p);
   if ("invalid" in action) throw new VeridError("VERID_BURNT_PAYLOAD", { detail: action.invalid });
-  // The files this call touches beyond the action itself: what a Bash command plainly writes,
-  // or the paths an MCP tool names.
+  // Include explicit Bash writes and file paths named by MCP calls.
   const files: FileAction[] =
     adapted?.files ?? (action.kind === "bash" ? bashWrites(action.command, p.cwd) : mcpFiles(p));
   const writes = [...(action.kind === "file" ? [action] : []), ...files].filter(
@@ -98,9 +97,7 @@ export async function preToolUse(p: z.infer<typeof preToolUseSchema>): Promise<R
     taskProblem = problem;
   }
   const base = policyContext(project, p.cwd);
-  // A security review read the module as it was, dependency, config and .env files included, so
-  // any write in the project outside .verid/ needs another. A folder linked from outside the
-  // project is in it as written.
+  // Any project write outside .verid/ invalidates security review, including linked paths.
   const roots = [normalizePath(project), writtenPath(project)];
   const verid = dirname(base.manifestPath);
   const voidsSecurity = writes.some(
@@ -121,16 +118,14 @@ export async function preToolUse(p: z.infer<typeof preToolUseSchema>): Promise<R
         designMissing: designMissing(project, planManifest.mode),
       }
     : base;
-  // Built before the policy rules are known, but its errors wait: until a call gets past those
-  // rules, they decide what it is told.
+  // Defer TDD errors until policy rules have judged the call.
   const gate = await tddGate(p, project, paths, writes).catch((err: unknown) => ({
     judge: (): never => {
       throw err;
     },
     names: {},
   }));
-  // Dispatch now needs the manifest even without file writes. Defer errors until the
-  // existing policy has judged the call, preserving its denial priority.
+  // Dispatch reads the manifest even without writes, but policy denials retain priority.
   const advice: PolicyDecision[] = [];
   const spawn = shared.host().spawnTool !== undefined && p.tool_name === shared.host().spawnTool;
   const dispatch = await (async () => {
@@ -159,9 +154,8 @@ export async function preToolUse(p: z.infer<typeof preToolUseSchema>): Promise<R
   })().catch((err: unknown) => (): never => {
     throw err;
   });
-  // The policy rules on every action, then the role rules and the TDD gate on the writes, once
-  // the rules the developer has allowed are lifted. An override covers one rule, so a rule still
-  // denying needs its own. Undefined: nothing denies and no code or test is written.
+  // Policy precedes role and TDD gates; each still-denying rule needs its own override.
+  // Undefined means no denial and no code/test write.
   const judge = (lifted: ReadonlySet<RuleCode>): Deny | Judged | undefined => {
     const rules = [action, ...files].map((a) => decide(a, ctx, lifted));
     const policy = strictest(rules);
@@ -175,20 +169,13 @@ export async function preToolUse(p: z.infer<typeof preToolUseSchema>): Promise<R
         const known = decideKnownTool(adapted.unknownTool, []);
         if (known.kind === "deny") return known;
       }
-      if (adapted.invalidPatch)
-        return {
-          kind: "deny",
-          code: "VERID_BURNT_PATCH_UNSUPPORTED",
-          target: adapted.invalidPatch,
-          reason: "unreadable patch",
-        };
-      if (adapted.unsupported)
-        return {
-          kind: "deny",
-          code: "VERID_BURNT_SHELL_UNSUPPORTED",
-          target: adapted.unsupported,
-          reason: "unreadable shell",
-        };
+      for (const [field, code, reason] of [
+        ["invalidPatch", "VERID_BURNT_PATCH_UNSUPPORTED", "unreadable patch"],
+        ["unsupported", "VERID_BURNT_SHELL_UNSUPPORTED", "unreadable shell"],
+      ] as const) {
+        const target = adapted[field];
+        if (target) return { kind: "deny", code, target, reason };
+      }
     }
     const instructions = decideInstructions(p, writes, project, lifted);
     if (instructions.kind === "deny") return instructions;
@@ -217,29 +204,13 @@ export async function preToolUse(p: z.infer<typeof preToolUseSchema>): Promise<R
   });
   const first = judge(new Set());
   for (const w of writes) {
-    if (w.path === ctx.planPath) {
-      if (ctx.researchMissing)
-        advice.push({
-          kind: "deny",
-          code: "VERID_BURNT_PLAN_NO_RESEARCH",
-          target: w.display,
-          reason: "plan before research",
-        });
-      if (ctx.specMissing)
-        advice.push({
-          kind: "deny",
-          code: "VERID_BURNT_PLAN_NO_SPEC",
-          target: w.display,
-          reason: "plan before spec",
-        });
-      if (ctx.designMissing)
-        advice.push({
-          kind: "deny",
-          code: "VERID_BURNT_PLAN_NO_DESIGN",
-          target: w.display,
-          reason: "plan before design",
-        });
-    }
+    if (w.path !== ctx.planPath) continue;
+    for (const [missing, code, reason] of [
+      ["researchMissing", "VERID_BURNT_PLAN_NO_RESEARCH", "plan before research"],
+      ["specMissing", "VERID_BURNT_PLAN_NO_SPEC", "plan before spec"],
+      ["designMissing", "VERID_BURNT_PLAN_NO_DESIGN", "plan before design"],
+    ] as const)
+      if (ctx[missing]) advice.push({ kind: "deny", code, target: w.display, reason });
   }
   if (writes.length && (first === undefined || "write" in first)) {
     const manifest = await loadManifest(project);
@@ -327,10 +298,7 @@ interface Who {
 const ANYONE: Who = { writer: "main", split: false };
 
 interface Gate {
-  /**
-   * The role rules and the TDD gate on the writes, once the `lifted` rules no longer deny: the
-   * harshest decision, or undefined when none denies and no code or test is written.
-   */
+  /** Judge writes after overrides; undefined means no denial and no code/test write. */
   judge: (lifted: ReadonlySet<RuleCode>) => Judged | undefined;
   /** Who made the call and who holds each role, for the role rules' messages. */
   names: Record<string, string>;
@@ -343,13 +311,12 @@ async function tddGate(
   writes: FileAction[],
 ): Promise<Gate> {
   const state = readState(paths); // no usable state → nothing is allowed
-  // The TDD gate needs the manifest only for writes; no manifest = Phase 0 behaviour.
+  // The TDD gate reads the manifest only for writes; no manifest means no gate.
   const manifest = writes.length > 0 ? await loadManifest(project) : null;
   if (!manifest) return { judge: () => undefined, names: {} };
   const { real, written } = tddLayouts(project, manifest);
-  // Production code waits for an open module: approved, not served, its section unchanged since.
-  // Remix has no plan. An auto drive opens its modules itself, in plan order, and is stuck when it
-  // cannot go on without the developer.
+  // Code needs an approved, unserved, unchanged module. Remix has no plan; auto follows
+  // plan order and gets stuck when it needs the developer.
   const facts =
     manifest.drive === "auto"
       ? autoFactsOf(project, state, manifest.iterations !== undefined, planned(manifest))
@@ -397,8 +364,7 @@ async function tddGate(
         );
       const planLifted =
         lifted.has("VERID_BURNT_PLAN_NOT_APPROVED") || lifted.has("VERID_BURNT_AUTO_NO_MODULE");
-      // Judged again with the lock off, not passed(): a test the auto lock denied still meets the
-      // frozen cycle, and one that reopens it still does.
+      // Rejudge without the auto lock so frozen-test and reopen rules still apply.
       const unlocked = lock !== null && lifted.has(lock);
       const again = planLifted || unlocked || writes.some(roleLifted);
       const base = again
@@ -415,7 +381,6 @@ async function tddGate(
   };
 }
 
-/** The agent type seen (main for the main thread) and the mapped tester and coder, or —. */
 function roleNames(
   agentId: string | undefined,
   agentType: string | undefined,

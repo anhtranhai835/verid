@@ -43,10 +43,7 @@ export interface CycleEvent {
   tool: string;
   target: string;
 }
-/**
- * `reopen`: a test changed or a new task began; `written`: production code or a test changed;
- * `writer`: the subagent that wrote it, held at its stop until a run shows the change.
- */
+/** Reopen RAW, mark changed code/tests, and remember writers until a verifying run. */
 export interface Move {
   reopen: boolean;
   written: boolean;
@@ -57,11 +54,7 @@ export function move(paths: StatePaths, event: CycleEvent, change: Move): void {
   withLock(paths, () => writeState(paths, moved(paths, readState(paths), event, change)));
 }
 
-/**
- * rev moves on so a `verid taste` already running cannot count as evidence for what changed.
- * Written files need a run before the agent stops; a changed test must be watched failing, so the
- * cycle goes (or stays) RAW.
- */
+/** Bump rev to invalidate in-flight runs; changed tests reopen RAW and writes need verification. */
 export function moved(paths: StatePaths, state: State, event: CycleEvent, change: Move): State {
   // Audit only real changes of state: test writes in RAW are routine.
   if (change.reopen && state.tdd.state !== "RAW")
@@ -128,10 +121,7 @@ export function loggedModule(
   return phase.kind === "module" ? phase.view.name : undefined;
 }
 
-/**
- * What `verid halt` recorded; null when verid is not halted. Unreadable state is not a halt:
- * every later rule reads state again and keeps its own answer to that.
- */
+/** Unreadable state is not a halt; later rules still judge its errors. */
 export function haltedBy(paths: ReturnType<typeof statePaths>): { reason: string } | null {
   try {
     return readState(paths).halted;
