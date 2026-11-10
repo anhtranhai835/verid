@@ -1,6 +1,6 @@
 import { type Result, hostFor } from "./adapters/host.js";
 import * as shared from "./hook/shared.js";
-import { setLanguage, bilingual, veridName } from "./adapters/i18n.js";
+import { setLanguage } from "./adapters/i18n.js";
 import {
   preToolUseSchema,
   userPromptSchema,
@@ -15,6 +15,13 @@ import {
   inputHash,
 } from "./adapters/claude-code.js";
 import {
+  userPrompt,
+  lifecycle,
+  kanbanSessionProblem,
+  toLatch,
+  latchBlocked,
+} from "./hook/lifecycle.js";
+import {
   VeridError,
   languageOf,
   statePaths,
@@ -26,7 +33,7 @@ import {
 import type * as z from "zod/mini";
 import { appendAudit } from "./adapters/audit-log.js";
 import { loadManifest, tddLayouts } from "./adapters/manifest.js";
-import { taskSessions, planned, type Roles, type Manifest } from "./core/manifest.js";
+import { taskSessions, planned, type Roles } from "./core/manifest.js";
 import { isUnder, decide } from "./core/policy.js";
 import {
   fileRole,
@@ -34,48 +41,22 @@ import {
   decideTdd,
   type TddDecision,
   TDD_STRICTNESS,
-  type Cycle,
 } from "./core/tdd.js";
 import { relative, dirname, resolve, isAbsolute } from "node:path";
-import { kanbanSessionProblem, statusLine, observe, advance, tryClose } from "./hook/lifecycle.js";
-import {
-  researchMissing,
-  specMissing,
-  designMissing,
-  autoFactsOf,
-  menuLines,
-  peekLines,
-  readPlan,
-  servedSections,
-  planViews,
-} from "./adapters/plan-file.js";
+import { researchMissing, specMissing, designMissing, autoFactsOf } from "./adapters/plan-file.js";
 import {
   type PolicyDecision,
   type RuleCode,
   isOverridable,
-  ERROR_CODES,
   type ErrorCode,
 } from "./core/errors.js";
 import { decideDispatch, decideAgentContext, decideKnownTool } from "./core/dispatch.js";
 import { decideInstructions } from "./adapters/instruction-protection.js";
 import { matchesGlob } from "./core/glob.js";
 import { roleAdvice, type Writer, ROLE_DOCUMENTS } from "./core/roles.js";
-import { consumeOverride, recordDenial, parseVeridPrompt, handlePrompt } from "./core/override.js";
-import {
-  autoPhase,
-  progressKey,
-  stopHolds,
-  LIMIT,
-  autoNextStep,
-  securityOf,
-  type AutoPhase,
-} from "./core/auto.js";
+import { consumeOverride, recordDenial } from "./core/override.js";
+import { autoPhase } from "./core/auto.js";
 import { subagentStart, subagentStop } from "./hook/review.js";
-import { claimTaskSession } from "./core/kanban.js";
-import { openModule } from "./core/plan.js";
-import { auditWarnings, auditLines } from "./adapters/rule-audit.js";
-import { type State } from "./core/state.js";
-import { randomInt } from "node:crypto";
 
 /**
  * Single entry for tool, prompt, session and subagent lifecycle hooks.
@@ -132,7 +113,17 @@ async function handle(payload: unknown): Promise<Result> {
     case "SubagentStop":
     case "SessionStart": {
       const p = inProject(shared.parse(lifecycleSchema, payload));
-      const result = await lifecycle(p);
+      const project = shared.projectDir(p.cwd);
+      const paths = statePaths(project);
+      // Halted, no agent is held back and none is told to go on: the developer has the wheel.
+      const halted = shared.haltedBy(paths);
+      if (halted)
+        return p.hook_event_name === "SessionStart"
+          ? { exit: 0, stdout: shared.haltedLines(halted) }
+          : { exit: 0 };
+      if (p.hook_event_name === "SubagentStart") return subagentStart(p);
+      if (p.hook_event_name === "SubagentStop") return subagentStop(p);
+      const result = await lifecycle(p, project, paths);
       return result;
     }
     default:
@@ -560,344 +551,6 @@ function strictest(decisions: PolicyDecision[]): PolicyDecision {
   );
 }
 
-async function userPrompt(p: z.infer<typeof userPromptSchema>): Promise<Result> {
-  // A host with no attended-input signal (Codex) never opens an exception from a prompt, and
-  // peek and menu stay in the terminal. Every prompt still gets the research reminder.
-  const attended = shared.host().attended();
-  const cmd = attended === null ? { kind: "none" as const } : parseVeridPrompt(p.prompt);
-  const project = shared.projectDir(p.cwd);
-  const paths = statePaths(project);
-  if (cmd.kind === "none") {
-    const halted = shared.haltedBy(paths);
-    if (halted) return { exit: 0, stdout: shared.haltedLines(halted) };
-    // Until research.md says what the project is, every prompt reminds the agent to ask first.
-    const manifest = await loadManifest(project);
-    if (!manifest || !researchMissing(project, manifest.mode)) return { exit: 0 };
-    const reminder = [
-      `verid: mode ${manifest.mode} · research missing`,
-      bilingual("menu.research", {}),
-    ];
-    return { exit: 0, stdout: `${reminder.join("\n")}\n` };
-  }
-  if (cmd.kind === "peek" || cmd.kind === "menu") {
-    // Shown as a blocked prompt: stderr reaches the developer only, and the agent spends no turn.
-    const state = readState(paths);
-    const manifest = await loadManifest(project);
-    const lines =
-      cmd.kind === "menu" && manifest
-        ? menuLines(project, manifest.mode, state, manifest.roles, manifest.drive, manifest)
-        : peekLines(
-            project,
-            manifest?.mode ?? null,
-            state,
-            manifest?.roles,
-            manifest?.drive,
-            manifest ?? undefined,
-          );
-    return { exit: 2, stderr: `${lines.join("\n")}\n` };
-  }
-  return withLock(paths, () => {
-    const state = readState(paths);
-    const r = handlePrompt(state, cmd, {
-      session: p.session_id,
-      attended: attended === true,
-      agentId: p.agent_id,
-      now: new Date().toISOString(),
-      newCode: newCode(),
-    });
-    if (r.audit) appendAudit(paths.audit, r.audit);
-    if (r.state !== state) writeState(paths, r.state);
-    const o = r.outcome;
-    if (o.kind === "pass") return { exit: 0 };
-    // block: stderr reaches the developer only; context: stdout is added to the agent's context.
-    // Only an error has a code to show; the risk warning is a message.
-    const tag = (ERROR_CODES as readonly string[]).includes(o.key) ? `verid [${o.key}]\n` : "";
-    return o.kind === "block"
-      ? { exit: 2, stderr: `${tag}${bilingual(o.key, o.params)}\n` }
-      : { exit: 0, stdout: `${bilingual(o.key, o.params)}\n` };
-  });
-}
-
-async function lifecycle(p: z.infer<typeof lifecycleSchema>): Promise<Result> {
-  const project = shared.projectDir(p.cwd);
-  const paths = statePaths(project);
-  // Halted, no agent is held back and none is told to go on: the developer has the wheel.
-  const halted = shared.haltedBy(paths);
-  if (halted)
-    return p.hook_event_name === "SessionStart"
-      ? { exit: 0, stdout: shared.haltedLines(halted) }
-      : { exit: 0 };
-  if (p.hook_event_name === "SubagentStart") return subagentStart(p);
-  if (p.hook_event_name === "SubagentStop") return subagentStop(p);
-  const { tdd } = readState(paths);
-  const event = p.hook_event_name === "Stop" ? "stop" : "session_start";
-  withLock(paths, () => appendAudit(paths.audit, { event, session: p.session_id }));
-  const manifest = await loadManifest(project);
-  if (!manifest) return { exit: 0 };
-  let taskContext: string[] = [];
-  if (planned(manifest))
-    taskContext.push(
-      "verid: module dossiers in .verid/artifacts/03-modules/<name> are required before order. Read .verid/workflow.md; use verid board for priorities.",
-    );
-  if (planned(manifest) && manifest.drive === "auto")
-    taskContext.push(
-      "verid: AI drive follows the developer's priority queue in one session. Finish the current task before moving to the next.",
-    );
-  if (taskSessions(manifest)) {
-    const key = shared.sessionKey(p.session_id);
-    const kanban = withLock(paths, () => {
-      const state = readState(paths);
-      const kanban =
-        p.hook_event_name === "SessionStart"
-          ? claimTaskSession(state.kanban, key, p.source === "startup")
-          : state.kanban;
-      if (kanban !== state.kanban) writeState(paths, { ...state, kanban });
-      return kanban;
-    });
-    const problem = kanbanSessionProblem(project, { ...readState(paths), kanban }, key, manifest);
-    taskContext.push(
-      problem
-        ? `verid: ${problem}`
-        : `verid: task ${kanban.active!.module}; ONE TASK PER SESSION. Read its plan section and log; TDD → review → developer serve → STOP. Never start another task in this session.`,
-    );
-    if (p.hook_event_name === "Stop" && problem) return { exit: 0 };
-  }
-  const { mode } = manifest;
-  const line = (cycle: Cycle) => statusLine(mode, cycle, tdd.last_run);
-  if (event === "stop") {
-    const held = manifest.drive === "auto" ? autoStop(p, project, paths, manifest) : null;
-    if (held) return held;
-    // Each stop is held at most once: Claude Code sets stop_hook_active on the stop that follows
-    // a hold, which always goes through.
-    if (p.stop_hook_active) return { exit: 0 };
-    // Evidence before claims: the last run failed, a test still cannot load, or no run shows the
-    // latest change, so the work is not done.
-    if (tdd.state === "COOKING" || tdd.stub || tdd.dirty) {
-      withLock(paths, () =>
-        appendAudit(paths.audit, { event: "stop_blocked", session: p.session_id }),
-      );
-      const why =
-        tdd.state === "COOKING" ? "stop.green" : tdd.stub ? "stop.stub" : "stop.unverified";
-      return { exit: 2, stderr: `${line(tdd)}\n${bilingual(why, {})}\n` };
-    }
-    if (mode === "remix") return { exit: 0 };
-    // The open module asks for a passing test per AC, and once they all pass, for an evaluation
-    // before the developer serves it. Either hold is once per conversation, shared, and state
-    // remembers which one, since a conversation may stop many times.
-    return withLock(paths, () => {
-      const state = readState(paths);
-      const plan = readPlan(
-        project,
-        manifest.iterations !== undefined,
-        planned(manifest),
-        servedSections(state),
-      );
-      const views = plan?.ok ? planViews(project, plan, state) : [];
-      const open = openModule(views);
-      if (!open || state.ac_stop_session === p.session_id) return { exit: 0 };
-      const cooking = open.phase === "cooking";
-      // Audit first: if it fails, state is untouched and the hold is not remembered.
-      appendAudit(paths.audit, {
-        event: "stop_blocked",
-        session: p.session_id,
-        reason: cooking ? "uncovered" : "evaluate",
-        module: open.name,
-      });
-      writeState(paths, { ...state, ac_stop_session: p.session_id });
-      const why = cooking
-        ? bilingual("stop.uncovered", { acs: open.uncovered.join(", ") })
-        : bilingual("stop.evaluate", { module: open.name, ...shared.mappedNames(manifest.roles) });
-      return { exit: 2, stderr: `${line(tdd)}\n${why}\n` };
-    });
-  }
-  if (manifest.drive === "auto") observe(project, paths, manifest);
-  // A new conversation is a new task, and new behaviour needs a failing test first: a finished
-  // cycle starts over in RAW. Resuming or compacting goes on with the same work.
-  let cycle: Cycle = tdd;
-  if (
-    !taskSessions(manifest) &&
-    tdd.state === "PLATED" &&
-    (p.source === "startup" || p.source === "clear")
-  ) {
-    const event = { session: p.session_id, tool: "SessionStart", target: p.source };
-    shared.move(paths, event, { reopen: true, written: false });
-    cycle = { state: "RAW", stub: false };
-  }
-  // SessionStart stdout goes into the agent's context: with the gate on, the agent learns the
-  // cycle before its first write rather than from its first denial.
-  const { roles } = manifest;
-  const agents = shared.mappedNames(roles);
-  const standing = menuLines(
-    project,
-    mode,
-    readState(paths),
-    roles,
-    manifest.drive,
-    manifest,
-    undefined,
-    shared.host().singleWriter,
-  );
-  // Session context is an index, not a second copy of the full menu or skill instructions.
-  // Keep its size independent of the number of modules, questions and audit findings.
-  const next = standing.at(-1)!;
-  const command = veridName();
-  // The open module's log carries the last session's decisions into this one.
-  const open = shared.loggedModule(project, manifest, readState(paths));
-  const log = open ? [`verid: log .verid/log/${open}.md`, bilingual("session.log", {})] : [];
-  if (p.source === "resume") {
-    const alias = command !== "verid" && next.includes(command) ? `verid = ${command}\n` : "";
-    const logged = log.map((text) => `${text}\n`).join("");
-    return {
-      exit: 0,
-      stdout: `${line(cycle)}\n${alias}${taskContext.map((text) => `${text}\n`).join("")}${logged}${next.replaceAll(command, "verid")}\n`,
-    };
-  }
-  return {
-    exit: 0,
-    stdout: [
-      line(cycle),
-      ...taskContext,
-      ...(command === "verid" ? [] : [`verid = ${command}`]),
-      // Which agent to dispatch for each role, read from the manifest now: the instruction block
-      // carries the skill guide and the workflow, but only cook and upgrade rewrite it. The mode's
-      // own walk-through is in no block.
-      ...(roles && !shared.host().singleWriter
-        ? [
-            `verid: roles ${Object.entries(agents)
-              .filter(
-                ([role]) =>
-                  roles[role as keyof Roles] || ["reviewer", "tester", "coder"].includes(role),
-              )
-              .map(([role, names]) => `${role} ${names}`)
-              .join(" · ")}`,
-          ]
-        : []),
-      bilingual(`mode.${mode}`, {}),
-      ...(shared.host().singleWriter
-        ? [
-            bilingual(
-              shared.host().id === "antigravity"
-                ? "session.single_writer_antigravity"
-                : "session.single_writer",
-              { reviewer: agents.reviewer, security: agents.security },
-            ),
-          ]
-        : []),
-      ...(manifest.drive === "auto" ? [bilingual("drive.auto", {})] : []),
-      standing[0]!,
-      ...standing.filter((text) => /(?:^|\n)  iteration /.test(text)),
-      bilingual("session.menu", {}),
-      ...log,
-      next,
-      "",
-    ]
-      .map((text) => (text.startsWith("verid = ") ? text : text.replaceAll(command, "verid")))
-      .join("\n"),
-  };
-}
-
-/**
- * Stop in an auto drive the developer signed; null before that, for the human holds. The open
- * module is served if it is ready, then every stop is held with the next step until the drive is
- * done or stuck, or waits on the developer: for a module's merge, or for Git to allow its branch.
- * stop_hook_active does not matter here: a hold that finds the outcome unchanged counts as no
- * progress, and the LIMIT-th in a row leaves the drive stuck and lets the agent go. A wait is not
- * a hold and never counts.
- */
-function autoStop(
-  p: z.infer<typeof lifecycleSchema>,
-  project: string,
-  paths: StatePaths,
-  manifest: Manifest,
-): Result | null {
-  return withLock(paths, () => {
-    let state = readState(paths);
-    if (state.auto.signed === null) return null;
-    let facts = autoFactsOf(project, state, manifest.iterations !== undefined, planned(manifest));
-    const session = p.session_id;
-    state = latchBlocked(paths, state, facts.blockedFile, session);
-    state = advance(project, paths, state, { ...facts, auto: state.auto }, manifest);
-    facts = { ...facts, auto: state.auto };
-    const before = autoPhase(facts);
-    const warnings = auditWarnings(project, manifest, state);
-    const tried = tryClose(project, paths, state, facts, manifest, warnings);
-    const closed = tried !== state && before.kind === "module" ? before.view.name : null;
-    state = advance(
-      project,
-      paths,
-      tried,
-      { ...facts, auto: tried.auto, approvals: tried.modules },
-      manifest,
-    );
-    facts = { ...facts, auto: state.auto, approvals: state.modules };
-    let phase = autoPhase(facts);
-
-    if (!over(phase)) {
-      const served = Object.entries(state.modules)
-        .filter(([, a]) => a.served_at !== null)
-        .map(([m]) => m);
-      const key = progressKey({
-        tdd: state.tdd,
-        planHash: facts.planHash,
-        auto: state.auto,
-        served,
-        head: null,
-      });
-      state = { ...state, auto: { ...state.auto, ...stopHolds(state.auto, key) } };
-      // Audit first, on either path: if it fails, state is untouched and the hold is not counted.
-      if (state.auto.stop_holds >= LIMIT) {
-        appendAudit(paths.audit, { event: "auto_stuck", session, reason: "no_progress" });
-        phase = autoPhase({ ...facts, auto: state.auto });
-      }
-    }
-    const step = autoNextStep(
-      phase,
-      facts.researchHash !== null,
-      facts.designHash !== null,
-      state.review,
-      securityOf(state, manifest.roles),
-      facts.specHash !== null,
-    );
-    const lines = [
-      statusLine(manifest.mode, state.tdd, state.tdd.last_run),
-      ...auditLines(project, manifest, state, false, warnings),
-      ...(closed === null ? [] : [bilingual("auto.closed", { module: closed })]),
-      bilingual(step.key, { ...shared.mappedNames(manifest.roles), ...step.params }),
-    ].join("\n");
-    // The agent may stop, and the developer sees why.
-    if (over(phase)) {
-      writeState(paths, state);
-      return { exit: 0, stdout: JSON.stringify({ systemMessage: lines }) };
-    }
-    appendAudit(paths.audit, { event: "stop_blocked", session, reason: "auto", step: step.key });
-    writeState(paths, state);
-    return { exit: 2, stderr: `${lines}\n` };
-  });
-}
-
-/** Only stuck and finished drives let the agent stop. */
-const over = (phase: AutoPhase): boolean => ["stuck", "done"].includes(phase.kind);
-
-/** Whether there is a blocked.md to latch: the drive is signed and not blocked already. */
-const toLatch = (state: State, blocked: string | null): blocked is string =>
-  blocked !== null && state.auto.signed !== null && state.auto.blocked === null;
-
-/**
- * blocked.md latched into state the first time a hook sees it: deleting the file does not resume
- * the drive, only `verid order` does. The state as given when there is nothing to latch. Audits
- * the latch; the caller writes the state, under the lock.
- */
-function latchBlocked(
-  paths: StatePaths,
-  state: State,
-  blocked: string | null,
-  session: string,
-): State {
-  if (!toLatch(state, blocked)) return state;
-  appendAudit(paths.audit, { event: "auto_stuck", session, reason: "blocked" });
-  return { ...state, auto: { ...state.auto, blocked } };
-}
-
 function onError(event: string | undefined, err: unknown): Result {
   const code: ErrorCode = err instanceof VeridError ? err.code : "VERID_BURNT_INTERNAL";
   const params =
@@ -908,10 +561,4 @@ function onError(event: string | undefined, err: unknown): Result {
   if (event && LENIENT.has(event)) return { exit: 0, stderr: `verid [${code}]\n` };
   if (event === "UserPromptSubmit") return shared.host().promptFailed(code);
   return shared.deny(code, params);
-}
-
-// No 0/O/1/I so the code is easy to read back and type.
-const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-function newCode(): string {
-  return Array.from({ length: 6 }, () => CODE_ALPHABET[randomInt(CODE_ALPHABET.length)]).join("");
 }
