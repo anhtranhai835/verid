@@ -1,29 +1,20 @@
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
-import { homedir, tmpdir } from "node:os";
+import { tempProject } from "../support/project.js";
+import { mkdirSync, symlinkSync } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { runHook } from "./in-process.js";
+import { describe, expect, it } from "vitest";
 
 let project: string;
-beforeEach(() => {
-  project = mkdtempSync(join(tmpdir(), "verid-skill-protection-"));
-  mkdirSync(join(project, ".verid/.state"), { recursive: true });
-  writeFileSync(join(project, ".verid/.state/state.json"), '{"schemaVersion":1}');
+const t = tempProject("verid-skill-protection-", {
+  state: '{"schemaVersion":1}',
+  session: "skill-protection",
+  cwd: () => project,
+  bind: (p) => {
+    project = p.root;
+  },
 });
-afterEach(() => rmSync(project, { recursive: true, force: true }));
+const { guardHook: hook } = t;
 
-// In process: hook.e2e proves the built hook runs the same code.
-async function hook(payload: Record<string, unknown>, attended = false, configDir?: string) {
-  const r = await runHook(
-    JSON.stringify({ session_id: "skill-protection", cwd: project, ...payload }),
-    {
-      CLAUDE_PROJECT_DIR: project,
-      ...(configDir ? { CLAUDE_CONFIG_DIR: configDir } : {}),
-      ...(attended ? { CLAUDE_CODE_SESSION_ATTENDED: "1" } : {}),
-    },
-  );
-  return { code: r.code, stderr: r.stderr };
-}
 const call = (tool_name: string, tool_input: Record<string, unknown>) => ({
   hook_event_name: "PreToolUse",
   tool_name,
