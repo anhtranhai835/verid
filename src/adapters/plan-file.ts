@@ -462,6 +462,7 @@ function autoStanding(
     state.review,
     securityOf(state, roles),
     facts.specHash !== null,
+    state.auto.module_reviews,
   );
   const step = bilingual(next.key, { ...mappedAgents(roles, singleWriter), ...next.params });
   return { facts, phase, step };

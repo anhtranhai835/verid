@@ -8,6 +8,7 @@ import {
   closeReady,
   coderRoundsAfter,
   gitCleanOf,
+  LIMIT,
   parseVerdict,
   progressKey,
   stopHolds,
@@ -16,6 +17,7 @@ import {
 } from "../../src/core/auto.js";
 import { parsePlan, type Approval, type ModuleView, type PlanModule } from "../../src/core/plan.js";
 import { FRESH_AUTO, type State } from "../../src/core/state.js";
+import { t } from "../../src/adapters/i18n.js";
 
 const modules = (text: string): PlanModule[] => {
   const r = parsePlan(text);
@@ -525,5 +527,19 @@ describe("the coder's rounds, closing a module, progress, and the next step", ()
       "architecture, cooking": "menu.cook calc",
       done: "auto.done",
     });
+  });
+
+  it("asks for the read-only debugger's root cause from the second failed review, same limit", () => {
+    const failedReview = { ...passReview, verdict: "fail" as const };
+    const at = (failures: number) =>
+      autoNextStep({ kind: "module", view }, true, true, failedReview, undefined, true, failures)
+        .key;
+    expect([at(0), at(1), at(2)]).toEqual(["auto.fix", "auto.fix", "auto.fix_debug"]);
+    for (const lang of ["en", "vi"] as const) {
+      const text = t(lang, "auto.fix_debug", {});
+      for (const word of ["debugger", "verid:build"])
+        expect(text, `${lang}: ${word}`).toContain(word);
+    }
+    expect(LIMIT).toBe(3);
   });
 });

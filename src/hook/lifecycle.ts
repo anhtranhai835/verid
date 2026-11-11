@@ -385,6 +385,7 @@ function autoStop(
       state.review,
       securityOf(state, manifest.roles),
       facts.specHash !== null,
+      state.auto.module_reviews,
     );
     const lines = [
       shared.statusLine(manifest.mode, state.tdd, state.tdd.last_run),

@@ -300,7 +300,8 @@ export function stopHolds(auto: AutoState, key: string): { stop_holds: number; p
 /**
  * The one thing to do next. Role names ({tester}, {coder}, {reviewer}) are not params here: the
  * hook adds them where the project maps agents. An architecture check that has not passed on the
- * files as they are comes before the review, since fixing it voids a review.
+ * files as they are comes before the review, since fixing it voids a review. From the second failed
+ * review of the module, the fix starts from the read-only debugger's root cause; the limit stays.
  */
 export function autoNextStep(
   phase: AutoPhase,
@@ -309,6 +310,7 @@ export function autoNextStep(
   review: State["review"],
   security?: State["security"],
   hasSpec = true,
+  failedReviews = 0,
 ): { key: MessageKey; params: Record<string, string> } {
   switch (phase.kind) {
     case "unsigned":
@@ -332,7 +334,11 @@ export function autoNextStep(
     case "module": {
       const { name, phase: at } = phase.view;
       // A failed review stands until the next write, which is the start of its fix.
-      if (failed(review, name)) return { key: "auto.fix", params: { module: name } };
+      if (failed(review, name))
+        return {
+          key: failedReviews >= 2 ? "auto.fix_debug" : "auto.fix",
+          params: { module: name },
+        };
       if (security !== undefined && failed(security, name))
         return { key: "auto.security_fix", params: { module: name } };
       if (at === "cooking") return { key: "menu.cook", params: { module: name } };
