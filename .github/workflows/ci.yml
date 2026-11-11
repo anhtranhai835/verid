@@ -2,8 +2,10 @@
 # payloads in test/e2e/hook.e2e.test.ts come from.
 name: CI
 
+# Branches run through their pull request; pushes run only on main, so a PR is tested once.
 on:
   push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
