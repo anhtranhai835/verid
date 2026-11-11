@@ -1,15 +1,13 @@
+import { tempProject, CLI, HOOK } from "../support/project.js";
 import { readyModulePlan } from "./helpers.js";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { parse, stringify } from "yaml";
 import { developerEnv } from "./helpers.js";
 
-const root = join(import.meta.dirname, "..", "..");
-const CLI = join(root, "dist", "cli.js");
-const HOOK = join(root, "dist", "hook.js");
 const FLAGS = [
   "--iterations",
   "--duration",
@@ -22,14 +20,18 @@ const FLAGS = [
 let fixture: string;
 let project: string;
 let clock: string;
-beforeEach(() => {
-  fixture = mkdtempSync(join(tmpdir(), "verid-iterations-e2e-"));
-  project = join(fixture, "project");
-  mkdirSync(project);
-  clock = join(fixture, "clock.cjs");
-  freezeClock("2026-10-24T12:00:00.000Z");
+const t = tempProject("verid-iterations-e2e-", {
+  subdir: "project",
+  bind: (p) => {
+    fixture = p.root;
+    project = join(fixture, "project");
+    clock = join(fixture, "clock.cjs");
+  },
+  setup: () => {
+    freezeClock("2026-10-24T12:00:00.000Z");
+  },
 });
-afterEach(() => rmSync(fixture, { recursive: true, force: true }));
+const { manifestText: manifest } = t;
 
 function freezeClock(instant: string) {
   writeFileSync(
@@ -77,7 +79,7 @@ const gitMain = () => {
     expect(r.status, r.stderr).toBe(0);
   }
 };
-const manifest = () => readFileSync(join(project, ".verid", "manifest.yaml"), "utf8");
+
 const put = (name: string, text: string) => {
   if (name === "plan.md") {
     text = readyModulePlan(project, text);
