@@ -1,10 +1,9 @@
-import { mkdtempSync, readFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { tempDirs } from "../support/project.js";
+const project = tempDirs("verid-chat-", "suite")();
+import { readFileSync } from "node:fs";
+
 import { describe, expect, it } from "vitest";
 import { CLAUDE_ALLOW, launchFor, readEvent, windowsArgs } from "../../src/adapters/board-chat.js";
-
-const project = mkdtempSync(join(tmpdir(), "verid-chat-"));
 
 describe("board chat launches", () => {
   it("sends Claude Code's prompt on stdin with narrow settings and resumes by session ID", () => {
