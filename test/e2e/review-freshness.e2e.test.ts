@@ -164,3 +164,15 @@ it("rejects an auto-plan review when the plan changes while it is being read", a
   await stop("codex", "verid_reviewer", "new-plan");
   expect(state().auto.plan_sha256).toMatch(/^[a-f0-9]{64}$/);
 });
+
+it.each(cases)(
+  "invalidates %s %s when design inputs change after a compact packet is written",
+  async (provider, kind, type) => {
+    const packet = await cli("menu", "--commits", "--file", "--compact");
+    expect(packet.code, packet.stderr).toBe(0);
+    await start(provider, type);
+    put(".verid/design.md", "# Changed after the packet\n");
+    await stop(provider, type);
+    expect(report(kind)).toBeNull();
+  },
+);

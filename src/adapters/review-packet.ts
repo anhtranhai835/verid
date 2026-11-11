@@ -3,7 +3,7 @@ import { lstatSync, mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs
 import { join } from "node:path";
 
 /** CLI-owned evidence outside private state, readable by reviewers. No caller-chosen paths. */
-export function writeReviewPacket(project: string, text: string): string {
+export function writeReviewPacket(project: string, text: string, history?: string): string {
   const verid = join(project, ".verid");
   const directory = join(verid, "review");
   for (const path of [verid, directory]) {
@@ -15,6 +15,7 @@ export function writeReviewPacket(project: string, text: string): string {
   for (const [name, content] of [
     [".gitignore", "*\n"],
     ["work.md", text],
+    ...(history === undefined ? [] : ([["history.md", history]] as const)),
   ] as const) {
     const target = join(directory, name);
     const stat = lstatSync(target, { throwIfNoEntry: false });

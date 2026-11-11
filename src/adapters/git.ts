@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { gitCleanAcross } from "../core/auto.js";
 import { resolveMain, type RepoFacts, type RootHistory } from "../core/git-convention.js";
@@ -437,4 +437,105 @@ export function workLog(project: string, work: Work): string[] {
   return text.length > LOG_LIMIT
     ? [`${text.slice(0, LOG_LIMIT)}`, "(cut: the work history is longer than verid prints)"]
     : lines;
+}
+
+/** Untracked files shown in full are cut after this many characters each. */
+const NEW_FILE_LIMIT = 20_000;
+
+/**
+ * The short form of `workLog`: per root a count of commits (sha and subject), a per-file stat, and
+ * one diff from the base to the working tree, so a file changed in several commits shows once. The
+ * per-commit history stays in `workLog` for a file of its own. When the diff passes `limit`, whole
+ * files are left out and named, not cut mid-file. Secret files and verid's state are left out.
+ */
+export function compactWorkLog(project: string, work: Work, limit = LOG_LIMIT): string[] {
+  const lines: string[] = [];
+  for (const [repo, { main, base }] of Object.entries(work)) {
+    const exclusions = [
+      ...UNSHOWN,
+      ...(repo === ".verid" ? [":(exclude,glob,icase)review/**"] : []),
+    ];
+    const folder = resolve(project, ...repo.split("/"));
+    const head = runGit(folder, ["rev-parse", "--verify", "-q", "HEAD"]);
+    const branch = runGit(folder, ["symbolic-ref", "--quiet", "--short", "HEAD"]);
+    lines.push(
+      `== repo ${repo} · main ${main} · base ${base.slice(0, 12)} · HEAD ${ok(head) ? head.stdout.trim().slice(0, 12) : "?"} (${ok(branch) ? branch.stdout.trim() : "detached"})`,
+    );
+    const log = runGit(folder, [
+      "log",
+      "--reverse",
+      `--max-count=${MAX_COMMITS}`,
+      "--format=%h %s",
+      `${base}..HEAD`,
+    ]);
+    const commitLines = ok(log) ? log.stdout.split("\n").filter(Boolean) : [];
+    lines.push(
+      ok(log) ? `commits  ${commitLines.length}` : `(history unreadable: ${failure(log)})`,
+      ...commitLines.map((line) => `  ${line}`),
+    );
+    const common = ["--no-ext-diff", "--no-textconv", "-M", base, "--", ".", ...exclusions];
+    const status = runGit(folder, ["diff", "--name-status", ...common]);
+    const kinds = { A: 0, D: 0, R: 0, total: 0 };
+    for (const row of status.stdout.split("\n").filter(Boolean)) {
+      const kind = row[0] as "A" | "D" | "R" | string;
+      if (kind === "A" || kind === "D" || kind === "R") kinds[kind] += 1;
+      kinds.total += 1;
+    }
+    const added = runGit(folder, [
+      "ls-files",
+      "--others",
+      "--exclude-standard",
+      "-z",
+      "--",
+      ".",
+      ...exclusions,
+    ]);
+    const names = added.stdout.split("\0").filter((name) => name !== "" && !isSecretPath(name));
+    lines.push(
+      `files    ${kinds.total + names.length} changed, ${kinds.A + names.length} new, ${kinds.R} renamed, ${kinds.D} deleted`,
+    );
+    const stat = runGit(folder, ["diff", "--stat=120", ...common]);
+    if (stat.stdout.trim() !== "") lines.push("stat", stat.stdout.trimEnd());
+    const diff = runGit(folder, ["diff", ...common]);
+    // One chunk per file, in Git's order, then each untracked file as a new file.
+    const chunks = diff.stdout
+      .split(/^(?=diff --git )/m)
+      .filter((chunk) => chunk.trim() !== "")
+      .map((chunk) => ({
+        name: /^diff --git a\/(.*?) b\//.exec(chunk)?.[1] ?? "(unknown)",
+        text: chunk.trimEnd(),
+      }));
+    for (const name of names) {
+      let body = "";
+      try {
+        body = readFileSync(join(folder, ...name.split("/")), "utf8");
+      } catch {
+        body = "";
+      }
+      const shown = body.includes("\0")
+        ? "(binary file, content not shown)"
+        : body.slice(0, NEW_FILE_LIMIT) +
+          (body.length > NEW_FILE_LIMIT ? "\n(cut: read the file at its path)" : "");
+      chunks.push({
+        name,
+        text: [`new file ${name}`, ...shown.split("\n").map((l) => `+${l}`)].join("\n"),
+      });
+    }
+    lines.push("diff     base..working tree");
+    let used = 0;
+    const left: string[] = [];
+    for (const chunk of chunks) {
+      if (used + chunk.text.length > limit) left.push(chunk.name);
+      else {
+        used += chunk.text.length;
+        lines.push(chunk.text);
+      }
+    }
+    if (left.length > 0)
+      lines.push(
+        `(cut: no room for ${left.join(", ")}; read them at their paths, the per-commit diffs are in .verid/review/history.md)`,
+      );
+    lines.push("history  .verid/review/history.md");
+  }
+  return lines;
 }
