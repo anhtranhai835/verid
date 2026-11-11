@@ -498,3 +498,26 @@ it("refuses sign to a caller without the board's credential, including one holdi
     vi.unstubAllEnvs();
   }
 });
+
+it("draws the no-brain kitchen with the waiter explaining a real hook denial; big-brain stays plain", async () => {
+  split();
+  server = await startBoard(project, runCli);
+  const plain = await (await fetch(server.origin)).text();
+  expect(plain).not.toContain('id="kitchen"');
+  expect((await boardSnapshot(project)).kitchen).toBeNull();
+
+  noBrain();
+  await hook("SessionStart", "kitchen", { source: "startup" });
+  await patch("kitchen", "src/add.ts");
+  const rule = state().last_denied?.rule;
+  expect(rule).toMatch(/^VERID_BURNT_/);
+  const page = await (await fetch(server.origin)).text();
+  expect(page).toContain('id="kitchen"');
+  const { kitchen } = await boardSnapshot(project);
+  // Research and design are on the table, unsigned: the waiter has the floor.
+  expect(kitchen?.role).toBe("waiter");
+  expect(kitchen?.waiter?.say).toContain(rule);
+  expect(kitchen?.waiter?.next).toBeTruthy();
+  expect(kitchen?.pass.length).toBeGreaterThan(0);
+  expect(new Set(kitchen?.pass.map((plate) => plate.station))).toEqual(new Set(["order"]));
+});

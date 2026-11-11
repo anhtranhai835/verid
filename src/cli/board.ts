@@ -76,7 +76,9 @@ export async function startBoard(project: string, command: Command, port = 0, sp
         "Content-Type": "text/html; charset=utf-8",
         "Cache-Control": "no-store",
       });
-      res.end(boardHtml(languageOf(project) ?? systemLanguage()));
+      // A manifest that cannot load still gets the plain page; its API calls report the problem.
+      const manifest = await loadManifest(project, { readOnly: true }).catch(() => null);
+      res.end(boardHtml(languageOf(project) ?? systemLanguage(), manifest?.drive));
       return;
     }
     if (req.headers.authorization !== `Bearer ${token}` && cookieOf(req.headers.cookie) !== token)

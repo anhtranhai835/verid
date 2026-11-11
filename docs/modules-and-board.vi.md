@@ -44,6 +44,8 @@ scope trong plan hoặc design phải duyệt lại và mở session mới. AI k
 
 Dùng ↑/↓ hoặc Alt+↑/↓ trên card để xếp task chưa bắt đầu. Thứ tự lưu cục bộ qua lần khởi động lại; `verid menu` dùng cùng thứ tự. Task đang làm được giữ nguyên, `product` luôn cuối. Drive big-brain đánh dấu task tiếp theo nhưng vẫn cho chọn task khác. Drive no-brain ẩn nút chọn task. Board của nó có khung chat với session AI duy nhất của drive (CLI của provider chạy headless: `claude -p`, `codex exec`, `agy -p`) và nút **Ký research & design**. Trước nút ký, board hiện `.verid/summary.md` (trang tóm tắt lời thường của agent, nếu có), `research.md` và `design.md`. Ký ở đây ghi đúng chữ ký như `verid order` trong terminal và bị từ chối khi thiếu một trong hai file. Phụ thuộc vẫn là cảnh báo.
 
+Board no-brain vẽ lượt chạy như một nhà hàng: nhân vật pixel art bếp trưởng (research và plan), bếp phó (design), người nếm (test hỏng, `verid taste`), phụ bếp (code tới khi xanh), thanh tra (review và bảo mật) và bồi bàn; bạn là khách. Vai đang làm thì động, còn lại đứng chờ (đứng yên hết khi bật giảm chuyển động). Mỗi task nằm trên quầy ra món theo trạng thái thật: phiếu chờ, RAW, COOKING, PLATED hay đã lên bàn. Khi lượt chạy cần bạn (dừng, kẹt vì câu hỏi hoặc review hỏng lặp lại, hook vừa chặn trong 15 phút, tài liệu chờ ký, xong hết) bồi bàn nói lý do bằng lời thường và gợi ý một bước tiếp; trả lời trong ô chat. Lời dựng từ trạng thái và mã từ chối; không gọi model.
+
 ### Hồ sơ module
 
 `verid module <tên>` lấy mẫu từ `.verid/templates/module/` của project. Lệnh tạo

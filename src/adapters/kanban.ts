@@ -3,6 +3,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { moveInQueue, planFromSpec } from "../core/kanban.js";
 import { autoModules, autoPhase } from "../core/auto.js";
+import { kitchenOf } from "../core/kitchen.js";
 import { planned, taskSessions, type Manifest } from "../core/manifest.js";
 import type { State } from "../core/state.js";
 import { moduleProblem, parsePlan, PRODUCT } from "../core/plan.js";
@@ -171,9 +172,30 @@ function snapshotOf(project: string, manifest: Manifest, state: State) {
         };
       })
     : [];
+  // No-brain's restaurant: who works now and what the waiter tells the user, from state only.
+  const kitchen =
+    manifest.drive === "auto"
+      ? kitchenOf({
+          phase,
+          tdd: state.tdd.state,
+          research: !missing.includes("research.md"),
+          design: !missing.includes("design.md"),
+          halted: state.halted?.reason ?? null,
+          denied: state.last_denied,
+          tasks,
+          now: Date.now(),
+        })
+      : null;
   return {
     project: basename(project),
     drive: manifest.drive,
+    kitchen: kitchen && {
+      ...kitchen,
+      waiter: kitchen.waiter && {
+        say: say(`waiter_${kitchen.waiter.kind}`, kitchen.waiter.params),
+        next: say(`waiter_${kitchen.waiter.kind}_next`, kitchen.waiter.params),
+      },
+    },
     // What the no-brain owner reads before signing; the summary is the agent's plain-language page.
     documents:
       manifest.drive === "auto"

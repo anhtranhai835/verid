@@ -15,6 +15,8 @@ tags `1.0.0` and `1.2.0` keep their names.
 - A compact review packet: `verid menu --commits --file --compact`.
 - Module dossiers are prefilled from the plan and spec.
 - Skills and agents can be opted into per project.
+- The no-brain board shows the run as a pixel-art restaurant crew, with a waiter that explains
+  what needs you and suggests one next step.
 
 ### Changed
 

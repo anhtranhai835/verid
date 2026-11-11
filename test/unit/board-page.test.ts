@@ -33,3 +33,43 @@ describe("board page language", () => {
     expect(script).not.toContain("</");
   });
 });
+
+describe("no-brain kitchen", () => {
+  const ROLES = ["head_chef", "sous_chef", "cook", "taster", "inspector", "waiter", "customer"];
+
+  it("draws every role, the waiter's speech and the pass, only on the no-brain board", () => {
+    const html = boardHtml("en", "auto");
+    expect(html).toContain('id="kitchen"');
+    for (const role of ROLES) expect(html).toContain(`data-role="${role}"`);
+    for (const label of ["Head chef", "Sous chef", "Cook", "Taster", "Inspector", "Waiter"])
+      expect(html).toContain(label);
+    expect(html).toMatch(/id="waiter-say"[^>]*role="status"/);
+    for (const station of ["order", "RAW", "COOKING", "PLATED", "served"])
+      expect(html).toContain(`data-station="${station}"`);
+    expect(html).toContain("prefers-reduced-motion");
+    // Sprites are pictures for the eye; screen readers get each role's name and state as text.
+    expect(html).toMatch(/<svg[^>]*class="sprite"[^>]*aria-hidden="true"/);
+  });
+
+  it("speaks Vietnamese in a Vietnamese project", () => {
+    const html = boardHtml("vi", "auto");
+    for (const label of ["Bếp trưởng", "Bếp phó", "Phụ bếp", "Người nếm", "Thanh tra", "Bồi bàn"])
+      expect(html).toContain(label);
+  });
+
+  it("leaves the big-brain board plain", () => {
+    for (const html of [boardHtml("en", "human"), boardHtml("en")]) {
+      expect(html).not.toContain('id="kitchen"');
+      expect(html).not.toContain("data-role=");
+      expect(html).not.toContain('class="sprite"');
+    }
+  });
+
+  it("loads nothing from outside the page", () => {
+    for (const html of [boardHtml("en", "auto"), boardHtml("vi", "human")]) {
+      expect(html).not.toMatch(/https?:\/\//);
+      expect(html).not.toMatch(/(?:src|href)=["']?\/\//);
+      expect(html).not.toMatch(/@import|url\(\s*["']?(?!data:)[^)]/);
+    }
+  });
+});
