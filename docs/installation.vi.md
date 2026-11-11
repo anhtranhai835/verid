@@ -20,13 +20,13 @@ Máy cần có Node.js trước.
 **Windows — PowerShell**
 
 ```powershell
-irm https://raw.githubusercontent.com/anhtranhai835/aeriq/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/anhtranhai835/verid/main/install.ps1 | iex
 ```
 
 **macOS / Linux**
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/anhtranhai835/aeriq/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/anhtranhai835/verid/main/install.sh | sh
 ```
 
 Trong terminal tương tác, installer có thể hỏi thư mục project rồi chạy
@@ -37,8 +37,8 @@ Trong terminal tương tác, installer có thể hỏi thư mục project rồi 
 Dùng bản build từ source nếu gói npm chưa có tính năng mô tả trong README này:
 
 ```sh
-git clone https://github.com/anhtranhai835/aeriq.git
-cd aeriq
+git clone https://github.com/anhtranhai835/verid.git
+cd verid
 npm ci
 npm run build
 ```
@@ -46,7 +46,7 @@ npm run build
 Từ project đích, chạy CLI đã build một lần, thay đường dẫn bằng checkout của bạn:
 
 ```sh
-node /path/to/aeriq/dist/cli.js cook --mode prep --resources repo --provider codex --yes
+node /path/to/verid/dist/cli.js cook --mode prep --resources repo --provider codex --yes
 ```
 
 Sau cook, repo có CLI và các thư viện runtime đi kèm. Từ gốc project:
