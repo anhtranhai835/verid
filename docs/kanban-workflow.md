@@ -106,7 +106,7 @@ mutations also require the same browser origin, JSON content and a current board
 revision. There is no remote hosting or project upload. Stop the foreground
 process with Ctrl+C. Server errors and evidence failures are shown in the UI.
 
-For a source checkout, build first and use `node /path/to/aeriq/dist/cli.js` instead
+For a source checkout, build first and use `node /path/to/verid/dist/cli.js` instead
 of `verid`. For repo resources, use `node .verid/verid.mjs`. Existing projects can
 run `verid upgrade --dry-run` then `verid upgrade --yes` to migrate pending module dossiers and regenerate instructions; pinned repo runtime files need an explicit update
 when moving from an older version.

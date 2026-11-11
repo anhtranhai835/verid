@@ -20,13 +20,13 @@ They need Node.js already installed.
 **Windows — PowerShell**
 
 ```powershell
-irm https://raw.githubusercontent.com/anhtranhai835/aeriq/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/anhtranhai835/verid/main/install.ps1 | iex
 ```
 
 **macOS / Linux**
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/anhtranhai835/aeriq/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/anhtranhai835/verid/main/install.sh | sh
 ```
 
 In an interactive terminal, the installer can ask for a project folder and start
@@ -38,8 +38,8 @@ Use the source build when the published npm version does not yet include a featu
 described in this README:
 
 ```sh
-git clone https://github.com/anhtranhai835/aeriq.git
-cd aeriq
+git clone https://github.com/anhtranhai835/verid.git
+cd verid
 npm ci
 npm run build
 ```
@@ -47,7 +47,7 @@ npm run build
 Run the built CLI once from the target project, replacing the path with your checkout:
 
 ```sh
-node /path/to/aeriq/dist/cli.js cook --mode prep --resources repo --provider codex --yes
+node /path/to/verid/dist/cli.js cook --mode prep --resources repo --provider codex --yes
 ```
 
 After cook, the repo includes its own CLI and bundled dependencies. From the project root:

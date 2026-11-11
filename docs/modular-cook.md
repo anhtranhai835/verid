@@ -19,7 +19,7 @@ node .verid/verid.mjs menu
 ```
 
 Thêm `--provider claude-code` để dùng cả hai provider. Bỏ hai flag mới để dùng mặc định.
-Từ checkout source, build rồi thay `verid` bằng `node /path/to/aeriq/dist/cli.js`.
+Từ checkout source, build rồi thay `verid` bằng `node /path/to/verid/dist/cli.js`.
 
 Sau cook với `resources: repo`, mọi lệnh chạy qua `node .verid/verid.mjs <lệnh>` từ
 gốc project. CLI, hook và thư viện runtime đã được bundle trong repo; máy của thành
