@@ -113,8 +113,26 @@ describe("npm skill distribution", () => {
       "plugin/templates/workflow.md",
       "plugin/templates/module/spec/spec.md",
       "docs/modular-cook.md",
+      "dist/cli.js",
+      "CHANGELOG.md",
     ])
       expect(files).toContain(path);
+    // The release tarball carries the built CLI, not the sources, tests or release tooling.
+    expect(
+      files.filter((path: string) => /^(src|test|scripts|plans|\.github|\.verid)\//.test(path)),
+    ).toEqual([]);
+  }, 60_000);
+
+  // npm skips the private check on --dry-run, so publish for real to a closed local port with a
+  // dummy token: the version lookup fails at once without retries, then npm refuses to upload.
+  it("refuses to publish because the package is private", () => {
+    const result = sh(
+      'npm publish --ignore-scripts --fetch-retries=0 --no-update-notifier --registry http://127.0.0.1:9/ "--//127.0.0.1:9/:_authToken=dummy"',
+      root,
+      cleanEnv({ npm_config_cache: tempDir("verid-publish-cache-") }),
+    );
+    expect(result.code).not.toBe(0);
+    expect(result.stderr).toContain("EPRIVATE");
   }, 60_000);
 });
 

@@ -1,0 +1,97 @@
+# Internal release: a pushed tag vX.Y.Z becomes a GitHub Release with the package tarball, in
+# this private repository only. Nothing is published to a registry: the package bundles
+# copyrighted skill content. A manual run checks and packages the branch without releasing.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # Cheap Ubuntu checks first, so a wrong tag or a public repository costs no Windows minutes.
+  check:
+    name: Private repository, tag matches version, CHANGELOG entry
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+      PRIVATE: ${{ github.event.repository.private }}
+    steps:
+      - name: Refuse to run in a public repository
+        run: |
+          if [ "$PRIVATE" != "true" ]; then
+            echo "::error::The release tarball holds copyrighted content; this repository must be private."
+            exit 1
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: node scripts/release-notes.mjs ${TAG:+"$TAG"}
+
+  verify:
+    needs: check
+    uses: ./.github/workflows/ci.yml
+
+  package:
+    name: Pack, install the tarball and run it
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm pack --ignore-scripts
+      - name: Install the tarball and run it in a fresh repository
+        run: |
+          npm install -g --prefix "$RUNNER_TEMP/prefix" ./*.tgz
+          export PATH="$RUNNER_TEMP/prefix/bin:$PATH"
+          project=$(mktemp -d)
+          cd "$project"
+          git init -q
+          verid --help
+          verid cook --mode prep --provider claude-code --dry-run --yes
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: package
+          path: "*.tgz"
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    name: GitHub Release
+    needs: package
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: package
+      - name: Create the release with the CHANGELOG entry and the tarball
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          node scripts/release-notes.mjs "$TAG" > "$RUNNER_TEMP/notes.md"
+          gh release create "$TAG" ./*.tgz --verify-tag --title "verid $TAG" --notes-file "$RUNNER_TEMP/notes.md"

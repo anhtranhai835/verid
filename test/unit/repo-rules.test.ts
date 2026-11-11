@@ -348,6 +348,42 @@ describe("repo rules", () => {
     it("has a CHANGELOG entry for the current version", () => {
       expect(readFileSync(join(root, "CHANGELOG.md"), "utf8")).toContain(`## [${pkg.version}]`);
     });
+
+    // The package bundles copyrighted skill content: it ships only as a private GitHub Release.
+    it("cannot be published to a registry", () => {
+      const manifest = json("package.json") as {
+        private?: boolean;
+        scripts: Record<string, string>;
+        publishConfig?: unknown;
+      };
+      expect(manifest.private).toBe(true);
+      expect(manifest.publishConfig).toBeUndefined();
+      expect(Object.keys(manifest.scripts).filter((s) => /publish/i.test(s))).toEqual([]);
+      const publishing = filesUnder(".github/workflows")
+        .filter((file) => /\b(npm|pnpm|yarn|bun)\s+publish\b/.test(readFileSync(file, "utf8")))
+        .map(rel);
+      expect(publishing).toEqual([]);
+    });
+
+    it("pins every third-party action by commit SHA", () => {
+      const unpinned = filesUnder(".github/workflows").flatMap((file) =>
+        [...readFileSync(file, "utf8").matchAll(/^\s*(?:-\s+)?uses:\s*(\S+)/gm)]
+          .map((m) => m[1]!)
+          .filter((use) => !use.startsWith("./") && !/@[0-9a-f]{40}$/.test(use))
+          .map((use) => `${rel(file)}: ${use}`),
+      );
+      expect(unpinned).toEqual([]);
+    });
+
+    it("releases from a tag through the CI workflow and a private-repo check", () => {
+      const ci = readFileSync(join(root, ".github/workflows/ci.yml"), "utf8");
+      expect(ci).toMatch(/^\s+workflow_call:/m);
+      const release = readFileSync(join(root, ".github/workflows/release.yml"), "utf8");
+      expect(release).toContain("uses: ./.github/workflows/ci.yml");
+      expect(release).toMatch(/tags:\s*\[\s*"v\*"\s*\]/);
+      expect(release).toContain("node scripts/release-notes.mjs");
+      expect(release).toContain("github.event.repository.private");
+    });
   });
 
   it("recorded Claude Code fixtures leak no user paths or names", () => {
