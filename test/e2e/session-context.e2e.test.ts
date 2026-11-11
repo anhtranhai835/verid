@@ -1,50 +1,27 @@
+import { tempProject } from "../support/project.js";
 import { readyModulePlan } from "./helpers.js";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+
 import { join } from "node:path";
-import { afterEach, beforeEach, expect, it } from "vitest";
-import { stringify } from "yaml";
+import { expect, it } from "vitest";
+
 import { defaultRoles } from "../../src/core/manifest.js";
 import { runCli, runHook } from "./in-process.js";
 
 let project: string;
-beforeEach(() => {
-  project = mkdtempSync(join(tmpdir(), "verid-context-"));
-  mkdirSync(join(project, ".verid/.state"), { recursive: true });
+const t = tempProject("verid-context-", {
+  session: "context",
+  cwd: () => project,
+  claudeProject: false,
+  payload: { transcript_path: null, model: "test", permission_mode: "default" },
+  bind: (p) => {
+    project = p.root;
+  },
+  setup: (p) => {
+    mkdirSync(p.path(".verid/.state"), { recursive: true });
+  },
 });
-afterEach(() => rmSync(project, { recursive: true, force: true }));
-
-function setup(lang = "en", extra = {}) {
-  writeFileSync(
-    join(project, ".verid/manifest.yaml"),
-    stringify({
-      schemaVersion: 1,
-      mode: "prep",
-      providers: ["claude-code"],
-      roles: defaultRoles(["claude-code"]),
-      repos: [{ path: ".", source_globs: ["src/**"], test_globs: ["test/**"] }],
-      ...extra,
-    }),
-  );
-  writeFileSync(
-    join(project, ".verid/.state/state.json"),
-    JSON.stringify({ schemaVersion: 1, language: lang }),
-  );
-}
-const session = (source: string, provider = "claude-code") =>
-  runHook(
-    JSON.stringify({
-      hook_event_name: "SessionStart",
-      session_id: "context",
-      transcript_path: null,
-      cwd: project,
-      source,
-      model: "test",
-      permission_mode: "default",
-    }),
-    {},
-    provider === "codex" ? ["--provider", "codex"] : [],
-  );
+const { contextSetup: setup, startSession: session } = t;
 
 it("keeps startup, clear and compact context below the budget with long paths, five repos and iterations", async () => {
   const repos = ["api", "web", "jobs", "shared", "e2e"].map((name) => ({
