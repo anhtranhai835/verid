@@ -384,6 +384,16 @@ describe("repo rules", () => {
       expect(release).toContain("node scripts/release-notes.mjs");
       expect(release).toContain("github.event.repository.private");
     });
+
+    it("fails CI when coverage drops under its floors", () => {
+      const ci = readFileSync(join(root, ".github/workflows/ci.yml"), "utf8");
+      expect(ci).toContain("npm run test:coverage");
+      const scripts = (json("package.json") as { scripts: Record<string, string> }).scripts;
+      expect(scripts["test:coverage"]).toMatch(/vitest run --coverage$/);
+      const config = readFileSync(join(root, "vitest.config.ts"), "utf8");
+      for (const metric of ["lines", "statements", "branches", "functions"])
+        expect(config).toMatch(new RegExp(`thresholds:[^}]*\\b${metric}: \\d+`));
+    });
   });
 
   it("recorded Claude Code fixtures leak no user paths or names", () => {

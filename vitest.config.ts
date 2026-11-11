@@ -11,5 +11,13 @@ export default defineConfig({
     // CLI/Git subprocesses already add concurrency. Bound Windows workers to keep the
     // real-process e2e cases within their timeout even on slower disks and OneDrive.
     maxWorkers: process.platform === "win32" ? 2 : "50%",
+    coverage: {
+      provider: "v8",
+      include: ["src/**/*.ts"],
+      reporter: ["text-summary", "json-summary"],
+      // Floors of the full suite's coverage on Windows, so it cannot drop unnoticed. Raise them
+      // when coverage rises; lower one only in its own commit that says why.
+      thresholds: { lines: 94, statements: 92, branches: 85, functions: 96 },
+    },
   },
 });

@@ -4,7 +4,7 @@
   "private": true,
   "description": "Evidence-verified, hook-enforced TDD harness for Claude Code, Codex and Antigravity",
   "author": "Anh Tran",
-  "license": "MIT",
+  "license": "UNLICENSED",
   "type": "module",
   "keywords": [
     "claude-code",
@@ -45,6 +45,7 @@
     "typecheck": "tsc --noEmit",
     "test": "npm run build && vitest run --exclude test/e2e/installers.e2e.test.ts",
     "test:full": "npm run build && vitest run",
+    "test:coverage": "npm run build && vitest run --coverage",
     "format": "prettier --write ."
   },
   "devDependencies": {
