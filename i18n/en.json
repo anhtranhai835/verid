@@ -640,5 +640,13 @@
   "board.waiter_sign": "Research and design are ready on the table.",
   "board.waiter_sign_next": "Read the summary, research and design below, then press Sign.",
   "board.waiter_done": "Every dish is served.",
-  "board.waiter_done_next": "Tell the head chef in the chat what to cook next."
+  "board.waiter_done_next": "Tell the head chef in the chat what to cook next.",
+  "board.mockup_details": "Details",
+  "board.mockup_tab": "Mockup",
+  "board.mockup_note": "Note (optional)",
+  "board.mockup_choose": "Choose this option",
+  "board.mockup_selected": "Selected option",
+  "board.mockup_saved": "Mockup choice saved. Record it in the UI brief before ordering.",
+  "board.mockup_preview": "Preview: {choice}",
+  "board.err_mockup_choice": "Choose an existing HTML option and a single-line note of at most 1000 characters."
 }

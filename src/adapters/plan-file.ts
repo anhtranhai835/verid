@@ -229,6 +229,14 @@ export function readPlan(
       }
       const problem = drafts ? null : pathProblem(project, expected, module);
       if (problem) return { ok: false, detail: problem };
+      const choice = `${expected}/ui/mockups/choice.json`;
+      checkSetupPath(project, choice);
+      try {
+        const content = readFileSync(join(project, choice));
+        hash.update("\0ui/mockups/choice.json\0").update(content);
+      } catch (error) {
+        if (errno(error) !== "ENOENT") throw error;
+      }
     }
     hashes[module.name] = hash.digest("hex");
   }

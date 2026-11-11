@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { parseArgs } from "node:util";
@@ -9,6 +10,7 @@ import { boardChat, type Spawner } from "../adapters/board-chat.js";
 import { boardSnapshot, moveTask, saveBoardDocument, taskPrompt } from "../adapters/kanban.js";
 import { loadManifest } from "../adapters/manifest.js";
 import { boardHtml } from "./board-page.js";
+import { chooseMockup, mockupFile } from "../adapters/board-mockups.js";
 import type { CliResult } from "./test.js";
 
 /** The developer commands the board runs: `order` without a task signs no-brain drive's documents. */
@@ -43,6 +45,7 @@ export async function startBoard(project: string, command: Command, port = 0, sp
   let launch: string | null = randomBytes(32).toString("hex");
   let origin = "";
   let queue = Promise.resolve();
+  const tickets = new Map<string, { path: string; expires: number }>();
   const send = (res: ServerResponse, status: number, value: unknown) => {
     res.writeHead(status, {
       "Content-Type": "application/json; charset=utf-8",
@@ -81,8 +84,30 @@ export async function startBoard(project: string, command: Command, port = 0, sp
       res.end(boardHtml(languageOf(project) ?? systemLanguage(), manifest?.drive));
       return;
     }
+    if (req.method === "GET" && url.pathname.startsWith("/mockups/")) {
+      const parts = url.pathname.split("/").slice(2).map(decodeURIComponent);
+      const file = parts.length === 2 ? mockupFile(project, parts[0]!, parts[1]!) : null;
+      if (!file) return send(res, 404, { error: "Not found" });
+      const key = url.searchParams.get("token") ?? "";
+      const ticket = tickets.get(key);
+      tickets.delete(key);
+      if (!ticket || ticket.expires <= Date.now() || ticket.path !== url.pathname)
+        return send(res, 401, { error: say(project, "err_auth") });
+      const html = readFileSync(file);
+      res.writeHead(200, {
+        "Content-Type": "text/html; charset=utf-8",
+        "Cache-Control": "no-store",
+        "Content-Security-Policy":
+          "sandbox allow-scripts; default-src 'unsafe-inline' data:; connect-src 'none'; form-action 'none'; base-uri 'none'; frame-src 'none'; frame-ancestors 'self'",
+        "Referrer-Policy": "no-referrer",
+      });
+      res.end(html);
+      return;
+    }
     if (req.headers.authorization !== `Bearer ${token}` && cookieOf(req.headers.cookie) !== token)
       return send(res, 401, { error: say(project, "err_auth") });
+    if (req.headers.origin !== undefined && req.headers.origin !== origin)
+      return send(res, 403, { error: "Invalid origin" });
     if (req.method === "GET" && url.pathname === "/api/board")
       return send(res, 200, await boardSnapshot(project));
     if (req.method === "GET" && url.pathname === "/api/chat")
@@ -104,6 +129,13 @@ export async function startBoard(project: string, command: Command, port = 0, sp
     if (!data || typeof data !== "object" || Array.isArray(data))
       return send(res, 400, { error: "Invalid action" });
     const input = data as Record<string, unknown>;
+    if (
+      input.action === "mockup-token" &&
+      (typeof input.module !== "string" ||
+        typeof input.file !== "string" ||
+        !mockupFile(project, input.module, input.file))
+    )
+      return send(res, 404, { error: "Not found" });
     // Chat goes on while its own run changes state, so it is not tied to the board revision.
     if (input.action === "chat-stop") {
       chat.stop();
@@ -129,6 +161,22 @@ export async function startBoard(project: string, command: Command, port = 0, sp
     }
     if (input.revision !== snapshot.revision)
       return send(res, 409, { error: say(project, "err_stale") });
+    if (input.action === "mockup-token" || input.action === "mockup-choice") {
+      const module = snapshot.tasks.find((task) => task.id === input.module)?.id;
+      if (input.action === "mockup-token") {
+        if (!module || typeof input.file !== "string" || !mockupFile(project, module, input.file))
+          return send(res, 404, { error: "Not found" });
+        for (const [key, ticket] of tickets) if (ticket.expires <= Date.now()) tickets.delete(key);
+        if (tickets.size >= 128) tickets.delete(tickets.keys().next().value!);
+        const key = randomBytes(32).toString("hex");
+        const path = `/mockups/${encodeURIComponent(module)}/${encodeURIComponent(input.file)}`;
+        tickets.set(key, { path, expires: Date.now() + 60_000 });
+        return send(res, 200, { url: `${path}?token=${key}` });
+      }
+      if (!module || !chooseMockup(project, module, input.choice, input.note ?? ""))
+        return send(res, 400, { error: say(project, "err_mockup_choice") });
+      return send(res, 200, await boardSnapshot(project));
+    }
     if (input.action === "split") saveBoardDocument(project, "split", "", snapshot.drive);
     else if (input.action === "sign") {
       // The same signature as verid order in the terminal, after the owner has read both files.

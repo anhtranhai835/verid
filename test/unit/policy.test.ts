@@ -54,6 +54,26 @@ const TRANSCRIPT = "VERID_BURNT_TRANSCRIPT_PROTECTED";
 const HOOK = "VERID_BURNT_HOOK_PROTECTED";
 const MANIFEST = "VERID_BURNT_MANIFEST_PROTECTED";
 const DOCS = "VERID_BURNT_DOCS_PROTECTED";
+it("keeps mockup choices readable but reserves writes for the board", () => {
+  const base = "c:/proj/.verid/artifacts/03-modules/screen/ui/mockups";
+  expect(decide(read(`${base}/choice.json`), ctx).kind).toBe(ALLOW);
+  expect(decide(write(`${base}/option-a.html`), ctx).kind).toBe(ALLOW);
+  for (const path of [
+    `${base}/choice.json`,
+    `${base}/CHOICE.JSON`,
+    `${base}/choice.json.`,
+    `${base}/choice.json:stream`,
+    base,
+    "c:/proj/.verid/artifacts/03-modules/screen/ui",
+  ]) {
+    expect(decide(write(path), ctx)).toMatchObject({ kind: "deny", code: STATE });
+    expect(decide({ kind: "bash", command: `rm -rf '${path}'` }, ctx)).toMatchObject({
+      kind: "deny",
+      code: STATE,
+    });
+  }
+});
+
 const NESTED = "VERID_BURNT_BASH_NESTED_CLAUDE";
 const DEVELOPER = "VERID_BURNT_BASH_DEVELOPER_ONLY";
 const DANGEROUS = "VERID_BURNT_BASH_DANGEROUS";

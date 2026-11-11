@@ -23,6 +23,18 @@ const repo = {
 };
 
 describe("parseManifest", () => {
+  it("accepts mockup modes, defaults an empty UI setting to ask and rejects unknown modes", () => {
+    const doc = { schemaVersion: 1, mode: "prep", repos: [repo] };
+    expect(parseManifest(doc).ok).toBe(true);
+    for (const mockups of ["ask", "ascii", "browser", undefined]) {
+      const parsed = parseManifest({ ...doc, ui: mockups ? { mockups } : {} });
+      expect(parsed.ok).toBe(true);
+      if (parsed.ok) expect(parsed.manifest.ui?.mockups).toBe(mockups ?? "ask");
+    }
+    expect(parseManifest({ ...doc, ui: { mockups: "always" } }).ok).toBe(false);
+    expect(parseManifest({ ...doc, ui: { extra: true } }).ok).toBe(false);
+  });
+
   it("accepts and renders a default branch and refuses an empty one", () => {
     const rows = [
       { branch: "main", ok: true },

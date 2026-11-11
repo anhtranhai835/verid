@@ -60,6 +60,36 @@ const patch = (session: string, path: string) =>
     tool_input: { command: `*** Begin Patch\n*** Add File: ${path}\n+content\n*** End Patch` },
   });
 
+it("protects the developer's mockup choice while allowing HTML drafts", async () => {
+  split();
+  const base = ".verid/artifacts/03-modules/req-1/ui/mockups";
+  expect((await patch("planning", `${base}/option-a.html`)).stdout).toBe("");
+  expect((await patch("planning", `${base}/choice.json`)).stdout).toContain(
+    "VERID_BURNT_STATE_PROTECTED",
+  );
+});
+
+it("requires reapproval and a fresh session after the developer changes a mockup choice", async () => {
+  split();
+  const base = ".verid/artifacts/03-modules/req-1/ui/mockups";
+  t.put(`${base}/choice.json`, JSON.stringify({ choice: "option-a", note: "", at: "2026-01-01" }));
+  expect((await cli("order", "req-1")).code).toBe(0);
+  await hook("SessionStart", "selected", { source: "startup" });
+  expect((await patch("selected", "test/new.test.ts")).stdout).toBe("");
+  t.put(
+    `${base}/choice.json`,
+    JSON.stringify({ choice: "option-b", note: "spacing", at: "2026-01-02" }),
+  );
+  expect(
+    (await boardSnapshot(project)).tasks.find((task) => task.id === "req-1")?.needsReapproval,
+  ).toBe(true);
+  expect((await patch("selected", "test/new.test.ts")).stdout).toContain(
+    "VERID_BURNT_TASK_SESSION",
+  );
+  expect((await cli("order", "req-1")).code).toBe(0);
+  expect(state().kanban.active?.session).toBeNull();
+});
+
 it("reports usage after a blocked write and a red to green cycle without storing output", async () => {
   split();
   await cli("order", "req-1");

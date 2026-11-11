@@ -84,6 +84,25 @@ The [modular cook guide](modular-cook.md) has the complete template and executio
 
 For a small change, see [small changes](small-changes.md).
 
+### UI mockups
+
+Set `ui: { mockups: ask }` in `.verid/manifest.yaml` (the default when omitted).
+For a module that changes screens, `ask` asks once and records the answer in `ui/brief.md`;
+`ascii` keeps the wireframe in that brief and creates no HTML; `browser` always prepares
+2–3 self-contained HTML options without external resources in
+`.verid/artifacts/03-modules/<module>/ui/mockups/`.
+
+Open the module card's **Mockup** tab in `verid board`, preview the options, add an optional
+single-line note and choose before ordering. The tab appears only when HTML options exist,
+in both drives. The board writes `choice.json` with `choice` (the filename without `.html`),
+`note` and `at`. The agent reads it and records the selection in `ui/brief.md`; hooks reserve
+choice writes for the developer. Changing or removing this file after order requires order again.
+
+Each preview uses an opaque-origin `iframe` sandbox, CSP that blocks network resources and
+`no-referrer`. The authenticated board requests a file-bound ticket valid for 60 seconds and
+one GET; the preview receives neither the board token nor access to its API. Paths outside
+the mockup folder, links and non-HTML files are refused. Keep the board terminal open.
+
 ## TDD and evidence
 
 | State      | Test writes            | Production writes                            | Next evidence                                 |

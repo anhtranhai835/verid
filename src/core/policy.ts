@@ -463,6 +463,20 @@ const isDeveloperDoc = (path: string): boolean =>
   /(?:^|\/)\.verid\/docs(?:\/|$)/i.test(slashPath(path));
 
 function isProtectedWrite(path: string): boolean {
+  // Choices belong to the developer. Protect their ancestors too, so a directory replacement
+  // cannot erase or forge the choice while ordinary HTML drafts remain writable.
+  const portable = slashPath(path)
+    .split("/")
+    .map((part) => part.replace(/:.*$/, "").replace(/[. ]+$/, ""))
+    .join("/");
+  const artifacts = /(?:^|\/)\.verid\/artifacts(?:\/(.*))?$/.exec(portable);
+  if (
+    artifacts &&
+    (!artifacts[1] ||
+      artifacts[1] === "03-modules" ||
+      /^03-modules\/[^/]+(?:\/ui(?:\/mockups(?:\/choice\.json(?:\/.*)?)?)?)?$/.test(artifacts[1]))
+  )
+    return true;
   if (/(?:^|\/)\.verid\/review(?:\/|$)/.test(slashPath(path))) return true;
   return (
     path

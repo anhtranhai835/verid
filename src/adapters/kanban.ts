@@ -33,6 +33,7 @@ import {
 } from "./state-store.js";
 import { checkSetupPath } from "./workspace.js";
 import { systemLanguage, t } from "./i18n.js";
+import { moduleMockups } from "./board-mockups.js";
 
 const boardMessage = (project: string, key: string) =>
   t(languageOf(project) ?? systemLanguage(), `board.${key}`, {});
@@ -135,6 +136,7 @@ function snapshotOf(project: string, manifest: Manifest, state: State) {
         if (isNext) next = true;
         return {
           id: module.name,
+          mockups: moduleMockups(project, module.name),
           usage: usage.get(module.name) ?? null,
           title: /^Title:\s*(.+)$/m.exec(module.text)?.[1] ?? module.name,
           text: module.text,
@@ -231,6 +233,7 @@ function snapshotOf(project: string, manifest: Manifest, state: State) {
           state,
           plan?.ok ? plan.hashes : null,
           tasks.map((task) => task.dossier),
+          tasks.map((task) => task.mockups),
           ...["research.md", "design.md"].map((file) =>
             readFileHash(join(project, ".verid", file)),
           ),

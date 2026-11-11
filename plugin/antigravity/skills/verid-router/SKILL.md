@@ -36,3 +36,5 @@ Locate the skills root `<SKILLS_ROOT>`:
 | **Modular workflow: module dossiers and contracts**    | Read `<SKILLS_ROOT>/modules/SKILL.md` for every prep/recipe project.                                                                              |
 | **Full security method for `verid-security` review**   | Read `<SKILLS_ROOT>/security/SKILL.md` -> matching file in `references/` (STRIDE/OWASP, supply chain, LLM/agentic).                               |
 | **Missing external library/API documentation**         | Read `<SKILLS_ROOT>/docs-seeker/SKILL.md` or use Antigravity's `search_web`.                                                                      |
+
+For a screen change, the shared `modules` skill applies `ui.mockups` (default `ask`); wait for the developer's `ui/mockups/choice.json` before recording the selected HTML in `ui/brief.md` and ordering.

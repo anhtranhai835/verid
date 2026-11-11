@@ -82,6 +82,22 @@ nên không làm thay đổi chữ ký này.
 
 Với thay đổi nhỏ, xem [thay đổi nhỏ](small-changes.vi.md).
 
+### Mockup UI trên board
+
+Trong `.verid/manifest.yaml`, `ui: { mockups: ask }` là mặc định khi bỏ trống.
+Module đổi màn hình: `ask` hỏi một lần và ghi câu trả lời vào `ui/brief.md`; `ascii` chỉ vẽ
+wireframe ASCII trong brief, không tạo HTML; `browser` luôn dựng 2–3 file HTML tự chứa,
+không dùng tài nguyên ngoài, tại `.verid/artifacts/03-modules/<module>/ui/mockups/`.
+
+Mở thẻ module, chọn tab **Mockup**, xem các phương án, ghi chú một dòng nếu cần và chọn trước
+order. Tab chỉ hiện khi có HTML, ở cả hai drive. Board ghi `choice.json` gồm `choice` (tên file
+bỏ `.html`), `note`, `at`; agent đọc rồi ghi lựa chọn vào `ui/brief.md`. Hook chặn agent sửa
+lựa chọn. Đổi hoặc xóa file này sau order cần order lại.
+
+Preview nằm trong iframe sandbox origin rỗng, CSP chặn tài nguyên mạng và `no-referrer`.
+Board đã xác thực cấp vé riêng cho từng file, hết hạn sau 60 giây và chỉ dùng một lần.
+Preview không nhận token board. Đường dẫn thoát thư mục, liên kết và file không phải HTML bị từ chối.
+
 ## TDD và bằng chứng
 
 | Trạng thái | Ghi test            | Ghi code production             | Bằng chứng tiếp theo                    |

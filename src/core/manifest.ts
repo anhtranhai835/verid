@@ -292,6 +292,10 @@ const manifestSchema = z
     layout: z._default(z.enum(LAYOUTS, { error: "must be monorepo or workspace" }), "monorepo"),
     workflow: z.optional(z.enum(WORKFLOWS)),
     resources: z.optional(z.enum(RESOURCE_MODES)),
+    // Omitting UI settings keeps the ask-once workflow without changing older manifests.
+    ui: z.optional(
+      z.strictObject({ mockups: z._default(z.enum(["ask", "ascii", "browser"]), "ask") }),
+    ),
     iterations: z.optional(iterations),
     git: z.optional(git),
     architecture: z._default(z.enum(ARCHITECTURES), "ddd"),

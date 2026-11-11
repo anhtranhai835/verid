@@ -13,6 +13,32 @@ const read = (file: string) => readFileSync(join(root, file), "utf8").replaceAll
 const repo = { path: ".", source_globs: ["src/**"], test_globs: ["test/**"] };
 
 describe("self-contained verid skills", () => {
+  it("keeps mockup preparation opt-in, concise and routed to the same instructions on every provider", () => {
+    const skill = read("plugin/skills/modules/SKILL.md");
+    const section = skill.split("## UI mockups\n")[1]!.trim().split("\n\n")[0]!;
+    expect(section.trim().split("\n").length).toBeLessThan(15);
+    for (const term of [
+      "ui.mockups",
+      "ask",
+      "ascii",
+      "browser",
+      "once per module",
+      "2 to 3",
+      "self-contained",
+      "no external resources",
+      "verid board",
+      "choice.json",
+      "ui/brief.md",
+      "before order",
+    ])
+      expect(section).toContain(term);
+    expect(read("plugin/antigravity/skills/verid-router/SKILL.md")).toContain(
+      "<SKILLS_ROOT>/modules/SKILL.md",
+    );
+    expect(read("plugin/agents/ui-ux-designer.md")).toContain("ui/mockups/choice.json");
+    expect(read("plugin/templates/module/ui/brief.md")).toContain("## Mockup choice");
+  });
+
   it("routes every distributed skill and agent through an existing workflow entry", () => {
     const routing = read("plugin/templates/skill-routing.md");
     const links = [

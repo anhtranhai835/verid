@@ -640,5 +640,13 @@
   "board.waiter_sign": "Research và design đã sẵn trên bàn.",
   "board.waiter_sign_next": "Đọc tóm tắt, research và design bên dưới, rồi bấm Ký.",
   "board.waiter_done": "Mọi món đã lên bàn.",
-  "board.waiter_done_next": "Nói với bếp trưởng trong chat món tiếp theo."
+  "board.waiter_done_next": "Nói với bếp trưởng trong chat món tiếp theo.",
+  "board.mockup_details": "Chi ti?t",
+  "board.mockup_tab": "Mockup",
+  "board.mockup_note": "Ghi ch? (kh?ng b?t bu?c)",
+  "board.mockup_choose": "Ch?n ph??ng ?n n?y",
+  "board.mockup_selected": "Ph??ng ?n ?? ch?n",
+  "board.mockup_saved": "?? l?u l?a ch?n. Ghi v?o UI brief tr??c khi order.",
+  "board.mockup_preview": "Xem tr??c: {choice}",
+  "board.err_mockup_choice": "Ch?n ph??ng ?n HTML c? s?n v? ghi ch? m?t d?ng t?i ?a 1000 k? t?."
 }
