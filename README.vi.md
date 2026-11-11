@@ -247,4 +247,4 @@ Nguồn ghi nhận chi tiết nằm trong license của từng skill.
 
 ## Giấy phép
 
-MIT. Xem [LICENSE](LICENSE).
+Riêng tư, chỉ dùng nội bộ; không cấp phép phân phối lại. Skill đi kèm giữ giấy phép riêng của chúng.

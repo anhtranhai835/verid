@@ -4,7 +4,7 @@
   "private": true,
   "description": "Evidence-verified, hook-enforced TDD harness for Claude Code, Codex and Antigravity",
   "author": "Anh Tran",
-  "license": "MIT",
+  "license": "UNLICENSED",
   "type": "module",
   "keywords": [
     "claude-code",

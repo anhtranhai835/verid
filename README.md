@@ -247,4 +247,4 @@ See each bundled skill's license for attribution.
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+Private, for internal use only; not licensed for redistribution. Bundled skills keep their own licenses.
