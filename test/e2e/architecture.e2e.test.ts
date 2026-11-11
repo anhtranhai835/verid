@@ -24,7 +24,7 @@ const setManifest = (
 ) => put(".verid/manifest.yaml", manifest(check, mode, extra, globs));
 
 // A timed-out checker's process tree can hold the folder for seconds on a loaded Windows runner.
-const CLEANUP = { recursive: true, force: true, maxRetries: 25, retryDelay: 200 } as const;
+const CLEANUP = { recursive: true, force: true, maxRetries: 50, retryDelay: 400 } as const;
 
 const t = tempProject("verid-architecture-", {
   state: '{"schemaVersion":1,"baseline":[]}',
