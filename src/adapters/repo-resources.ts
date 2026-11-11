@@ -10,16 +10,21 @@ export const skillsFor = (manifest: Pick<Manifest, "resources">): string =>
   manifest.resources === "repo" ? ".verid/skills" : installedSkills();
 
 /** Copy supporting scripts, references and licenses too; never follow package links. */
-export function resourceTree(source: string, target: string): ResourceFile[] {
+export function resourceTree(
+  source: string,
+  target: string,
+  excluded: ReadonlySet<string> = new Set(),
+): ResourceFile[] {
   return readdirSync(source, { withFileTypes: true })
     .sort((a, b) => a.name.localeCompare(b.name))
     .flatMap((entry): ResourceFile[] => {
+      if (excluded.has(entry.name)) return [];
       if (entry.isSymbolicLink()) throw new Error(`Linked resource: ${join(source, entry.name)}`);
       // A skill script's own test suite and coverage output are verid's, never the agent's.
       if (DEV_ONLY.has(entry.name) || (entry.name === "tests" && source.endsWith("scripts")))
         return [];
       if (entry.isDirectory())
-        return resourceTree(join(source, entry.name), `${target}/${entry.name}`);
+        return resourceTree(join(source, entry.name), `${target}/${entry.name}`, excluded);
       return [{ rel: `${target}/${entry.name}`, content: readFileSync(join(source, entry.name)) }];
     });
 }

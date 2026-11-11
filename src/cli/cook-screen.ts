@@ -31,6 +31,7 @@ import { checkWorkspaceRoot, detectLayout } from "../adapters/workspace.js";
 import { ask, select, type Io } from "../adapters/terminal.js";
 import { planCook, projectFacts, servedLine, setupDoneLine, manifestUpgradeLines } from "./init.js";
 import type { CliResult } from "./test.js";
+import { restorePlugins } from "../adapters/plugin-store.js";
 
 const MODE_EMOJI: Record<Mode, string> = { prep: "🥕", recipe: "📖", remix: "🍲" };
 
@@ -426,6 +427,7 @@ export async function interactiveCook(
       const result = fresh.apply();
       if (result.stdout) line(result.stdout.trimEnd());
       if (result.failed) return { exit: 1, stdout: "", stderr: result.stderr };
+      await restorePlugins(project, false, io);
       layout = fresh.layout;
       providers = [...fresh.providers];
       break;

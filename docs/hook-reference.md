@@ -29,6 +29,10 @@ Repo resource definitions in `.verid/agents/`, `.verid/skills/`, `.verid/templat
 `VERID_BURNT_HOOK_PROTECTED`, together with the `.verid/verid.mjs` launcher. Agents may
 read them; the developer maintains these copies.
 
+`VERID_BURNT_PLUGIN_PROTECTED` also prevents agent writes to `.verid/plugins.json`,
+`.verid/.plugins/` and `.verid/.plugin-data/`, and all `verid plugin` commands.
+It cannot be overridden. See [workflow plugins](plugins.md).
+
 | Rule                                 | Overridable        | Covers                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | :----------------------------------- | :----------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `VERID_BURNT_STATE_PROTECTED`        | no                 | reading or writing `.verid/.state/`, writing `.verid/review/`, or overwriting the `.verid/` root                                                                                                                                                                                                                                                                                                                                                                                            |

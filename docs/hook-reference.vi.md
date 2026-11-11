@@ -2,6 +2,10 @@
 
 [Về README](../README.vi.md)
 
+`VERID_BURNT_PLUGIN_PROTECTED` chặn agent ghi `.verid/plugins.json`, `.verid/.plugins/`,
+`.verid/.plugin-data/` và gọi mọi lệnh `verid plugin`. Rule này không mở ngoại lệ.
+Xem [plugin quy trình](plugins.vi.md).
+
 `src/hook.ts` định tuyến event và xử lý lỗi. Policy và gate TDD nằm trong
 `src/hook/pre-tool-use.ts`, prompt và event session trong `src/hook/lifecycle.ts`,
 review subagent trong `src/hook/review.ts`. Helper về host, state và payload nằm

@@ -74,6 +74,7 @@ import { repoResources, resourceTree, skillsFor } from "../adapters/repo-resourc
 import { antigravityPluginDir, antigravityPluginFiles } from "../adapters/antigravity-settings.js";
 import { moduleDrafts } from "../adapters/module-scaffold.js";
 import { upgradeModulePlan } from "../adapters/plan-upgrade.js";
+import { restorePlugins } from "../adapters/plugin-store.js";
 
 import type { CliResult } from "./test.js";
 
@@ -143,6 +144,7 @@ export async function initCommand(
   }
   const result = plan.apply();
   if (result.failed) return { exit: 1, stdout: result.stdout, stderr: result.stderr };
+  await restorePlugins(project, Boolean(flags.yes), io);
   // The same ending as the screen in a terminal: what to commit, then what to do next.
   const out = [
     result.stdout,
@@ -328,7 +330,11 @@ export async function planCook(
 
   const gitignore = join(project, ".verid", ".gitignore");
   const ignoreBefore = readText(gitignore);
-  const ignoreAfter = ignoreBefore ?? ".state/\n";
+  const initialIgnore = ignoreBefore ?? ".state/\n";
+  const ignoreAfter =
+    !existsSync(join(project, ".verid/plugins.json")) || /^\/?\.plugins\/$/m.test(initialIgnore)
+      ? initialIgnore
+      : `${initialIgnore}${initialIgnore.endsWith("\n") ? "" : "\n"}.plugins/\n`;
   if (ignoreBefore === ignoreAfter) step("kept", ".verid/.gitignore");
   // `wx`: a file that appeared since the check is the developer's, never overwritten.
   else

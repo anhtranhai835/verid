@@ -110,6 +110,7 @@ project root. The `verid` shorthand below also works with an optional global ins
 | `verid upgrade [--dry-run] [--yes]`    | Refresh provider wiring and instructions and offer missing manifest defaults. |
 | `verid module <name>`                  | Create a modular dossier from project templates.                              |
 | `verid doctor`                         | Check setup, providers, resources and audit findings.                         |
+| `verid plugin`                         | Add, remove, list or diagnose [workflow plugins](docs/plugins.md).            |
 | `verid doctor --ci`                    | Check, in CI, what the repo holds: spec-to-AC trace, plan order, setup files. |
 | `verid menu`                           | Show module progress and the next step.                                       |
 | `verid peek`                           | Show the current TDD state.                                                   |
@@ -123,7 +124,7 @@ project root. The `verid` shorthand below also works with an optional global ins
 | `verid setup-codex`                    | Set up the installed reviewer in the Codex user config.                       |
 | `verid setup-antigravity`              | Install or update verid's Antigravity plugin for this user.                   |
 
-Cook, upgrade, stock, order, serve, garnish, halt and resume are developer commands,
+Cook, upgrade, plugin, stock, order, serve, garnish, halt and resume are developer commands,
 run in your own terminal. Agents use taste, menu, peek and doctor. In signed no-brain
 drive, the harness manages module order and closure. Cook flags are in the [cook reference](docs/cook-reference.md).
 

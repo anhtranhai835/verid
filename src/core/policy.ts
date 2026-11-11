@@ -75,6 +75,12 @@ function decideFile(
   lifted: ReadonlySet<RuleCode>,
 ): PolicyDecision {
   const write = a.access === "write";
+  if (write && [a.path, a.display, a.written ?? ""].some(isPluginPath))
+    return deny(
+      "VERID_BURNT_PLUGIN_PROTECTED",
+      a.display,
+      "developer-managed plugin code, data or registration",
+    );
   const config = [a.path, a.display, ...(a.written ? [a.written] : [])].flatMap((path) =>
     configPaths(path, ctx),
   );
@@ -166,9 +172,16 @@ const DEVELOPER_COMMAND =
 // The agent's Bash inherits CLAUDE_CODE_SESSION_ATTENDED, so a `/verid tip` piped into the hook
 // would hand it the confirmation code. A copy or a path built at run time still gets through.
 const VERID_HOOK = /\bdist[\\/]+hook\b|\bhook\.js\b/;
+const PLUGIN_COMMAND =
+  /(?:\bverid(?:@[^\s"'\\/]*)?(?:\.(?:cmd|ps1|exe|mjs))?|\bcli(?:\.js)?)["']?\s+(?:--\s+)?plugin\b/;
 
 // In priority order, invariants first. Each rule gets the command lowercased.
 const BASH_RULES: [RuleCode, string, (command: string, ctx: PolicyContext) => boolean][] = [
+  [
+    "VERID_BURNT_PLUGIN_PROTECTED",
+    "runs a plugin command or names plugin registration, code or data",
+    (c) => PLUGIN_COMMAND.test(c) || c.split(/[\s'"`;|&<>()=,]+/).some(isPluginPath),
+  ],
   [
     "VERID_BURNT_STATE_PROTECTED",
     "mentions .state or writes the verid root",
@@ -527,6 +540,16 @@ function isClaudeDefinition(path: string): boolean {
 }
 
 const slashPath = (path: string) => path.toLowerCase().replace(/\\/g, "/").replace(/\/+$/, "");
+
+function isPluginPath(path: string): boolean {
+  const portable = slashPath(path)
+    .split("/")
+    .map((part) => part.replace(/:.*$/, "").replace(/[. ]+$/, ""))
+    .join("/");
+  return /(?:^|\/)\.verid\/(?:plugins\.json(?:\.|\/|$)|\.plugins(?:\/|$)|\.plugin-data(?:\/|$))/.test(
+    portable,
+  );
+}
 
 /** Relative paths inside a relocated config; defaults remain protected independently. */
 function configPaths(path: string, ctx: PolicyContext): string[] {

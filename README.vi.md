@@ -110,6 +110,7 @@ Cách viết gọn `verid` bên dưới dùng được khi chọn cài global.
 | `verid upgrade [--dry-run] [--yes]`   | Cập nhật wiring, chỉ dẫn provider và bổ sung defaults manifest còn thiếu.      |
 | `verid module <tên>`                  | Tạo hồ sơ modular từ template của project.                                     |
 | `verid doctor`                        | Kiểm tra cài đặt, provider, tài nguyên và audit.                               |
+| `verid plugin`                        | Cài, gỡ, liệt kê hoặc kiểm tra [plugin quy trình](docs/plugins.vi.md).         |
 | `verid doctor --ci`                   | Kiểm trong CI những gì repo chứa: truy vết spec tới AC, thứ tự plan, file cài. |
 | `verid menu`                          | Xem tiến độ module và bước tiếp theo.                                          |
 | `verid peek`                          | Xem trạng thái TDD hiện tại.                                                   |
@@ -123,7 +124,7 @@ Cách viết gọn `verid` bên dưới dùng được khi chọn cài global.
 | `verid setup-codex`                   | Thiết lập reviewer đã cài trong config Codex của user.                         |
 | `verid setup-antigravity`             | Cài hoặc cập nhật plugin Antigravity của verid cho user này.                   |
 
-Cook, upgrade, stock, order, serve, garnish, halt và resume do developer chạy ở
+Cook, upgrade, plugin, stock, order, serve, garnish, halt và resume do developer chạy ở
 terminal của mình. Agent dùng taste, menu, peek và doctor. Với no-brain drive đã ký,
 harness tự quản lý việc mở và đóng module. Các flag của cook nằm ở [tham chiếu cook](docs/cook-reference.vi.md).
 

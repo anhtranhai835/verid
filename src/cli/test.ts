@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import { inAgentShell } from "../adapters/agent-environment.js";
+import { emitPluginEvent } from "../adapters/plugin-hooks.js";
 import {
   appendFileSync,
   mkdirSync,
@@ -85,7 +86,7 @@ export async function testCommand(project: string): Promise<CliResult> {
   const run = await runOnce(project);
   const { id, cases, classified, junitSha256 } = run;
 
-  const { verdict, result, rev } = withLock(paths, () => {
+  const { verdict, result, rev, from, to } = withLock(paths, () => {
     const state = readState(paths);
     const from: Cycle = { state: state.tdd.state, stub: state.tdd.stub };
     // A test written meanwhile (or another run finishing) bumped rev: this run may predate it.
@@ -164,10 +165,16 @@ export async function testCommand(project: string): Promise<CliResult> {
         architecture: {},
       });
     }
-    return { verdict, result, rev: state.tdd.rev + 1 };
+    return { verdict, result, rev: state.tdd.rev + 1, from: from.state, to: to.state };
   });
 
   if (verdict.kind === "invalid") return result;
+  if (from !== to)
+    result.stderr += await emitPluginEvent(project, "on-state", {
+      module: module ?? null,
+      from,
+      to,
+    });
   // After a passing suite only; a failing check leaves the cycle where the tests put it.
   const architecture =
     manifest && verdict.kind === "pass"

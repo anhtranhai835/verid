@@ -41,6 +41,7 @@ import { matchesGlob } from "../core/glob.js";
 import { roleAdvice, type Writer, ROLE_DOCUMENTS } from "../core/roles.js";
 import { consumeOverride, recordDenial } from "../core/override.js";
 import { autoPhase } from "../core/auto.js";
+import { withPluginDispatch } from "../adapters/plugin-store.js";
 
 export async function preToolUse(p: z.infer<typeof preToolUseSchema>): Promise<Result> {
   const project = shared.projectDir(p.cwd);
@@ -134,7 +135,7 @@ export async function preToolUse(p: z.infer<typeof preToolUseSchema>): Promise<R
   const dispatch = await (async () => {
     const manifest =
       ["Skill", "Agent", "Task"].includes(p.tool_name) || spawn
-        ? await loadManifest(project)
+        ? withPluginDispatch(project, await loadManifest(project))
         : null;
     return (lifted: ReadonlySet<RuleCode>) => {
       const dispatched = spawn

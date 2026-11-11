@@ -31,6 +31,7 @@ import { ROLE_NAMES, type Manifest } from "../core/manifest.js";
 import { dossierStatus, readPlan, servedModules } from "../adapters/plan-file.js";
 import type { ErrorCode, MessageKey } from "../core/errors.js";
 import type { CliResult } from "./test.js";
+import { pluginProblems } from "../adapters/plugin-store.js";
 
 /**
  * Read-only checks: never run a test, repair settings, or write the manifest cache. With `ci`,
@@ -422,6 +423,14 @@ export async function doctorCommand(project: string, ci = false): Promise<CliRes
         file: ".verid/.state/audit.jsonl",
         line: String(chain.line),
       });
+  }
+  try {
+    const plugins = await pluginProblems(project, ci);
+    problems += plugins.length;
+    lines.push(...plugins.map((line) => `! plugin: ${line}`));
+  } catch (error) {
+    problems++;
+    lines.push(`! plugins.json: ${error instanceof Error ? error.message : String(error)}`);
   }
   lines.push(say(problems ? "doctor.problems" : "doctor.ok", { count: String(problems) }));
   return { exit: problems ? 1 : 0, stdout: `${lines.join("\n")}\n`, stderr: "" };

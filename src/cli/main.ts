@@ -66,6 +66,8 @@ import { antigravityPluginInstalled } from "../adapters/antigravity-settings.js"
 import { moduleCommand } from "./module.js";
 import { boardCommand } from "./board.js";
 import { baselineCommand, lastRefusal, testCommand, type CliResult } from "./test.js";
+import { pluginCommand } from "./plugin.js";
+import { emitPluginEvent } from "../adapters/plugin-hooks.js";
 
 /** `dist/cli.js`: the command line in, its output and exit code out. */
 export async function main(): Promise<void> {
@@ -100,6 +102,8 @@ export async function runCli(args: readonly string[]): Promise<CliResult> {
       );
     else if (cmd === "setup-codex" && rest.length === 0) r = setupCodexCommand();
     else if (cmd === "setup-antigravity" && rest.length === 0) r = setupAntigravityCommand();
+    else if (cmd === "plugin")
+      r = await pluginCommand(project, rest, hasTerminal() ? terminalIo() : undefined);
     else if (cmd === "taste" && rest.length === 0) r = await testCommand(project);
     else if (cmd === "doctor" && (rest.length === 0 || (rest.length === 1 && rest[0] === "--ci")))
       r = await doctorCommand(project, rest[0] === "--ci");
@@ -468,6 +472,12 @@ function usage(project: string, wrong: Misuse | null, next?: string): CliResult 
     { emoji: "🛑", command: `${v} halt [reason]`, what: say("usage.halt"), who: dev },
     { emoji: "▶️", command: `${v} resume`, what: say("usage.resume"), who: dev },
   ];
+  rows.push({
+    emoji: "🧩",
+    command: `${v} plugin <add|remove|list|doctor>`,
+    what: say("usage.plugin"),
+    who: dev,
+  });
   const tty = wrong ? process.stderr.isTTY : process.stdout.isTTY;
   const color = Boolean(tty) && !process.env.NO_COLOR;
   const notes = [...(next ? [next] : []), ...(full === v ? [] : [`${v} = ${full}`])];
@@ -757,6 +767,11 @@ async function approve(project: string, wanted: string | undefined): Promise<Cli
       stderr: "",
     };
   });
+  result.stderr += await emitPluginEvent(project, "after-order", {
+    module: name,
+    acs: module.acs,
+    dossier: `.verid/artifacts/03-modules/${name}`,
+  });
   return result;
 }
 
@@ -856,7 +871,7 @@ async function serve(project: string, wanted: string): Promise<CliResult> {
     throw new VeridError("VERID_BURNT_AUTO_SERVE");
   const { plan, name, manifest } = await planModule(project, "serve", wanted);
   const paths = statePaths(project);
-  const result = withLock(paths, () => {
+  const { result, reviewFile } = withLock(paths, () => {
     const state = readState(paths);
     const views = planViews(project, plan, state);
     const view = views.find((v) => v.name === name) as ModuleView;
@@ -935,7 +950,15 @@ async function serve(project: string, wanted: string): Promise<CliResult> {
         : []),
       bilingual(step.key, "module" in step ? { module: step.module } : {}),
     ];
-    return { exit: 0, stdout: `${lines.join("\n")}\n`, stderr: "" };
+    return {
+      result: { exit: 0, stdout: `${lines.join("\n")}\n`, stderr: "" },
+      reviewFile: review.file,
+    };
+  });
+  result.stderr += await emitPluginEvent(project, "after-serve", {
+    module: name,
+    commit: gitView(project)?.head ?? null,
+    review: reviewFile,
   });
   return result;
 }
