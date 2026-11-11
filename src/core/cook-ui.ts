@@ -68,23 +68,38 @@ export interface UsageRow {
   who?: string;
 }
 
-/** `verid` alone: the tagline, then each command, what it does and who runs it, in columns. */
+/** The widest the command table may be in columns; wider rows stack over two lines. */
+const USAGE_WIDTH = 100;
+
+/**
+ * `verid` alone: the tagline, any notes, then each command, what it does and who runs it, in
+ * columns. When the columns would pass USAGE_WIDTH, each row stacks: the command, then the rest.
+ */
 export function usageLines(
   tagline: string,
   rows: readonly UsageRow[],
   footer: string,
   color: boolean,
+  notes: readonly string[] = [],
 ): string[] {
   const widest = (texts: string[]) => Math.max(...texts.map((s) => [...s].length));
   const cw = widest(rows.map((r) => r.command));
   const ww = widest(rows.map((r) => r.what));
+  const columns = 3 + 2 + cw + 2 + ww + 2 + widest(rows.map((r) => r.who ?? ""));
   return [
     ...bannerLines(tagline, color),
     "",
-    ...rows.map((r) => {
-      const command = paint(r.command.padEnd(cw), PICK, color);
+    ...notes.flatMap((note) => [`   ${note}`, ""]),
+    ...rows.flatMap((r) => {
       const who = r.who ? paint(r.who, DIM, color) : "";
-      return `   ${r.emoji} ${command}  ${r.what.padEnd(ww)}  ${who}`.trimEnd();
+      if (columns <= USAGE_WIDTH) {
+        const command = paint(r.command.padEnd(cw), PICK, color);
+        return [`   ${r.emoji} ${command}  ${r.what.padEnd(ww)}  ${who}`.trimEnd()];
+      }
+      return [
+        `   ${r.emoji} ${paint(r.command, PICK, color)}`,
+        `      ${r.what}  ${who}`.trimEnd(),
+      ];
     }),
     "",
     `   ${footer}`,

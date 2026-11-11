@@ -116,7 +116,8 @@ export async function runCli(args: readonly string[]): Promise<CliResult> {
     else if (cmd === "stock" && rest.length === 0) r = await baselineCommand(project);
     else if (cmd === "order" && rest.length <= 1) r = await approve(project, rest[0]);
     else if (cmd === "serve" && rest.length === 1) r = await serve(project, rest[0] as string);
-    else if (cmd === undefined || ["help", "--help", "-h"].includes(cmd)) r = usage(project, null);
+    else if (cmd === undefined) r = usage(project, null, await helpNextStep(project));
+    else if (["help", "--help", "-h"].includes(cmd)) r = usage(project, null);
     else r = usage(project, misused(cmd, rest));
   } catch (err) {
     const code: ErrorCode = err instanceof VeridError ? err.code : "VERID_BURNT_INTERNAL";
@@ -124,7 +125,10 @@ export async function runCli(args: readonly string[]): Promise<CliResult> {
       err instanceof VeridError
         ? err.params
         : { detail: err instanceof Error ? err.message : String(err) };
-    r = { exit: 2, stdout: "", stderr: `verid [${code}]\n${bilingual(code, params)}\n` };
+    // Before cook there is no language to follow: say it once, in the system's.
+    const before = languageOf(project) === null && !existsSync(manifestFile(project));
+    const text = before ? t(systemLang(), code, params) : bilingual(code, params);
+    r = { exit: 2, stdout: "", stderr: `verid [${code}]\n${text}\n` };
   }
   return r;
 }
@@ -279,10 +283,12 @@ function misused(cmd: string, rest: string[]): Misuse {
  * Before cook has set a language, the system's is used: a table in two languages at once would
  * be hard to read.
  */
-function usage(project: string, wrong: Misuse | null): CliResult {
-  const lang: Lang = languageOf(project) ?? (locale().toLowerCase().startsWith("vi") ? "vi" : "en");
+function usage(project: string, wrong: Misuse | null, next?: string): CliResult {
+  const lang: Lang = languageOf(project) ?? systemLang();
   const say = (key: MessageKey) => t(lang, key, {});
-  const v = veridName();
+  // The table reads `verid`; when verid is not on PATH one line above it names what runs it.
+  const full = veridName();
+  const v = "verid";
   const dev = say("usage.developer");
   // Outside a real terminal, cook asks nothing and needs the mode: never point to what fails.
   const cook = interactive() ? `${v} cook` : `${v} cook --mode <prep|recipe|remix>`;
@@ -324,11 +330,26 @@ function usage(project: string, wrong: Misuse | null): CliResult {
   ];
   const tty = wrong ? process.stderr.isTTY : process.stdout.isTTY;
   const color = Boolean(tty) && !process.env.NO_COLOR;
-  const lines = usageLines(say("usage.tagline"), rows, say("usage.in_claude"), color);
+  const notes = [...(next ? [next] : []), ...(full === v ? [] : [`${v} = ${full}`])];
+  const lines = usageLines(say("usage.tagline"), rows, say("usage.in_claude"), color, notes);
   lines.push("", `   ${say("usage.cook_options")}`);
   if (!wrong) return { exit: 0, stdout: `${lines.join("\n")}\n`, stderr: "" };
   const text = [t(lang, wrong.key, wrong.params), ...lines].join("\n");
   return { exit: 2, stdout: "", stderr: `${text}\n` };
+}
+
+/** The last line of `verid menu`, or nothing when there is no usable plan: help never fails on it. */
+async function helpNextStep(project: string): Promise<string | undefined> {
+  try {
+    const manifest = await loadManifest(project);
+    if (!manifest) return undefined;
+    const state = readState(statePaths(project));
+    return menuLines(project, manifest.mode, state, manifest.roles, manifest.drive, manifest).at(
+      -1,
+    );
+  } catch {
+    return undefined;
+  }
 }
 
 /** `verid menu`: the plan's modules, where each one stands, and the one next step. */
@@ -814,6 +835,7 @@ const terminalIo = (): Io => ({
 });
 
 const locale = () => Intl.DateTimeFormat().resolvedOptions().locale;
+const systemLang = (): Lang => (locale().toLowerCase().startsWith("vi") ? "vi" : "en");
 
 function readJson(file: string): unknown {
   try {

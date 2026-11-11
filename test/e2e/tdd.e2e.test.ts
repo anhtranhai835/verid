@@ -118,7 +118,7 @@ describe("verid taste: evidence from a real run", () => {
     // Importing the CLI must not start it: a started CLI reads argv and sets the exit code.
     expect(process.exitCode).toBeUndefined();
     const rows = [
-      [["--help"], 0, `${VERID_CMD} cook`, ""],
+      [["--help"], 0, `verid = ${VERID_CMD}`, ""],
       [["bogus"], 2, "", "bogus"],
       [["serve"], 2, "", "serve"],
     ] as const;
@@ -452,8 +452,9 @@ describe("verid taste: evidence from a real run", () => {
       const r = await cli(cmd);
       expect(r).toMatchObject({ code: 2, stdout: "" });
       expect(r.stderr.split("\n")[0], cmd).toContain(cmd);
-      expect(r.stderr).toContain(`🔪 ${VERID_CMD} cook`);
-      expect(r.stderr).toContain(`${VERID_CMD} order [module]`);
+      expect(r.stderr).toContain(`verid = ${VERID_CMD}`);
+      expect(r.stderr).toContain("🔪 verid cook");
+      expect(r.stderr).toContain("verid order [module]");
       expect(r.stderr).toContain("/verid:");
     }
     expect(readFileSync(stateFile, "utf8")).toBe(before);
@@ -482,7 +483,8 @@ describe("verid taste: evidence from a real run", () => {
     expect(r).toMatchObject({ code: 0, stderr: "" });
     expect(r.stdout).toContain("██╗   ██╗███████╗");
     expect(r.stdout).toMatch(/^ 🍳 .* · RAW → COOKING → PLATED$/m);
-    expect(r.stdout).toContain(`👅 ${VERID_CMD} taste`);
+    expect(r.stdout).toContain(`verid = ${VERID_CMD}`);
+    expect(r.stdout).toContain("👅 verid taste");
   });
 });
 
