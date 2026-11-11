@@ -4,7 +4,7 @@ import { writeFileSync } from "node:fs";
 
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { gitView } from "../../src/adapters/git.js";
+import { compactWorkLog, gitView } from "../../src/adapters/git.js";
 
 const GIT_ENV = ["GIT_CONFIG_GLOBAL", "GIT_CONFIG_NOSYSTEM", "XDG_CONFIG_HOME"] as const;
 let saved: Record<string, string | undefined>;
@@ -94,5 +94,74 @@ describe("gitView", () => {
     expect({ "broken config": gitView(brokenConfig) }).toEqual({
       "broken config": { clean: false, head: null },
     });
+  });
+});
+
+describe("compactWorkLog", () => {
+  const baseOf = (dir: string) => git(dir, "rev-parse", "HEAD");
+  const count = (text: string, needle: string) => text.split(needle).length - 1;
+
+  it("shows a file changed in several commits once, in one diff from the base", () => {
+    const dir = committed();
+    const base = baseOf(dir);
+    for (const n of [1, 2, 3]) {
+      write(dir, "src/a.ts", `line ${n}\n`);
+      git(dir, "commit", "-q", "-am", `feat: step ${n}`);
+    }
+    const text = compactWorkLog(dir, { ".": { main: "main", base } }).join("\n");
+    expect(count(text, "diff --git a/src/a.ts")).toBe(1);
+    expect(text).toContain("feat: step 1");
+    expect(text).toContain("feat: step 3");
+    expect(text).toContain("history.md");
+  });
+
+  it("covers staged, unstaged, untracked, renamed and deleted files, each file once", () => {
+    const dir = committed();
+    write(dir, "src/keep.ts", "keep me\nkeep me too\nkeep me three\n");
+    write(dir, "src/gone.ts", "bye\n");
+    write(dir, "src/old-name.ts", "renamed body\nrenamed body two\nrenamed body three\n");
+    git(dir, "add", "-A");
+    git(dir, "commit", "-q", "-m", "chore: more files");
+    const base = baseOf(dir);
+    write(dir, "src/staged.ts", "staged new\n");
+    git(dir, "add", "src/staged.ts");
+    write(dir, "src/keep.ts", "keep me\nkeep me too\nkeep me three\nunstaged edit\n");
+    write(dir, "src/untracked.ts", "untracked body\n");
+    git(dir, "mv", "src/old-name.ts", "src/new-name.ts");
+    git(dir, "rm", "-q", "src/gone.ts");
+    const text = compactWorkLog(dir, { ".": { main: "main", base } }).join("\n");
+    expect(text).toMatch(/files\s+5 changed, 2 new, 1 renamed, 1 deleted/);
+    for (const name of ["staged.ts", "keep.ts", "untracked.ts", "new-name.ts", "gone.ts"])
+      expect(text, name).toContain(`src/${name}`);
+    expect(text).toContain("untracked body");
+    expect(text).toContain("staged new");
+    expect(text).toContain("unstaged edit");
+    expect(count(text, "diff --git a/src/keep.ts")).toBe(1);
+  });
+
+  it("says which files were cut and where the full history is", () => {
+    const dir = committed();
+    const base = baseOf(dir);
+    write(dir, "src/big-one.ts", "x".repeat(400) + "\n");
+    write(dir, "src/big-two.ts", "y".repeat(400) + "\n");
+    git(dir, "add", "-A");
+    git(dir, "commit", "-q", "-m", "feat: big files");
+    const text = compactWorkLog(dir, { ".": { main: "main", base } }, 600).join("\n");
+    expect(text).toMatch(/cut.*history\.md/s);
+    expect(text).toContain("big-two.ts");
+    expect(text).not.toContain("y".repeat(400));
+  });
+
+  it("never shows secret files", () => {
+    const dir = committed();
+    const base = baseOf(dir);
+    write(dir, ".env", "TOKEN=hunter2\n");
+    write(dir, "config/db-credentials.json", "swordfish\n");
+    write(dir, "src/key.pem", "-----BEGIN KEY-----\n");
+    write(dir, "src/ok.ts", "fine\n");
+    git(dir, "add", ".env");
+    const text = compactWorkLog(dir, { ".": { main: "main", base } }).join("\n");
+    expect(text).toContain("fine");
+    for (const secret of ["hunter2", "swordfish", "BEGIN KEY"]) expect(text).not.toContain(secret);
   });
 });

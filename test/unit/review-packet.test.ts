@@ -43,3 +43,16 @@ it("replaces a packet's directory entry without overwriting a hard-linked file",
     rmSync(project, { recursive: true, force: true });
   }
 });
+
+it("writes the history beside the packet when given one", () => {
+  const project = mkdtempSync(join(tmpdir(), "verid-packet-history-"));
+  try {
+    expect(writeReviewPacket(project, "short packet", "full history")).toBe(
+      ".verid/review/work.md",
+    );
+    expect(readFileSync(join(project, ".verid/review/work.md"), "utf8")).toBe("short packet");
+    expect(readFileSync(join(project, ".verid/review/history.md"), "utf8")).toBe("full history");
+  } finally {
+    rmSync(project, { recursive: true, force: true });
+  }
+});

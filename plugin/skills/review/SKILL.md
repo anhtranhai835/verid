@@ -18,6 +18,8 @@ review and mapped roles; read the manifest with Read if a mapping is needed.
    It reads the evidence directly; keep diffs and document excerpts out of the
    dispatch prompt. When Git evidence is absent, give the changed file paths and
    identify the missing history. The packet is a snapshot: regenerate after fixes.
+   For a long history add `--compact`: one diff from the base, with the
+   per-commit history in `.verid/review/history.md` to open when order matters.
    The reviewer still reads the plan section, design and module dossier in full.
 2. Read the report. Findings have file:line; each AC gets one coverage line.
    Critical or Important correctness findings fail review. Project conventions

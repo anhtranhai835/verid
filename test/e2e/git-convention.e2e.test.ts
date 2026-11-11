@@ -190,6 +190,36 @@ describe("verid menu --commits: the module's work history for the reviewer", () 
     expect(read.code, read.stderr).toBe(0);
   });
 
+  it("writes a compact packet and a full history, keeping secrets out of both", async () => {
+    manifest('roles:\n  reviewer: ["verid:reviewer"]\n');
+    put(".verid/research.md", "# Research\n");
+    put(".verid/design.md", "# Design\n");
+    put(".verid/spec.md", "- REQ-1: arithmetic\n");
+    put(".verid/plan.md", "## Module: calc\n- AC-1: sums\n");
+    repoAt(".", "main");
+    expect((await runCli(["order", "calc"], project, env())).code).toBe(0);
+    await startTaskSession(project, SESSION);
+    git(project, "switch", "-q", "-c", "feat/calc");
+    put("src/calc.ts", "export const sum = (a: number) => a + 1;\n");
+    put(".env", "TOKEN=hunter2\n");
+    git(project, "add", "-A");
+    git(project, "commit", "-q", "-m", "feat(calc): add sums");
+    put("src/calc.ts", "export const sum = (a: number, b: number) => a + b;\n");
+    git(project, "commit", "-q", "-am", "fix(calc): take two numbers");
+    const result = await runCli(["menu", "--commits", "--file", "--compact"], project, env());
+    expect(result.code, result.stderr).toBe(0);
+    expect(result.stdout).toBe(".verid/review/work.md\n");
+    const packet = readFileSync(join(project, ".verid/review/work.md"), "utf8");
+    const history = readFileSync(join(project, ".verid/review/history.md"), "utf8");
+    expect(packet.split("diff --git a/src/calc.ts")).toHaveLength(2);
+    expect(packet).toContain("history.md");
+    expect(history).toContain("--- commit");
+    expect(history).toContain("feat(calc): add sums");
+    for (const text of [packet, history]) expect(text).not.toContain("hunter2");
+    const alone = await runCli(["menu", "--commits", "--compact"], project, env());
+    expect(alone.code).not.toBe(0);
+  });
+
   it("protects review packets from file, MCP and shell writes, including directory removal", async () => {
     manifest();
     const rows = [

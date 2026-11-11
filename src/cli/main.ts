@@ -28,7 +28,7 @@ import { usageReport } from "../core/usage.js";
 import { contextPacket } from "../core/context-packet.js";
 import { findRunners } from "../adapters/test-runner.js";
 import { checkSetupPath } from "../adapters/workspace.js";
-import { captureWork, gitTree, gitView, workLog } from "../adapters/git.js";
+import { captureWork, compactWorkLog, gitTree, gitView, workLog } from "../adapters/git.js";
 import {
   autoFactsOf,
   blockedFile,
@@ -111,12 +111,8 @@ export async function runCli(args: readonly string[]): Promise<CliResult> {
     else if (cmd === "usage") r = usageCommand(project, rest);
     else if (cmd === "context" && contextArgs(rest)) r = await contextCommand(project, rest);
     else if (cmd === "menu" && rest.length === 0) r = await menu(project);
-    else if (
-      cmd === "menu" &&
-      rest[0] === "--commits" &&
-      (rest.length === 1 || (rest.length === 2 && rest[1] === "--file"))
-    )
-      r = await commits(project, rest.length === 2);
+    else if (cmd === "menu" && rest[0] === "--commits" && commitFlags(rest.slice(1)))
+      r = await commits(project, rest.includes("--file"), rest.includes("--compact"));
     else if (cmd === "garnish" && rest.length === 0) r = refactor(project);
     else if (cmd === "halt") r = halt(project, rest);
     else if (cmd === "resume" && rest.length === 0) r = resume(project);
@@ -437,7 +433,7 @@ function usage(project: string, wrong: Misuse | null, next?: string): CliResult 
     { emoji: "👅", command: `${v} taste`, what: say("usage.taste") },
     { emoji: "👀", command: `${v} peek`, what: say("usage.peek") },
     { emoji: "📊", command: `${v} usage [module] [--json]`, what: say("usage.ledger") },
-    { emoji: "📋", command: `${v} menu [--commits [--file]]`, what: say("usage.menu") },
+    { emoji: "📋", command: `${v} menu [--commits [--file [--compact]]]`, what: say("usage.menu") },
     { emoji: "🗂️", command: `${v} context [module] [--ac <id>]`, what: say("usage.context") },
     {
       emoji: "▦",
@@ -500,13 +496,21 @@ async function menu(project: string): Promise<CliResult> {
   };
 }
 
+/** The flags after `menu --commits`: `--file`, and `--compact` only with it, each at most once. */
+const commitFlags = (flags: string[]): boolean =>
+  new Set(flags).size === flags.length &&
+  flags.every((f) => f === "--file" || f === "--compact") &&
+  (!flags.includes("--compact") || flags.includes("--file"));
+
 /**
  * `verid menu --commits`: the open module's work as Git shows it, for a reviewer that cannot run
  * Git: every commit since the recorded start with its message and diff, then what is uncommitted.
  * With --file, write the evidence to a protected, reviewer-readable packet and print its path.
+ * With --compact too, the packet is one diff from the base and the per-commit history goes to
+ * `history.md` beside it.
  * Secret files and verid's state are never shown.
  */
-async function commits(project: string, file = false): Promise<CliResult> {
+async function commits(project: string, file = false, compact = false): Promise<CliResult> {
   const manifest = await loadManifest(project);
   if (!manifest)
     throw new VeridError("VERID_BURNT_MANIFEST_MISSING", { path: manifestFile(project) });
@@ -520,6 +524,10 @@ async function commits(project: string, file = false): Promise<CliResult> {
       : Object.keys(work).length === 0
         ? [bilingual("git.no_history", { module })]
         : workLog(project, work);
+  const short =
+    compact && work !== undefined && Object.keys(work).length > 0
+      ? compactWorkLog(project, work)
+      : undefined;
   const text = [
     `verid: work history of module ${module}`,
     ...(file
@@ -529,11 +537,12 @@ async function commits(project: string, file = false): Promise<CliResult> {
           "Read changed and new files at their paths; the snapshot below may be truncated.",
         ]
       : []),
-    ...history,
+    ...(short ?? history),
   ].join("\n");
+  const full = `verid: work history of module ${module}\n${history.join("\n")}\n`;
   return say(
     file
-      ? writeReviewPacket(project, `${text}\n`)
+      ? writeReviewPacket(project, `${text}\n`, short === undefined ? undefined : full)
       : work === undefined || Object.keys(work).length === 0
         ? history.join("\n")
         : text,
