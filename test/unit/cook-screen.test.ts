@@ -1,95 +1,30 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { developerProject } from "../support/cook.js";
+import { vitestProject as makeVitestProject } from "../support/cook.js";
+import { scriptedTerminal, ENTER, UP, DOWN, CTRL_C } from "../support/terminal.js";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
-import { EventEmitter } from "node:events";
-import { tmpdir } from "node:os";
+
 import { dirname, join } from "node:path";
-import { PassThrough } from "node:stream";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import { describe, expect, it, vi } from "vitest";
 import { parse } from "yaml";
-import { setLanguage } from "../../src/adapters/i18n.js";
-import type { Io } from "../../src/adapters/terminal.js";
+
 import { interactiveCook } from "../../src/cli/cook-screen.js";
 import { initCommand, planCook } from "../../src/cli/init.js";
 
-const ENTER = "\r";
-const UP = "\x1b[A";
-const DOWN = "\x1b[B";
-const CTRL_C = "\x03";
-
-/**
- * A terminal that presses the next key each time verid draws a question ("? …" at the start of a
- * line, or of a redrawn list). A key may be a function: what the developer (or another program)
- * does before pressing it.
- */
-function scriptedTerminal(
-  keys: (string | (() => string))[],
-  providerKeys = ENTER,
-  architectureKeys = ENTER,
-  layoutKeys: string | (string | (() => string))[] = ENTER,
-  resourceKeys = ENTER,
-) {
-  const input = Object.assign(new PassThrough(), { isTTY: true, setRawMode: () => undefined });
-  const output = new PassThrough();
-  const interrupts = new EventEmitter();
-  let screen = "";
-  output.on("data", (d) => {
-    screen += d;
-    if (/\? (How are your repositories organized|Repo của bạn tổ chức thế nào)/.test(String(d))) {
-      const next = Array.isArray(layoutKeys) ? (layoutKeys.shift() ?? ENTER) : layoutKeys;
-      setImmediate(() => input.write(typeof next === "function" ? next() : next));
-      return;
-    }
-    if (/\? (Where should cook resources live|Lưu tài nguyên cook ở đâu)/.test(String(d))) {
-      setImmediate(() => input.write(resourceKeys));
-      return;
-    }
-    if (/(^|\n|\x1b\[0J)\? (Choose providers|Chọn provider)/.test(String(d))) {
-      setImmediate(() => input.write(providerKeys));
-      return;
-    }
-    if (/\? (Project architecture|Kiến trúc dự án)/.test(String(d))) {
-      setImmediate(() => input.write(architectureKeys));
-      return;
-    }
-    if (/(^|\n|\x1b\[0J)\? /.test(String(d)) && keys.length > 0) {
-      const next = keys.shift() as string | (() => string);
-      setImmediate(() => input.write(typeof next === "function" ? next() : next));
-    }
-  });
-  const io: Io = { input, output, color: false, interrupts };
-  return { io, screen: () => screen, interrupt: () => interrupts.emit("SIGINT") };
-}
-
 let project: string;
-let fixtureRoot: string;
-let agent: string | undefined;
-beforeEach(() => {
-  project = mkdtempSync(join(tmpdir(), "verid-cook-screen-"));
-  fixtureRoot = project;
-  agent = process.env.CLAUDECODE; // the developer's terminal, not an agent's
-  delete process.env.CLAUDECODE;
-  vi.stubEnv("CODEX_HOME", join(project, "codex home"));
-  setLanguage(null);
-});
-afterEach(() => {
-  vi.unstubAllEnvs();
-  if (agent !== undefined) process.env.CLAUDECODE = agent;
-  setLanguage(null);
-  rmSync(fixtureRoot, { recursive: true, force: true });
-});
 
-const put = (rel: string, text = "") => {
-  mkdirSync(dirname(join(project, rel)), { recursive: true });
-  writeFileSync(join(project, rel), text);
-};
-const vitestProject = () => {
-  put("package.json", '{"devDependencies":{"vitest":"^5.0.0"}}');
-  put("src/app.ts");
-  put("test/app.test.ts");
-};
-const manifest = () => readFileSync(join(project, ".verid", "manifest.yaml"), "utf8");
-const state = () =>
-  JSON.parse(readFileSync(join(project, ".verid", ".state", "state.json"), "utf8"));
+const t = developerProject("verid-cook-screen-", {
+  cwd: () => project,
+  codexHome: "codex home",
+  claude: "unset",
+  language: null,
+  bind: (p) => {
+    project = p.root;
+  },
+});
+const { put, manifestText: manifest, state } = t;
+const vitestProject = makeVitestProject(t);
 
 describe("interactiveCook: verid cook in the developer's terminal", () => {
   it.each(["1", "2"])(
