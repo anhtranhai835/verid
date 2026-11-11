@@ -1,10 +1,8 @@
 # slugify: a sample project for verid
 
-A small TypeScript library with vitest and one unwritten function, `slugify` in `src/slugify.ts`.
-Build it with verid to see the whole workflow once: a module goes RAW, COOKING, PLATED, then is
-served. Suggested acceptance criteria: a plain title, a title with accents, an empty string.
-
-Copy this folder out of the verid repository first, so verid sets up the copy and not the repository:
+A TypeScript library with vitest and one unwritten function, `slugify`. Build it with verid to
+see a module go RAW, COOKING, PLATED, then served. Suggested acceptance criteria: a plain title,
+a title with accents, an empty string. Copy the folder out of the verid repository first:
 
 ```sh
 cp -r examples/slugify ~/slugify
@@ -40,9 +38,8 @@ verid doctor
 
 `No problems found.` If it reports `plugin.verid`, install verid's agents as the message says.
 
-**4. Say "what's next?"** in Claude Code at the project root, then ask for the slugify module.
-The agent works through `ba`, `design` and `plan` and writes the module into `.verid/plan.md`.
-_To confirm in the walkthrough._
+**4. Say "what's next?"** in Claude Code, then ask for the slugify module. The agent writes it
+into `.verid/plan.md` through `ba`, `design` and `plan` (_to confirm in the walkthrough_).
 
 **5. Approve the module** once its acceptance criteria are right.
 
@@ -58,5 +55,5 @@ _To confirm in the walkthrough._
 verid serve slugify
 ```
 
-`Module slugify is served: every one of its acceptance criteria has a passing test, and the developer accepted it.`
-_To confirm in the walkthrough._
+`Module slugify is served: every one of its acceptance criteria has a passing test, ...`
+(_to confirm in the walkthrough_).
