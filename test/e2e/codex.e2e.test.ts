@@ -1,41 +1,30 @@
+import { tempProject, TEST_ROOT as ROOT, HOOK, FRESH_STATE } from "../support/project.js";
 import { readyModulePlan, startTaskSession } from "./helpers.js";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { homedir, tmpdir } from "node:os";
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { runHook } from "./in-process.js";
+import { describe, expect, it } from "vitest";
 
-const ROOT = join(import.meta.dirname, "../..");
-const HOOK = join(ROOT, "dist/hook.js");
 // Real Codex 0.164.0 hook stdin, cwd templated as in the Claude Code fixtures.
 const FIXTURES = join(ROOT, "test/fixtures/codex");
 let project: string;
 const stateFile = () => join(project, ".verid/.state/state.json");
-function manifest(extra: Record<string, unknown> = {}) {
-  writeFileSync(
-    join(project, ".verid/manifest.yaml"),
-    JSON.stringify({
-      schemaVersion: 1,
-      mode: "remix",
-      providers: ["codex"],
-      repos: [{ path: ".", source_globs: ["src/**"], test_globs: ["test/**"] }],
-      roles: {
-        reviewer: ["reviewer", "verid_reviewer"],
-        tester: ["verid:tester"],
-        coder: ["verid:coder"],
-      },
-      ...extra,
-    }),
-  );
-}
-beforeEach(() => {
-  project = mkdtempSync(join(tmpdir(), "verid codex test-"));
-  mkdirSync(join(project, ".verid/.state"), { recursive: true });
-  writeFileSync(stateFile(), '{"schemaVersion":1,"baseline":[]}');
-  manifest();
+
+const t = tempProject("verid codex test-", {
+  state: FRESH_STATE,
+  manifestPreset: "codex",
+  claudeProject: false,
+  cwd: () => project,
+  bind: (p) => {
+    project = p.root;
+  },
+  setup: () => {
+    manifest();
+  },
 });
-afterEach(() => rmSync(project, { recursive: true, force: true }));
+const { writeManifest: manifest, providerHook: hook } = t;
+
 function spawnHook(payload: unknown, provider = "codex", extraEnv: Record<string, string> = {}) {
   const env = Object.fromEntries(
     Object.entries(process.env).filter(([k]) => !/^(CLAUDE|CODEX)/.test(k)),
@@ -47,12 +36,7 @@ function spawnHook(payload: unknown, provider = "codex", extraEnv: Record<string
   });
   return { code: r.status, stdout: r.stdout, stderr: r.stderr };
 }
-// Tables run in process; the captured-envelope test spawns the built hook for every event.
-const hook = (payload: unknown, provider = "codex", extraEnv: Record<string, string> = {}) =>
-  runHook(typeof payload === "string" ? payload : JSON.stringify(payload), extraEnv, [
-    "--provider",
-    provider,
-  ]);
+
 const envelope = (event: string, extra = {}) => ({
   session_id: "codex-session",
   transcript_path: null,

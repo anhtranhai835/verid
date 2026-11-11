@@ -253,6 +253,34 @@ describe("self-contained verid skills", () => {
     }
   });
 
+  it("checks review findings before fixing them and logs what failed", () => {
+    const build = read("plugin/skills/build/SKILL.md");
+    expect(build).toContain("references/review-findings.md");
+    expect(build).toContain("- Tried: ");
+    expect(read("plugin/skills/review/SKILL.md")).toContain("references/review-findings.md");
+    const findings = read("plugin/skills/build/references/review-findings.md");
+    for (const text of ["failing test", "The developer decides", "verid menu --commits --file"])
+      expect(findings, text).toContain(text);
+    expect(read("plugin/antigravity/skills/verid-build/SKILL.md")).toContain("`Tried`");
+  });
+
+  it("keeps the rarely used edge-case modes out of the always-read skill", () => {
+    const skill = read("plugin/skills/edge-cases/SKILL.md");
+    expect(Buffer.byteLength(skill)).toBeLessThanOrEqual(5800);
+    expect(skill).toContain("references/iterative-mode.md");
+    expect(skill).toContain("| 12  | **Business Logic**");
+    const iterative = read("plugin/skills/edge-cases/references/iterative-mode.md");
+    for (const text of ["Saturation", "Composite Score", "saturation-loop.md"])
+      expect(iterative, text).toContain(text);
+  });
+
+  it("states the board and drive rules once per context", () => {
+    const sentence = "the developer arranges the priority queue";
+    expect(read("plugin/templates/workflow.md")).toContain(sentence);
+    for (const file of ["plugin/skills/modules/SKILL.md", "plugin/templates/skill-routing.md"])
+      expect(read(file), file).not.toContain(sentence);
+  });
+
   it("asks only what changes the build, asks why first, and proposes the rest", () => {
     const rows = [
       [

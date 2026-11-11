@@ -1,29 +1,7 @@
-import { EventEmitter } from "node:events";
-import { PassThrough } from "node:stream";
-import { describe, expect, it } from "vitest";
-import { ask, select, type Io } from "../../src/adapters/terminal.js";
+import { fakeTerminal } from "../support/terminal.js";
 
-/** A terminal stand-in: keys go in through `input`, what verid draws comes out of `text()`. */
-function fakeTerminal() {
-  const raw: boolean[] = [];
-  const input = Object.assign(new PassThrough(), {
-    isTTY: true,
-    setRawMode: (on: boolean) => raw.push(on),
-  });
-  const output = new PassThrough();
-  let drawn = "";
-  output.on("data", (d) => (drawn += d));
-  // Ctrl+C outside raw mode is a signal, not a key: it arrives here.
-  const interrupts = new EventEmitter();
-  const io: Io = { input, output, color: false, interrupts };
-  return {
-    io,
-    raw,
-    type: (keys: string) => input.write(keys),
-    interrupt: () => interrupts.emit("SIGINT"),
-    text: () => drawn,
-  };
-}
+import { describe, expect, it } from "vitest";
+import { ask, select } from "../../src/adapters/terminal.js";
 
 describe("select: one option out of a list, with the arrow keys", () => {
   it("returns the option picked with the arrows and Enter, or null on Ctrl+C, and leaves raw mode", async () => {

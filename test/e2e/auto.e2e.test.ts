@@ -1,100 +1,51 @@
+import {
+  tempProject,
+  autoManifest as manifest,
+  told,
+  enMessage,
+  verdict,
+  type GitResult,
+} from "../support/project.js";
 import { autoFactsOf } from "../../src/adapters/plan-file.js";
 import { readState, statePaths } from "../../src/adapters/state-store.js";
 import { readyModulePlan } from "./helpers.js";
-import { spawnSync } from "node:child_process";
+
 import { createHash } from "node:crypto";
 import {
   appendFileSync,
   existsSync,
-  mkdirSync,
-  mkdtempSync,
   readdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { runCli, runHook, runReview } from "./in-process.js";
-import { claudeFixture, type Payload } from "./helpers.js";
 
-// Runs the CLI and hook in process, on a prep project driven by auto. The manifest's
-// test command is a fake runner that copies recorded vitest JUnit reports, so scenario.json picks
-// each run's outcome. Paths are built with join(), so these tests run on Windows and POSIX alike.
-const root = join(import.meta.dirname, "..", "..");
-const CLI = join(root, "dist", "cli.js");
-const RUNNER = join(import.meta.dirname, "fake-runner.mjs");
+import { join } from "node:path";
+import { describe, expect, it } from "vitest";
 
 let project: string;
-let stateFile: string;
-let auditFile: string;
 let manifestFile: string;
 
-const FRESH_STATE = '{"schemaVersion":1}';
+const t = tempProject("verid-auto-$$-", {
+  state: '{"schemaVersion":1}',
+  manifest: () => manifest(),
+  review: true,
+  parents: false,
+  bind: (p) => ({ dir: project, manifestFile } = p),
+  setup: () => {
+    writeFileSync(join(project, ".verid", ".gitignore"), ".state/\n");
+  },
+});
+const { fixture, hook, cli, state, audit, put, seed } = t;
+const { coderStop, stop, actorWrite: writeAs } = t;
+const reviewerStop = t.reviewStop("verid:reviewer");
+const securityStop = t.reviewStop("verid:security");
+const git = t.gitChecked(checkGit);
 
-const manifest = (testCmd = `"${process.execPath}" "${RUNNER}" {junit}`) =>
-  [
-    "schemaVersion: 1",
-    "mode: prep",
-    "drive: auto",
-    "roles:",
-    '  reviewer: ["verid:reviewer"]',
-    '  tester: ["verid:tester"]',
-    '  coder: ["verid:coder"]',
-    "repos:",
-    "  - path: .",
-    `    test_cmd: ${JSON.stringify(testCmd)}`,
-    '    source_globs: ["src/**"]',
-    '    test_globs: ["test/**"]',
-    "",
-  ].join("\n");
-
-beforeEach(() => fresh());
-// A new project, so a test can walk through several from the start.
-function fresh(): void {
-  // `$$` in the path: it must reach the test command unchanged ({junit} replacement).
-  project = mkdtempSync(join(tmpdir(), "verid-auto-$$-"));
-  stateFile = join(project, ".verid", ".state", "state.json");
-  auditFile = join(project, ".verid", ".state", "audit.jsonl");
-  manifestFile = join(project, ".verid", "manifest.yaml");
-  mkdirSync(join(project, ".verid", ".state"), { recursive: true });
-  writeFileSync(join(project, ".verid", ".gitignore"), ".state/\n");
-  writeFileSync(stateFile, FRESH_STATE);
-  writeFileSync(manifestFile, manifest());
-}
-afterEach(() => rmSync(project, { recursive: true, force: true }));
-
-const fixture = (name: string, edit?: (p: Payload) => void): string =>
-  claudeFixture(project, name, edit);
-
-interface Run {
-  code: number | null;
-  stdout: string;
-  stderr: string;
-}
-
-// In process; hook.e2e and tdd.e2e spawn the built hook and CLI.
-const hook = (input: string, extra: Record<string, string> = {}): Promise<Run> =>
-  (JSON.parse(input).hook_event_name === "SubagentStop" ? runReview : runHook)(input, {
-    CLAUDE_PROJECT_DIR: project,
-    ...extra,
-  });
-const cliWith = (extra: Record<string, string>, ...args: string[]): Promise<Run> =>
-  runCli(args, project, { CLAUDE_PROJECT_DIR: project, ...extra });
-const cli = (...args: string[]): Promise<Run> => cliWith({}, ...args);
-
-const state = () => JSON.parse(readFileSync(stateFile, "utf8"));
 // Only the cycle is replaced: the auto state a test built before it must stay.
 const setTdd = (s: string) => seed({ tdd: { state: s, last_run: null } });
-const audit = (): Payload[] =>
-  readFileSync(auditFile, "utf8")
-    .trim()
-    .split("\n")
-    .map((l) => JSON.parse(l));
 
 const prompt = (text: string) => fixture("user-prompt-submit-verid-tip", (p) => (p.prompt = text));
-const verdict = (r: Run) => (r.code === 0 ? "exit 0" : /verid \[(\w+)\]/.exec(r.stderr)?.[1]);
 
 // The developer, at the terminal, allows the action that was just blocked.
 async function allowOnce(reason = "hotfix"): Promise<void> {
@@ -105,7 +56,6 @@ async function allowOnce(reason = "hotfix"): Promise<void> {
   expect((await hook(prompt(`/verid confirm ${code}`), attended)).code).toBe(0);
 }
 
-const put = (rel: string, text: string) => writeFileSync(join(project, ...rel.split("/")), text);
 const writePlan = (text: string) => put(".verid/plan.md", readyModulePlan(project, text));
 const sha = (rel: string) =>
   createHash("sha256")
@@ -120,16 +70,6 @@ const CALC_AND_PRODUCT = [
   "- AC-9 (e2e): adds two numbers from the page",
   "",
 ].join("\n");
-
-// Merge into what state.json holds now; `auto` is merged field by field, the rest replaced.
-function seed(partial: Payload): void {
-  const { auto, ...rest } = partial;
-  const now = state();
-  writeFileSync(
-    stateFile,
-    JSON.stringify({ ...now, ...rest, ...(auto && { auto: { ...now.auto, ...auto } }) }),
-  );
-}
 
 // The developer has approved research and design, and a plan is written.
 async function signed(): Promise<void> {
@@ -147,21 +87,6 @@ const planPassed = (): void =>
     },
   });
 
-// A subagent stops: the mapped reviewer with its report, or the coder c1, held once as Stop is.
-const reviewerStop = async (report: string): Promise<Run> =>
-  await hook(
-    fixture("subagent-stop-reviewer", (p) => {
-      p.agent_type = "verid:reviewer";
-      p.last_assistant_message = report;
-    }),
-  );
-const securityStop = async (report: string): Promise<Run> =>
-  await hook(
-    fixture("subagent-stop-reviewer", (p) => {
-      p.agent_type = "verid:security";
-      p.last_assistant_message = report;
-    }),
-  );
 // The project maps verid:security too, so a module closes only on its pass.
 const withSecurity = (): void =>
   writeFileSync(
@@ -171,42 +96,12 @@ const withSecurity = (): void =>
       '  coder: ["verid:coder"]\n  security: ["verid:security"]\n',
     ),
   );
-const coderStop = async (active: boolean): Promise<Run> =>
-  await hook(
-    fixture("subagent-stop-reviewer", (p) => {
-      p.agent_type = "verid:coder";
-      p.agent_id = "c1";
-      p.stop_hook_active = active;
-    }),
-  );
-// The main thread stops; Claude Code sets stop_hook_active on the stop that follows a hold.
-const stop = async (active = false): Promise<Run> =>
-  await hook(
-    fixture("stop", (p) => {
-      p.stop_hook_active = active;
-    }),
-  );
 
-// The roles are split, so each write comes from the agent that owns the file: a main-thread
-// write would be denied by a role rule and hide the auto rule.
-const writeAs = async (agent: string, rel: string) =>
-  verdict(
-    await hook(
-      fixture("pre-tool-use-write-from-plugin-agent", (p) => {
-        p.agent_type = agent;
-        p.tool_input.file_path = join(project, ...rel.split("/"));
-      }),
-    ),
-  );
 const code = () => writeAs("verid:coder", "src/a.ts");
 const test = () => writeAs("verid:tester", "test/a.test.ts");
 const notes = () => writeAs("verid:coder", "notes.md");
 
-function git(...args: string[]): void {
-  const r = spawnSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], {
-    cwd: project,
-    encoding: "utf8",
-  });
+function checkGit(r: GitResult): void {
   expect(r.status, r.stderr).toBe(0);
 }
 
@@ -216,22 +111,6 @@ function gitRepo(): void {
   git("add", "-A");
   git("commit", "-q", "-m", "init");
 }
-
-// A message's English line, as the hook fills it: {verid} names the CLI as it runs here.
-const EN = JSON.parse(readFileSync(join(root, "i18n", "en.json"), "utf8")) as Record<
-  string,
-  string
->;
-const enMessage = (key: string, params: Record<string, string>) =>
-  (EN[key] ?? key).replace(
-    /\{(\w+)\}/g,
-    (m, name: string) =>
-      params[name] ?? (name === "verid" ? `node "${CLI.replaceAll("\\", "/")}"` : m),
-  );
-// Stop let the agent go (exit 0) and told the developer the message, as a systemMessage.
-const told = (r: Run | undefined, key: string, params: Record<string, string>) =>
-  r?.code === 0 &&
-  String((JSON.parse(r.stdout || "{}") as Payload).systemMessage).includes(enMessage(key, params));
 
 describe("verid order and verid serve in an auto drive", () => {
   it("refuses what auto does itself, and what it cannot sign", async () => {

@@ -1,7 +1,8 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { developerProject } from "../support/cook.js";
+import { existsSync } from "node:fs";
+
+import { join } from "node:path";
+import { expect, it } from "vitest";
 import { parse } from "yaml";
 import { planCook } from "../../src/cli/init.js";
 import { moduleCommand } from "../../src/cli/module.js";
@@ -13,20 +14,14 @@ let project: string;
 const fresh = parseState('{"schemaVersion":1}');
 if (!fresh.ok) throw new Error("invalid fresh state");
 const FRESH_STATE = fresh.state;
-beforeEach(() => {
-  project = mkdtempSync(join(tmpdir(), "verid-modular-"));
-  vi.stubEnv("CLAUDECODE", "");
-  vi.stubEnv("CODEX_HOME", join(project, "user-codex"));
+const t = developerProject("verid-modular-", {
+  claude: "clear",
+  bind: (p) => {
+    project = p.root;
+  },
 });
-afterEach(() => {
-  vi.unstubAllEnvs();
-  rmSync(project, { recursive: true, force: true });
-});
-const read = (rel: string) => readFileSync(join(project, rel), "utf8");
-const put = (rel: string, content: string) => {
-  mkdirSync(dirname(join(project, rel)), { recursive: true });
-  writeFileSync(join(project, rel), content);
-};
+const { read, put } = t;
+
 const flags = {
   mode: "prep",
   workflow: "modular",

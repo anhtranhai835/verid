@@ -1,35 +1,20 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { tempProject } from "../support/project.js";
+import { readFileSync, writeFileSync } from "node:fs";
+
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { runHook } from "./in-process.js";
+import { describe, expect, it } from "vitest";
 
 let project: string;
-beforeEach(() => {
-  project = mkdtempSync(join(tmpdir(), "verid-provider-security-"));
-  mkdirSync(join(project, ".verid/.state"), { recursive: true });
-  writeFileSync(join(project, ".verid/.state/state.json"), '{"schemaVersion":1}');
+const t = tempProject("verid-provider-security-", {
+  state: '{"schemaVersion":1}',
+  session: "provider-security",
+  cwd: () => project,
+  bind: (p) => {
+    project = p.root;
+  },
 });
-afterEach(() => rmSync(project, { recursive: true, force: true }));
+const { writeManifest: manifest, inputHook: hook } = t;
 
-function manifest(extra: Record<string, unknown> = {}): void {
-  writeFileSync(
-    join(project, ".verid/manifest.yaml"),
-    JSON.stringify({
-      schemaVersion: 1,
-      mode: "remix",
-      repos: [{ path: ".", source_globs: ["src/**"], test_globs: ["test/**"] }],
-      ...extra,
-    }),
-  );
-}
-// In process: hook.e2e proves the built hook runs the same code.
-function hook(payload: Record<string, unknown>, attended = false) {
-  return runHook(JSON.stringify({ session_id: "provider-security", cwd: project, ...payload }), {
-    CLAUDE_PROJECT_DIR: project,
-    ...(attended ? { CLAUDE_CODE_SESSION_ATTENDED: "1" } : {}),
-  });
-}
 const call = (tool_name: string, tool_input: Record<string, unknown>, extra = {}) => ({
   hook_event_name: "PreToolUse",
   tool_name,

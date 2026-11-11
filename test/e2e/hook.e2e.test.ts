@@ -1,74 +1,23 @@
-import { spawn, spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
-import { homedir, tmpdir } from "node:os";
+import { tempProject, HOOK, type Run } from "../support/project.js";
+
+import { mkdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { verifyAuditChain } from "../../src/adapters/audit-log.js";
 import { runHook } from "./in-process.js";
-import { developerEnv, claudeFixture, type Payload } from "./helpers.js";
-
-// Runs the built hook as a real process, the way Claude Code does, fed with recorded payloads.
-const root = join(import.meta.dirname, "..", "..");
-const HOOK = join(root, "dist", "hook.js");
+import { type Payload } from "./helpers.js";
 
 let project: string;
 let stateFile: string;
 let auditFile: string;
 let lockFile: string;
 
-beforeEach(() => {
-  project = mkdtempSync(join(tmpdir(), "verid-e2e-"));
-  stateFile = join(project, ".verid", ".state", "state.json");
-  auditFile = join(project, ".verid", ".state", "audit.jsonl");
-  lockFile = join(project, ".verid", ".state", "state.lock");
-  freshState();
+const t = tempProject("verid-e2e-", {
+  state: '{"schemaVersion":1}',
+  bind: (p) => ({ dir: project, stateFile, auditFile, lockFile } = p),
 });
-
-// A new .verid with bootstrap state, so each case of a table starts from the same place.
-function freshState(): void {
-  rmSync(join(project, ".verid"), { recursive: true, force: true });
-  mkdirSync(join(project, ".verid", ".state"), { recursive: true });
-  writeFileSync(stateFile, '{"schemaVersion":1}');
-}
-afterEach(() => rmSync(project, { recursive: true, force: true }));
-
-const fixture = (name: string, edit?: (p: Payload) => void): string =>
-  claudeFixture(project, name, edit);
-
-// Claude Code sets CLAUDE_* for its hooks; start clean so the test machine's own session leaks nothing.
-function env(extra: Record<string, string>): NodeJS.ProcessEnv {
-  return { ...developerEnv(), CLAUDE_PROJECT_DIR: project, ...extra };
-}
-
-interface Run {
-  code: number | null;
-  stdout: string;
-  stderr: string;
-}
-
-function hook(input: string, extra: Record<string, string> = {}): Run {
-  const r = spawnSync(process.execPath, [HOOK], { input, env: env(extra), encoding: "utf8" });
-  return { code: r.status, stdout: r.stdout, stderr: r.stderr };
-}
-
-function hookAsync(input: string): Promise<Run> {
-  return new Promise((done) => {
-    const child = spawn(process.execPath, [HOOK], { env: env({}) });
-    let stdout = "";
-    let stderr = "";
-    child.stdout.on("data", (d) => (stdout += d));
-    child.stderr.on("data", (d) => (stderr += d));
-    child.on("close", (code) => done({ code, stdout, stderr }));
-    child.stdin.end(input);
-  });
-}
-
-const state = () => JSON.parse(readFileSync(stateFile, "utf8"));
-const audit = (): Payload[] =>
-  readFileSync(auditFile, "utf8")
-    .trim()
-    .split("\n")
-    .map((l) => JSON.parse(l));
+const { fixture, hookSync: hook, hookAsync, state, audit, reset: freshState } = t;
 
 const ATTENDED = { CLAUDE_CODE_SESSION_ATTENDED: "1" };
 const prompt = (text: string, edit?: (p: Payload) => void) =>

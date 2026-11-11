@@ -1,7 +1,8 @@
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tempProject } from "../support/project.js";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { runHook } from "./in-process.js";
 
 /** macOS and Windows file systems ignore case by default; there `.VERID` is `.verid`. */
@@ -16,20 +17,24 @@ const caseInsensitive = (() => {
 })();
 
 let project: string;
-beforeEach(() => {
-  project = mkdtempSync(join(tmpdir(), "verid-case-"));
-  const put = (rel: string, text = "x") => {
-    mkdirSync(join(project, rel, ".."), { recursive: true });
-    writeFileSync(join(project, rel), text);
-  };
-  put(".verid/.state/state.json", '{"schemaVersion":1}');
-  put(".verid/manifest.yaml");
-  put(".verid/review/work.md");
-  put(".claude/settings.local.json", "{}");
-  put(".git/config");
-  put("cc/projects/p/s.jsonl");
+tempProject("verid-case-", {
+  cwd: () => project,
+  defaultText: "x",
+  bind: (p) => {
+    project = p.root;
+  },
+  setup: (p) => {
+    p.put(".verid/.state/state.json", '{"schemaVersion":1}');
+    for (const file of [
+      ".verid/manifest.yaml",
+      ".verid/review/work.md",
+      ".git/config",
+      "cc/projects/p/s.jsonl",
+    ])
+      p.put(file);
+    p.put(".claude/settings.local.json", "{}");
+  },
 });
-afterEach(() => rmSync(project, { recursive: true, force: true }));
 
 // In process: hook.e2e proves the built hook runs the same code.
 async function decision(tool_name: string, rel: string) {

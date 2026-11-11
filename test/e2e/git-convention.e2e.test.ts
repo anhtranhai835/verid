@@ -1,9 +1,10 @@
-import { readyModulePlan, startTaskSession } from "./helpers.js";
-import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { tempProject } from "../support/project.js";
+import { startTaskSession } from "./helpers.js";
+
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+
+import { join } from "node:path";
+import { describe, expect, it } from "vitest";
 import { runCli, runHook } from "./in-process.js";
 import { workLog } from "../../src/adapters/git.js";
 
@@ -19,22 +20,7 @@ const env = (extra: NodeJS.ProcessEnv = {}) => ({
   GIT_CONFIG_NOSYSTEM: "1",
   ...extra,
 });
-const git = (cwd: string, ...args: string[]) => {
-  const r = spawnSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], {
-    cwd,
-    encoding: "utf8",
-    env: { ...process.env, ...env() },
-  });
-  if (r.status !== 0) throw new Error(`git ${args.join(" ")}: ${r.stderr}`);
-  return r.stdout.trim();
-};
-const put = (path: string, text: string) => {
-  mkdirSync(dirname(join(project, path)), { recursive: true });
-  writeFileSync(
-    join(project, path),
-    path === ".verid/plan.md" ? readyModulePlan(project, text) : text,
-  );
-};
+
 /** A repository with one commit on main, then checked out on `branch`. */
 const repoAt = (folder: string, branch: string, main = "main") => {
   const dir = join(project, folder);
@@ -46,10 +32,7 @@ const repoAt = (folder: string, branch: string, main = "main") => {
   if (branch !== main) git(dir, "switch", "-q", "-c", branch);
   return dir;
 };
-const manifest = (
-  extra = "",
-  repos = '  - path: "."\n    source_globs: ["src/**"]\n    test_globs: ["test/**"]\n',
-) => put(".verid/manifest.yaml", `schemaVersion: 1\nmode: prep\n${extra}repos:\n${repos}`);
+
 const payload = (command: string, cwd = project) =>
   JSON.stringify({
     hook_event_name: "PreToolUse",
@@ -63,17 +46,24 @@ const code = async (command: string, cwd = project) => {
   return r.code === 0 ? "allow" : (/verid \[(\w+)\]/.exec(r.stderr)?.[1] ?? r.stderr);
 };
 
-beforeEach(() => {
-  project = mkdtempSync(join(tmpdir(), "verid-git-"));
-  gitconfig = join(project, "..", `${project.split(/[\\/]/).at(-1)}.gitconfig`);
-  writeFileSync(gitconfig, "");
-  put(".verid/.state/state.json", '{"schemaVersion":1,"language":"en"}');
-  put(".verid/.gitignore", ".state/\n");
+const t = tempProject("verid-git-", {
+  cwd: () => project,
+  claudeProject: false,
+  gitEnv: () => ({ ...process.env, ...env() }),
+  bind: (p) => {
+    project = p.root;
+    gitconfig = join(project, "..", project.split(/[\\/]/).at(-1) + ".gitconfig");
+  },
+  setup: (p) => {
+    writeFileSync(gitconfig, "");
+    p.put(".verid/.state/state.json", '{"schemaVersion":1,"language":"en"}');
+    p.put(".verid/.gitignore", ".state/\n");
+  },
+  teardown: () => {
+    rmSync(gitconfig, { force: true });
+  },
 });
-afterEach(() => {
-  rmSync(project, { recursive: true, force: true });
-  rmSync(gitconfig, { force: true });
-});
+const { gitAt: git, putPlan: put, gitManifest: manifest } = t;
 
 describe("Git internals remain protected", () => {
   it("refuses any write inside a repository's .git folder, by file tool or shell", async () => {

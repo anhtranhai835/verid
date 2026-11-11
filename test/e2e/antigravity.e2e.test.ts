@@ -1,79 +1,36 @@
-import { readyModulePlan, startTaskSession } from "./helpers.js";
+import { tempProject, TEST_ROOT as ROOT } from "../support/project.js";
+import { startTaskSession } from "./helpers.js";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import { antigravityPluginInstalled } from "../../src/adapters/antigravity-settings.js";
 import { runCli, runHook } from "./in-process.js";
 
-const ROOT = join(import.meta.dirname, "../..");
 const SHIM = join(ROOT, "plugin/antigravity/hooks/antigravity-hook.mjs");
 let project: string;
 let outside: string;
 const stateFile = () => join(project, ".verid/.state/state.json");
-const state = () => JSON.parse(readFileSync(stateFile(), "utf8"));
-const audit = () => readFileSync(join(project, ".verid/.state/audit.jsonl"), "utf8");
-const put = (rel: string, text: string) => {
-  mkdirSync(join(project, rel, ".."), { recursive: true });
-  writeFileSync(
-    join(project, rel),
-    rel === ".verid/plan.md" ? readyModulePlan(project, text) : text,
-  );
-};
-const manifest = (extra: Record<string, unknown> = {}) => ({
-  schemaVersion: 1,
-  mode: "recipe",
-  providers: ["antigravity"],
-  roles: {
-    reviewer: ["verid-reviewer"],
-    // Mapped as cook maps them for Claude Code: a single-writer host never asks for them.
-    tester: ["verid:tester"],
-    coder: ["verid:coder"],
-  },
-  repos: [
-    {
-      path: ".",
-      source_globs: ["src/**"],
-      test_globs: ["test/**"],
-      test_cmd: `"${process.execPath}" "${join(import.meta.dirname, "fake-runner.mjs")}" {junit}`,
-    },
-  ],
-  ...extra,
-});
 
+const t = tempProject("verid antigravity-", {
+  approved: true,
+  manifestPreset: "antigravity",
+  claudeProject: false,
+  cwd: () => project,
+  bind: (p) => {
+    project = p.root;
+  },
+  setup: () => {
+    outside = t.newDir("verid-not-a-project-");
+  },
+});
+const { state, auditText: audit, putPlan: put, objectManifest: manifest } = t;
 beforeEach(async () => {
-  project = mkdtempSync(join(tmpdir(), "verid antigravity-"));
-  outside = mkdtempSync(join(tmpdir(), "verid-not-a-project-"));
-  for (const dir of [".verid/.state", "src", "test"])
-    mkdirSync(join(project, dir), { recursive: true });
-  put(
-    ".verid/.state/state.json",
-    JSON.stringify({
-      schemaVersion: 1,
-      tdd: { state: "PLATED", last_run: "seed", passed_acs: ["AC-1"] },
-    }),
-  );
-  put(".verid/manifest.yaml", JSON.stringify(manifest()));
-  put(".verid/design.md", "# Design\nPure addition\n");
-  put(".verid/research.md", "# Research\n");
-  put(".verid/spec.md", "- REQ-1: adds two numbers\n");
-  put(
-    ".verid/plan.md",
-    "## Module: calc\n- AC-1: adds two numbers\n\n## Module: product\n- AC-9 (e2e): works end to end\n",
-  );
-  put(
-    "scenario.json",
-    JSON.stringify({ exit: 0, junit: "vitest-ac.xml", output: "passing evidence" }),
-  );
   expect((await runCli(["order", "calc"], project)).code).toBe(0);
   await startTaskSession(project, "agy-conversation", "antigravity");
   expect((await runCli(["taste"], project)).code).toBe(0);
-});
-afterEach(() => {
-  rmSync(project, { recursive: true, force: true });
-  rmSync(outside, { recursive: true, force: true });
 });
 
 const payload = (extra: Record<string, unknown> = {}) => ({

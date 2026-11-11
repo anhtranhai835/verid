@@ -21,7 +21,8 @@ review and mapped roles; read the manifest with Read if a mapping is needed.
 2. Read the report. Findings have file:line; each AC gets one coverage line.
    Critical or Important correctness findings fail review. Project conventions
    in `.verid/rules/` are advisory, including architecture checker warnings.
-   A failed review returns to verid:build, then a fresh snapshot and review.
+   A failed review returns to verid:build, which handles the findings as its
+   `references/review-findings.md` says, then a fresh snapshot and review.
 3. When security is mapped and the module changed dependencies, a lockfile, or
    install, build or CI scripts, run the stack's dependency audit and save its
    output outside private state, e.g. `security-audit.json`, with the command,

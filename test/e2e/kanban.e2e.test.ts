@@ -1,87 +1,59 @@
+import { tempProject, kanbanManifest } from "../support/project.js";
 import { readyModulePlan } from "./helpers.js";
 import { spawn } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+
 import { join } from "node:path";
-import { afterEach, beforeEach, expect, it } from "vitest";
-import { stringify } from "yaml";
+import { expect, it } from "vitest";
+
 import type { Launch } from "../../src/adapters/board-chat.js";
 import { boardSnapshot, saveBoardDocument } from "../../src/adapters/kanban.js";
-import { readState, statePaths } from "../../src/adapters/state-store.js";
+import { statePaths } from "../../src/adapters/state-store.js";
 import { startBoard } from "../../src/cli/board.js";
-import { defaultRoles } from "../../src/core/manifest.js";
-import { runCli, runHook, runReview } from "./in-process.js";
 
 let project: string;
 let server: Awaited<ReturnType<typeof startBoard>> | undefined;
-beforeEach(() => {
-  project = mkdtempSync(join(tmpdir(), "verid-kanban-"));
-  mkdirSync(join(project, ".verid/.state"), { recursive: true });
-  mkdirSync(join(project, "test"));
-  mkdirSync(join(project, "src"));
-  writeFileSync(
-    join(project, ".verid/.state/state.json"),
-    JSON.stringify({ schemaVersion: 1, language: "en" }),
-  );
-  writeFileSync(
-    join(project, ".verid/manifest.yaml"),
-    stringify({
-      schemaVersion: 1,
-      workflow: "kanban",
-      mode: "prep",
-      providers: ["codex"],
-      roles: defaultRoles(["codex"]),
-      architecture: "none",
-      repos: [
-        {
-          path: ".",
-          source_globs: ["src/**"],
-          test_globs: ["test/**"],
-          test_cmd: `"${process.execPath}" "${join(import.meta.dirname, "fake-runner.mjs")}" {junit}`,
-        },
-      ],
-    }),
-  );
-  writeFileSync(join(project, ".verid/research.md"), "# Research\nAgreed scope\n");
-  writeFileSync(join(project, ".verid/design.md"), "# Design\nPure functions\n");
-  writeFileSync(
-    join(project, ".verid/spec.md"),
-    "- REQ-1: Add two numbers\n- REQ-2: Subtract two numbers\n",
-  );
+const t = tempProject("verid-kanban-", {
+  cwd: () => project,
+  claudeProject: false,
+  review: true,
+  state: { schemaVersion: 1, language: "en" },
+  manifest: kanbanManifest,
+  payload: {
+    model: "test",
+    transcript_path: null,
+    permission_mode: "default",
+    turn_id: "turn",
+    tool_use_id: "call",
+  },
+  bind: (p) => {
+    project = p.root;
+  },
+  setup: (p) => {
+    mkdirSync(p.path("src"));
+    mkdirSync(p.path("test"));
+    p.put(".verid/research.md", "# Research\nAgreed scope\n");
+    p.put(".verid/design.md", "# Design\nPure functions\n");
+    p.put(".verid/spec.md", "- REQ-1: Add two numbers\n- REQ-2: Subtract two numbers\n");
+  },
+  teardown: async () => {
+    if (server) {
+      server.server.closeAllConnections();
+      await new Promise<void>((resolve, reject) =>
+        server!.server.close((error) => (error ? reject(error) : resolve())),
+      );
+      server = undefined;
+    }
+  },
 });
-afterEach(async () => {
-  if (server) {
-    server.server.closeAllConnections();
-    await new Promise<void>((resolve, reject) =>
-      server!.server.close((error) => (error ? reject(error) : resolve())),
-    );
-    server = undefined;
-  }
-  rmSync(project, { recursive: true, force: true });
-});
-const state = () => readState(statePaths(project));
+const { loadState: state, cli, sessionEvent: hook } = t;
+
 const split = () => {
   saveBoardDocument(project, "split");
   const file = join(project, ".verid/plan.md");
   readyModulePlan(project, readFileSync(file, "utf8"));
 };
-const cli = (...args: string[]) => runCli(args, project);
-const hook = (event: string, session: string, extra = {}, provider = "codex") =>
-  (event === "SubagentStop" ? runReview : runHook)(
-    JSON.stringify({
-      hook_event_name: event,
-      cwd: project,
-      session_id: session,
-      model: "test",
-      transcript_path: null,
-      permission_mode: "default",
-      turn_id: "turn",
-      tool_use_id: "call",
-      ...extra,
-    }),
-    {},
-    provider === "codex" ? ["--provider", "codex"] : [],
-  );
+
 const patch = (session: string, path: string) =>
   hook("PreToolUse", session, {
     tool_name: "apply_patch",

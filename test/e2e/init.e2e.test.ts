@@ -1,25 +1,12 @@
+import { tempProject, CLI, HOOK } from "../support/project.js";
 import { spawnSync } from "node:child_process";
-import {
-  cpSync,
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readdirSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { parse } from "yaml";
-import { developerEnv, claudeFixture, type Payload } from "./helpers.js";
+import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 
-// Runs the built `verid cook` as a developer would in their own terminal, then runs the hook
-// commands it wrote to .claude/settings.local.json exactly as Claude Code spawns them.
-const root = join(import.meta.dirname, "..", "..");
-const CLI = join(root, "dist", "cli.js");
-const HOOK = join(root, "dist", "hook.js");
+import { join } from "node:path";
+import { describe, expect, it } from "vitest";
+import { parse } from "yaml";
+import { claudeFixture } from "./helpers.js";
+
 // How a developer tells verid about a project it does not recognise: the test command is all it
 // needs. The runner is not installed yet, so verid taste finds no report; nothing here touches
 // the network.
@@ -39,58 +26,26 @@ const OLD_MANIFEST = [
 ].join("\n");
 
 let project: string;
-const dirs: string[] = [];
-const newProject = () => {
-  const dir = mkdtempSync(join(tmpdir(), "verid-init-"));
-  dirs.push(dir);
-  return dir;
-};
-beforeEach(() => {
-  project = newProject();
+
+const t = tempProject("verid-init-", {
+  claudeProject: false,
+  cwd: () => project,
+  bind: (p) => {
+    project = p.root;
+  },
 });
-afterEach(() => {
-  for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
-});
-
-// A developer's terminal: no CLAUDE_* variables at all.
-const cleanEnv = (): NodeJS.ProcessEnv => developerEnv();
-
-interface Run {
-  code: number | null;
-  stdout: string;
-  stderr: string;
-}
-
-function init(dir: string, ...args: string[]): Run {
-  return initWith(cleanEnv(), dir, ...args);
-}
-
-function initWith(env: NodeJS.ProcessEnv, dir: string, ...args: string[]): Run {
-  const r = spawnSync(process.execPath, [CLI, "cook", ...args], {
-    cwd: dir,
-    env,
-    encoding: "utf8",
-  });
-  return { code: r.status, stdout: r.stdout, stderr: r.stderr };
-}
-
-/** Any other verid command, as a developer runs it from the project folder. */
-function cli(dir: string, ...args: string[]): Run {
-  const r = spawnSync(process.execPath, [CLI, ...args], {
-    cwd: dir,
-    env: cleanEnv(),
-    encoding: "utf8",
-  });
-  return { code: r.status, stdout: r.stdout, stderr: r.stderr };
-}
+const {
+  newDir: newProject,
+  env: cleanEnv,
+  spawnCook: init,
+  spawnCookWith: initWith,
+  spawnCliAt: cli,
+} = t;
+const { readAt: read, putAt: put, settingsHook: hook } = t;
 
 const file = (dir: string, rel: string) => join(dir, ...rel.split("/"));
-const read = (dir: string, rel: string) => readFileSync(file(dir, rel), "utf8");
+
 const json = (dir: string, rel: string) => JSON.parse(read(dir, rel));
-const put = (dir: string, rel: string, content: string) => {
-  mkdirSync(join(file(dir, rel), ".."), { recursive: true });
-  writeFileSync(file(dir, rel), content);
-};
 
 const payload = claudeFixture;
 const writeTo = (dir: string, rel: string) =>
@@ -102,19 +57,6 @@ const writeAs = (dir: string, rel: string, agent: string) =>
     p.agent_id = "a1b2c3";
     p.agent_type = agent;
   });
-
-/** Runs verid's handler for `event` from the project's settings, the way Claude Code does. */
-function hook(dir: string, event: string, input: string): Run {
-  const groups = json(dir, LOCAL).hooks[event] as Payload[];
-  const handler = groups.at(-1)?.hooks.at(-1);
-  const r = spawnSync(handler.command, handler.args, {
-    cwd: dir,
-    input,
-    env: { ...cleanEnv(), CLAUDE_PROJECT_DIR: dir },
-    encoding: "utf8",
-  });
-  return { code: r.status, stdout: r.stdout, stderr: r.stderr };
-}
 
 const vitestProject = (dir: string) => {
   put(dir, "package.json", JSON.stringify({ devDependencies: { vitest: "^5.0.0" } }));

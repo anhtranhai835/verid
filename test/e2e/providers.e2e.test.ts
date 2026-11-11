@@ -1,25 +1,21 @@
+import { tempProject, HOOK } from "../support/project.js";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { parse } from "yaml";
-import { developerEnv } from "./helpers.js";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 
-const CLI = join(import.meta.dirname, "../../dist/cli.js");
-const HOOK = join(import.meta.dirname, "../../dist/hook.js");
+import { join } from "node:path";
+import { describe, expect, it } from "vitest";
+import { parse } from "yaml";
+
 let project: string;
-beforeEach(() => {
-  project = mkdtempSync(join(tmpdir(), "verid-providers-"));
+const t = tempProject("verid-providers-", {
+  claudeProject: false,
+  cwd: () => project,
+  bind: (p) => {
+    project = p.root;
+  },
+  env: () => ({ CODEX_HOME: join(project, "codex home") }),
 });
-afterEach(() => rmSync(project, { recursive: true, force: true }));
-const env = () => ({
-  ...developerEnv(),
-  CODEX_HOME: join(project, "codex home"),
-});
-const cli = (args: string[]) =>
-  spawnSync(process.execPath, [CLI, ...args], { cwd: project, env: env(), encoding: "utf8" });
-const read = (rel: string) => readFileSync(join(project, rel), "utf8");
+const { env, rawCli: cli, read } = t;
 
 describe("provider setup through the CLI", () => {
   it("audits an unmapped general-purpose dispatch while retaining role rules and the TDD gate", () => {

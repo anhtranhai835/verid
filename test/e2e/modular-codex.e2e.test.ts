@@ -1,29 +1,35 @@
+import { tempProject, CLI, RUNNER } from "../support/project.js";
 import { spawnSync } from "node:child_process";
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  renameSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, readFileSync, renameSync } from "node:fs";
+
 import { dirname, join } from "node:path";
-import { afterEach, beforeEach, expect, it } from "vitest";
-import { developerEnv } from "./helpers.js";
+import { expect, it } from "vitest";
+
 import { MODULE_INPUTS } from "../../src/adapters/plan-file.js";
 
-const CLI = join(import.meta.dirname, "../../dist/cli.js");
-const RUNNER = join(import.meta.dirname, "fake-runner.mjs");
 let project: string;
 let taskSession = "repo-codex-session";
 let taskNumber = 0;
-beforeEach(() => {
-  project = mkdtempSync(join(tmpdir(), "verid modular codex-"));
+const t = tempProject("verid modular codex-", {
+  cwd: () => project,
+  claudeProject: false,
+  omitEnv: ["CODEX"],
+  env: () => ({ CODEX_HOME: join(project, "user-codex") }),
+  sessionId: () => taskSession,
+  payload: {
+    model: "gpt-6.1-sol",
+    transcript_path: null,
+    permission_mode: "default",
+    turn_id: "repo-turn",
+    tool_use_id: "repo-call",
+    agent_transcript_path: null,
+  },
+  bind: (p) => {
+    project = p.root;
+  },
 });
-afterEach(() => rmSync(project, { recursive: true, force: true }));
-const env = () => ({ ...developerEnv("CODEX"), CODEX_HOME: join(project, "user-codex") });
+const { env, put, state, installedHook: hook } = t;
+
 const cli = (...args: string[]) => {
   const result = spawnSync(
     process.execPath,
@@ -39,29 +45,7 @@ const cli = (...args: string[]) => {
   }
   return result;
 };
-const put = (rel: string, content: string) => {
-  mkdirSync(dirname(join(project, rel)), { recursive: true });
-  writeFileSync(join(project, rel), content);
-};
-const state = () => JSON.parse(readFileSync(join(project, ".verid/.state/state.json"), "utf8"));
-const hook = (event: string, extra = {}) =>
-  spawnSync(process.execPath, [join(project, ".verid/hooks/hook.js"), "--provider", "codex"], {
-    cwd: project,
-    env: env(),
-    encoding: "utf8",
-    input: JSON.stringify({
-      hook_event_name: event,
-      session_id: taskSession,
-      cwd: project,
-      model: "gpt-6.1-sol",
-      transcript_path: null,
-      permission_mode: "default",
-      turn_id: "repo-turn",
-      tool_use_id: "repo-call",
-      agent_transcript_path: null,
-      ...extra,
-    }),
-  });
+
 const patch = (path: string) =>
   hook("PreToolUse", {
     tool_name: "apply_patch",

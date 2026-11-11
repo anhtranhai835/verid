@@ -22,6 +22,6 @@ On Antigravity, execute the TDD loop directly in the **main conversation** (Sing
    - Write the minimum production code to pass the test, then run `verid taste` until `PLATED`.
 4. **`PLATED` (REFACTOR & LOG):**
    - Refactor only while `PLATED` without adding new behaviour; run `verid taste` after any edit.
-   - Append a concise entry (`Done`, `Decided`, `Deviation`, `Commits`, `Next`) to `.verid/log/<module>.md`.
+   - Append a concise entry (`Done`, `Decided`, `Deviation`, `Tried`, `Commits`, `Next`) to `.verid/log/<module>.md`.
    - Commit small, verified increments using Conventional Commits.
-5. When all module ACs pass in `verid peek`, proceed to `verid-review`.
+5. When all module ACs pass in `verid peek`, proceed to `verid-review`. After a failed review, read `<SKILLS_ROOT>/build/references/review-findings.md` before changing code.

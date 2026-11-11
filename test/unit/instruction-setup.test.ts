@@ -1,8 +1,9 @@
-import { lstatSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { developerProject } from "../support/cook.js";
+import { lstatSync, readFileSync, writeFileSync } from "node:fs";
+
 import { join } from "node:path";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { setLanguage } from "../../src/adapters/i18n.js";
+import { expect, it, vi } from "vitest";
+
 import { manifestUpgradeLines, planCook, setupDoneLine } from "../../src/cli/init.js";
 import { setupPreview } from "../../src/core/setup-plan.js";
 
@@ -12,18 +13,17 @@ vi.mock("node:fs", async (importOriginal) => {
 });
 
 let project: string;
-beforeEach(() => {
-  project = mkdtempSync(join(tmpdir(), "verid-instruction-setup-"));
-  vi.stubEnv("CLAUDECODE", "");
-  vi.stubEnv("CODEX_HOME", join(project, "codex home"));
-  setLanguage("en");
-});
-afterEach(async () => {
-  const fs = await vi.importActual<typeof import("node:fs")>("node:fs");
-  vi.mocked(lstatSync).mockReset().mockImplementation(fs.lstatSync);
-  vi.unstubAllEnvs();
-  setLanguage(null);
-  rmSync(project, { recursive: true, force: true });
+developerProject("verid-instruction-setup-", {
+  claude: "clear",
+  codexHome: "codex home",
+  language: "en",
+  bind: (p) => {
+    project = p.root;
+  },
+  teardown: async () => {
+    const fs = await vi.importActual<typeof import("node:fs")>("node:fs");
+    vi.mocked(lstatSync).mockReset().mockImplementation(fs.lstatSync);
+  },
 });
 
 it("names a linked provider instruction file instead of blaming the manifest", async () => {

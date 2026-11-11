@@ -1,15 +1,9 @@
+import { tempProject } from "../support/project.js";
 import { createHash } from "node:crypto";
-import {
-  appendFileSync,
-  mkdirSync,
-  mkdtempSync,
-  readdirSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
+import { appendFileSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
+
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   autoFactsOf,
   blockedFile,
@@ -22,11 +16,14 @@ import {
 import { parseState } from "../../src/core/state.js";
 
 let project: string;
-beforeEach(() => {
-  project = mkdtempSync(join(tmpdir(), "verid-plan-"));
-  mkdirSync(join(project, ".verid"));
+tempProject("verid-plan-", {
+  bind: (p) => {
+    project = p.root;
+  },
+  setup: (p) => {
+    mkdirSync(p.path(".verid"));
+  },
 });
-afterEach(() => rmSync(project, { recursive: true, force: true }));
 
 const hashes = () => {
   const r = readPlan(project);

@@ -1,22 +1,14 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { runInNewContext } from "node:vm";
 import { transformSync } from "esbuild";
-import { afterEach, expect, it } from "vitest";
+import { expect, it } from "vitest";
+import { tempDirs } from "../support/project.js";
 import { decide, type PolicyContext } from "../../src/core/policy.js";
 
 const root = resolve(import.meta.dirname, "../..");
-const temporary: string[] = [];
-afterEach(() => {
-  for (const folder of temporary.splice(0)) rmSync(folder, { recursive: true, force: true });
-});
-const project = () => {
-  const folder = mkdtempSync(join(tmpdir(), "verid-skill-scripts-"));
-  temporary.push(folder);
-  return folder;
-};
+const project = tempDirs("verid-skill-scripts-");
 
 it("runs the web-testing tools inside an ESM project and generates usable auth fixtures", async () => {
   const folder = project();

@@ -1,42 +1,21 @@
+import { tempProject, HOOK, TEST_ROOT as root } from "../support/project.js";
 import { spawnSync } from "node:child_process";
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readdirSync,
-  readFileSync,
-  rmSync,
-  statSync,
-  writeFileSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
-import { dirname, join, relative } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { parse } from "yaml";
-import { developerEnv } from "./helpers.js";
+import { existsSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 
-const root = join(import.meta.dirname, "../..");
-const CLI = join(root, "dist/cli.js");
-const HOOK = join(root, "dist/hook.js");
+import { join, relative } from "node:path";
+import { describe, expect, it } from "vitest";
+import { parse } from "yaml";
+
 let project: string;
-beforeEach(() => {
-  project = mkdtempSync(join(tmpdir(), "verid-setup-"));
+const t = tempProject("verid-setup-", {
+  claudeProject: false,
+  cwd: () => project,
+  bind: (p) => {
+    project = p.root;
+  },
 });
-afterEach(() => rmSync(project, { recursive: true, force: true }));
-const env = () => developerEnv();
-const put = (rel: string, text: string) => {
-  mkdirSync(dirname(join(project, rel)), { recursive: true });
-  writeFileSync(join(project, rel), text);
-};
-const read = (rel: string) => readFileSync(join(project, rel), "utf8");
-const cli = (args: string[], extra = {}) => {
-  const r = spawnSync(process.execPath, [CLI, ...args], {
-    cwd: project,
-    env: { ...env(), ...extra },
-    encoding: "utf8",
-  });
-  return { code: r.status, out: r.stdout, err: r.stderr };
-};
+const { env, put, read, shortSpawnArgs: cli } = t;
+
 const snapshot = () =>
   Object.fromEntries(
     readdirSync(project, { recursive: true }).map((name) => {

@@ -1,8 +1,9 @@
+import { tempProject } from "../support/project.js";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { homedir, tmpdir } from "node:os";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { expect, it, vi } from "vitest";
 import {
   checkWorkspaceRoot,
   cloneMarkerFile,
@@ -31,15 +32,18 @@ const result = (status = 0, stdout = "", stderr = "") =>
   ({ status, stdout, stderr, output: [null, stdout, stderr], pid: 1, signal: null }) as ReturnType<
     typeof spawnSync
   >;
-beforeEach(() => {
-  project = mkdtempSync(join(tmpdir(), "verid-clone-unit-"));
-  vi.mocked(spawnSync).mockReset().mockReturnValue(result());
-});
-afterEach(() => {
-  vi.unstubAllEnvs();
-  vi.mocked(writeFileSync).mockReset();
-  vi.mocked(rmSync).mockReset();
-  rmSync(project, { recursive: true, force: true });
+tempProject("verid-clone-unit-", {
+  bind: (p) => {
+    project = p.root;
+  },
+  setup: () => {
+    vi.mocked(spawnSync).mockReset().mockReturnValue(result());
+  },
+  teardown: () => {
+    vi.unstubAllEnvs();
+    vi.mocked(writeFileSync).mockReset();
+    vi.mocked(rmSync).mockReset();
+  },
 });
 
 it("uses the home-dotfiles exemption for both automatic detection and workspace validation", () => {
