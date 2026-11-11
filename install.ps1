@@ -1,4 +1,4 @@
-# Windows PowerShell 5.1+: irm https://raw.githubusercontent.com/anhtranhai835/verid/main/install.ps1 | iex
+# Windows PowerShell 5.1+: gh api -H "Accept: application/vnd.github.raw" repos/anhtranhai835/verid/contents/install.ps1 | Out-String | iex
 & {
   $ErrorActionPreference = 'Stop'
   $version = if ([string]::IsNullOrEmpty($env:VERID_VERSION)) { 'latest' } else { $env:VERID_VERSION }
@@ -13,9 +13,34 @@
   if ($LASTEXITCODE -ne 0) {
     throw 'Node.js 22 or later is required. Get it at https://nodejs.org and reopen your terminal.'
   }
-  Write-Host "Installing @anhtranhai835/verid@$version"
-  & npm.cmd install -g "@anhtranhai835/verid@$version"
+  # Releases are private: the tarball comes from a GitHub Release, read with the user's gh login.
+  $gh = Get-Command gh.exe, gh.cmd -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+  if (-not $gh) {
+    throw 'Install the GitHub CLI from https://cli.github.com, run gh auth login, and run this installer again.'
+  }
+  # Windows PowerShell turns native stderr into errors under 'Stop'.
+  $ErrorActionPreference = 'Continue'
+  & $gh auth status *> $null
+  $authExit = $LASTEXITCODE
+  $ErrorActionPreference = 'Stop'
+  if ($authExit -ne 0) {
+    throw 'Run gh auth login with an account that can read anhtranhai835/verid, then run this installer again.'
+  }
+  $download = Join-Path ([IO.Path]::GetTempPath()) ('verid-' + [guid]::NewGuid())
+  New-Item -ItemType Directory -Path $download | Out-Null
+  # One list: Windows PowerShell passes an empty splatted array to a native command as "".
+  $ghArgs = @('release', 'download')
+  if ($version -ne 'latest') { $ghArgs += if ($version.StartsWith('v')) { $version } else { "v$version" } }
+  $ghArgs += @('--repo', 'anhtranhai835/verid', '--pattern', '*.tgz', '--dir', $download)
+  Write-Host "Installing verid $version from GitHub Releases"
+  & $gh @ghArgs
+  if ($LASTEXITCODE -ne 0) {
+    throw 'Downloading the release failed. Check the version and that your GitHub account has read access to anhtranhai835/verid.'
+  }
+  $tarball = Get-ChildItem -LiteralPath $download -Filter '*.tgz' | Select-Object -First 1
+  & npm.cmd install -g $tarball.FullName
   if ($LASTEXITCODE -ne 0) { throw 'npm install failed. Resolve the npm error and run this installer again.' }
+  Remove-Item -LiteralPath $download -Recurse -Force
   if ((Get-Command codex.cmd, codex -CommandType Application -ErrorAction SilentlyContinue) -and
       (Get-Command verid.cmd -CommandType Application -ErrorAction SilentlyContinue)) {
     & verid.cmd setup-codex

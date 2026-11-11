@@ -1,5 +1,5 @@
 #!/bin/sh
-# curl -fsSL https://raw.githubusercontent.com/anhtranhai835/verid/main/install.sh | sh
+# gh api -H "Accept: application/vnd.github.raw" repos/anhtranhai835/verid/contents/install.sh | sh
 
 fail() { printf '%s\n' "$*" >&2; exit 1; }
 next_step() { printf '%s\n' 'Next: cd <your project folder> && verid cook'; }
@@ -21,8 +21,18 @@ main() {
      ! node -e "process.exit(Number(process.versions.node.split('.')[0]) >= 22 ? 0 : 1)"; then
     fail 'Install Node.js 22 or later from https://nodejs.org, reopen your terminal, and run this installer again.'
   fi
-  printf 'Installing @anhtranhai835/verid@%s\n' "$version"
-  npm install -g "@anhtranhai835/verid@$version" || fail 'npm install failed. Resolve the npm error and run this installer again.'
+  # Releases are private: the tarball comes from a GitHub Release, read with the user's gh login.
+  command -v gh >/dev/null 2>&1 ||
+    fail 'Install the GitHub CLI from https://cli.github.com, run gh auth login, and run this installer again.'
+  gh auth status >/dev/null 2>&1 ||
+    fail 'Run gh auth login with an account that can read anhtranhai835/verid, then run this installer again.'
+  case "$version" in latest) tag='' ;; v*) tag=$version ;; *) tag=v$version ;; esac
+  download=$(mktemp -d) || fail 'Could not create a temporary folder for the download.'
+  printf 'Installing verid %s from GitHub Releases\n' "$version"
+  gh release download ${tag:+"$tag"} --repo anhtranhai835/verid --pattern '*.tgz' --dir "$download" ||
+    fail 'Downloading the release failed. Check the version and that your GitHub account has read access to anhtranhai835/verid.'
+  npm install -g "$download"/*.tgz || fail 'npm install failed. Resolve the npm error and run this installer again.'
+  rm -rf "$download"
   if command -v codex >/dev/null 2>&1 && command -v verid >/dev/null 2>&1; then
     verid setup-codex || fail 'Codex reviewer setup failed. Resolve its message and run verid setup-codex again.'
   fi
