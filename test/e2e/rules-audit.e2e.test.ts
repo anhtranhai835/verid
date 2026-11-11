@@ -1,25 +1,15 @@
-import { readyModulePlan, startTaskSession } from "./helpers.js";
+import { tempProject, type GitResult } from "../support/project.js";
+import { startTaskSession } from "./helpers.js";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { runCli, runHook, runReview } from "./in-process.js";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+
+import { join } from "node:path";
+import { describe, expect, it } from "vitest";
+import { runCli } from "./in-process.js";
 
 let project: string;
 let sessionId = "rules";
-const put = (file: string, text: string) => {
-  if (file === ".verid/plan.md" && !existsSync(join(project, ".verid/spec.md"))) {
-    mkdirSync(join(project, ".verid"), { recursive: true });
-    writeFileSync(join(project, ".verid/spec.md"), "- REQ-1: works\n");
-  }
-  mkdirSync(dirname(join(project, file)), { recursive: true });
-  writeFileSync(
-    join(project, file),
-    file === ".verid/plan.md" ? readyModulePlan(project, text) : text,
-  );
-};
-const state = () => JSON.parse(readFileSync(join(project, ".verid/.state/state.json"), "utf8"));
+
 const save = (value: unknown) => put(".verid/.state/state.json", JSON.stringify(value));
 const manifest = (extra = "") =>
   put(
@@ -39,23 +29,7 @@ repos:
       inputs: ["package.json"]
 `,
   );
-const hook = (event: string, extra: Record<string, unknown> = {}) =>
-  (event === "SubagentStop" ? runReview : runHook)(
-    JSON.stringify({
-      hook_event_name: event,
-      session_id: sessionId,
-      cwd: project,
-      ...extra,
-    }),
-    { CLAUDE_PROJECT_DIR: project },
-  );
-const write = (path: string) =>
-  hook("PreToolUse", {
-    agent_id: "coder-1",
-    agent_type: "verid:coder",
-    tool_name: "Write",
-    tool_input: { file_path: join(project, path), content: "x" },
-  });
+
 const review = () =>
   hook("SubagentStop", {
     agent_id: "reviewer-1",
@@ -78,22 +52,28 @@ const evidence = () => {
   });
 };
 
-const git = (...args: string[]) => {
-  const r = spawnSync("git", ["-c", "user.name=test", "-c", "user.email=test@test", ...args], {
-    cwd: project,
-    encoding: "utf8",
-    windowsHide: true,
-  });
+function checkGit(r: GitResult) {
   expect(r.status, r.stderr).toBe(0);
-};
+}
 
-beforeEach(() => {
-  sessionId = "rules";
-  project = mkdtempSync(join(tmpdir(), "verid-rules-"));
-  save({ schemaVersion: 1, language: "en" });
-  manifest();
+const t = tempProject("verid-rules-", {
+  cwd: () => project,
+  review: true,
+  sessionId: () => sessionId,
+  planSpec: "- REQ-1: works\n",
+  gitIdentity: ["test", "test@test"],
+  gitHide: true,
+  bind: (p) => {
+    project = p.root;
+  },
+  setup: () => {
+    sessionId = "rules";
+    save({ schemaVersion: 1, language: "en" });
+    manifest();
+  },
 });
-afterEach(() => rmSync(project, { recursive: true, force: true }));
+const { putPlan: put, state, event: hook, writeCall: write } = t;
+const git = t.gitChecked(checkGit);
 
 describe("rules and audit without relaxing TDD", () => {
   it("keeps state, Git internals, MCP configuration and unapproved code protected", async () => {
