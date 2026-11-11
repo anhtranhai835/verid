@@ -25,12 +25,16 @@ import { bilingual, setLanguage, t, veridName, type Lang } from "../adapters/i18
 import { loadManifest, manifestFile } from "../adapters/manifest.js";
 import { appendAudit, readAudit } from "../adapters/audit-log.js";
 import { usageReport } from "../core/usage.js";
+import { contextPacket } from "../core/context-packet.js";
+import { findRunners } from "../adapters/test-runner.js";
+import { checkSetupPath } from "../adapters/workspace.js";
 import { captureWork, gitTree, gitView, workLog } from "../adapters/git.js";
 import {
   autoFactsOf,
   blockedFile,
   designFile,
   menuLines,
+  MODULE_INPUTS,
   openWork,
   peekLines,
   planFile,
@@ -105,6 +109,7 @@ export async function runCli(args: readonly string[]): Promise<CliResult> {
       );
     else if (cmd === "peek" && rest.length === 0) r = await status(project);
     else if (cmd === "usage") r = usageCommand(project, rest);
+    else if (cmd === "context" && contextArgs(rest)) r = await contextCommand(project, rest);
     else if (cmd === "menu" && rest.length === 0) r = await menu(project);
     else if (
       cmd === "menu" &&
@@ -234,6 +239,92 @@ function usageCommand(project: string, args: string[]): CliResult {
   return { exit: 0, stdout: lines.join("\n") + "\n", stderr: "" };
 }
 
+/** `[module] [--ac <id>]`, either order, nothing else. */
+function contextArgs(
+  args: string[],
+): { module?: string | undefined; ac?: string | undefined } | null {
+  try {
+    const { values, positionals } = parseArgs({
+      args,
+      options: { ac: { type: "string" } },
+      allowPositionals: true,
+    });
+    return positionals.length > 1 ? null : { module: positionals[0], ac: values.ac };
+  } catch {
+    return null;
+  }
+}
+
+/** The task packet: read-only, built from the files each call, never cached. */
+async function contextCommand(project: string, args: string[]): Promise<CliResult> {
+  const { module: wanted, ac } = contextArgs(args)!;
+  const state = readState(statePaths(project));
+  let target = wanted ?? state.kanban.active?.module ?? state.auto.work?.module;
+  if (target === undefined) {
+    const current = readPlan(project, false, false, servedSections(state));
+    if (current?.ok) target = openModule(planViews(project, current, state))?.name;
+  }
+  const { plan, name, module, manifest } = await planModule(project, "context", target);
+  const views = planViews(project, plan, state);
+  const read = (rel: string) => {
+    const file = join(project, ...rel.split("/"));
+    return existsSync(file) ? readFileSync(file, "utf8") : null;
+  };
+  const base = `.verid/artifacts/03-modules/${name}`;
+  const files = MODULE_INPUTS.map((input) => {
+    checkSetupPath(project, `${base}/${input}`);
+    const text = read(`${base}/${input}`);
+    return {
+      path: input,
+      state:
+        text === null
+          ? "missing"
+          : !text.trim()
+            ? "empty"
+            : text.includes("[NEEDS CLARIFICATION")
+              ? "unresolved"
+              : "ok",
+    } as const;
+  });
+  const spec = read(".verid/spec.md");
+  const log = read(`.verid/log/${name}.md`)
+    ?.split(/\r?\n/)
+    .findLast((line) => line.trim() !== "");
+  const commands = manifest.repos.flatMap((repo) => {
+    if (repo.test_cmd !== undefined) return [repo.test_cmd];
+    try {
+      return findRunners(resolve(project, ...repo.path.split(/[/\\]/)), {
+        sourceGlobs: repo.source_globs,
+        testGlobs: repo.test_globs,
+        ignoreGlobs: repo.ignore_globs ?? [],
+      }).runners.map((runner) => runner.name);
+    } catch {
+      return [];
+    }
+  });
+  const stdout = contextPacket({
+    module,
+    plan: { path: ".verid/plan.md", sha: plan.hashes[name] ?? null },
+    spec:
+      spec === null
+        ? null
+        : { path: ".verid/spec.md", text: spec, sha: readFileHash(specFile(project)) },
+    design: existsSync(designFile(project))
+      ? { path: ".verid/design.md", sha: readDesignHash(project) }
+      : null,
+    needs: (module.depends ?? []).map((dep) => ({
+      name: dep,
+      phase: views.find((view) => view.name === dep)?.phase ?? "not in plan",
+    })),
+    files,
+    dossier: base,
+    run: commands.length > 0 ? `verid taste (${commands.join(", ")})` : "verid taste",
+    log: { path: `.verid/log/${name}.md`, last: log ? log.trim() : null },
+    ...(ac !== undefined && { ac }),
+  });
+  return { exit: 0, stdout, stderr: "" };
+}
+
 async function status(project: string): Promise<CliResult> {
   const state = readState(statePaths(project));
   const manifest = await loadManifest(project);
@@ -276,6 +367,7 @@ type Misuse = { key: MessageKey; params: Record<string, string> };
 // How many arguments each command takes after its name; cook takes flags.
 const ARGS: Record<string, number> = {
   usage: 2,
+  context: 3,
   module: 1,
   doctor: 0,
   taste: 0,
@@ -346,6 +438,7 @@ function usage(project: string, wrong: Misuse | null, next?: string): CliResult 
     { emoji: "👀", command: `${v} peek`, what: say("usage.peek") },
     { emoji: "📊", command: `${v} usage [module] [--json]`, what: say("usage.ledger") },
     { emoji: "📋", command: `${v} menu [--commits [--file]]`, what: say("usage.menu") },
+    { emoji: "🗂️", command: `${v} context [module] [--ac <id>]`, what: say("usage.context") },
     {
       emoji: "▦",
       command: `${v} board [--port <number>] [--no-open]`,

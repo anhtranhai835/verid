@@ -278,5 +278,5 @@ export function taskPrompt(project: string, task: string): string {
     throw new Error("Chọn task này trước khi chuẩn bị session.");
   if (state.kanban.active.session !== null)
     throw new Error("Task này đã có session AI. Tiếp tục session hiện tại; không mở session khác.");
-  return `Read AGENTS.md and .verid/spec.md, .verid/design.md, and only the Module: ${task} section of .verid/plan.md. This is a NEW session for task ${task} only. Read .verid/log/${task}.md if it exists. Follow Verid TDD: write a failing test → verid taste → implement → verid taste → independent review. Record results and hand off for developer serve. STOP after this task; do not select or implement any other task. Run CLI commands using the path specified in AGENTS.md.`;
+  return `Start with verid context ${task}: it prints this task's ACs, the spec lines they cite, dependencies, file state and the full-document paths. Open the full spec, design, plan section or log only where it points, or to check a dependency or an exception. This is a NEW session for task ${task} only. Follow Verid TDD: write a failing test → verid taste → implement → verid taste → independent review. Record results and hand off for developer serve. STOP after this task; do not select or implement any other task. Run CLI commands using the path specified in AGENTS.md.`;
 }
