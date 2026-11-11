@@ -1,3 +1,4 @@
+import { readJUnitFixture as read } from "../support/project.js";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
@@ -5,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { readJUnit, readJUnitFiles, xmlReports } from "../../src/adapters/junit.js";
 
 const FIXTURES = join(import.meta.dirname, "..", "fixtures", "junit");
-const read = (name: string) => readJUnit(join(FIXTURES, name));
+
 const firstLines = (name: string) =>
   read(name)?.map((c) => ({ ...c, message: c.message.split("\n")[0] }));
 
