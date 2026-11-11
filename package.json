@@ -36,7 +36,8 @@
     "plugin/antigravity",
     "plugin/templates",
     "docs",
-    "README.vi.md"
+    "README.vi.md",
+    "CHANGELOG.md"
   ],
   "scripts": {
     "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && esbuild hook=src/hook-entry.ts hook-run=src/hook-run.ts cli=src/cli/entry.ts --bundle --splitting --platform=node --format=esm --target=node22 --outdir=dist --log-level=warning \"--banner:js=import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);\"",

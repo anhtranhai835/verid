@@ -309,6 +309,47 @@ describe("repo rules", () => {
     expect(missing).toEqual([]);
   });
 
+  describe("release identity", () => {
+    const json = (file: string) => JSON.parse(readFileSync(join(root, file), "utf8"));
+    const pkg = json("package.json") as { version: string; repository: { url: string } };
+
+    it("keeps the three version files on one version", () => {
+      const versions = Object.fromEntries(
+        ["package.json", "plugin/.claude-plugin/plugin.json", "plugin/antigravity/plugin.json"].map(
+          (file) => [file, json(file).version],
+        ),
+      );
+      expect(new Set(Object.values(versions)).size, JSON.stringify(versions)).toBe(1);
+    });
+
+    // A renamed repo keeps redirecting, so a stale name only shows up as drift between files.
+    it("names one GitHub repository everywhere", () => {
+      const repo = /anhtranhai835\/([\w.-]+?)(?:\.git)?$/.exec(pkg.repository.url)?.[1];
+      expect(repo).toBe("verid");
+      const files = [
+        "package.json",
+        "install.sh",
+        "install.ps1",
+        "README.md",
+        "README.vi.md",
+        ".claude-plugin/marketplace.json",
+        "plugin/.claude-plugin/plugin.json",
+        "plugin/antigravity/plugin.json",
+        ...filesUnder("docs").map(rel),
+      ];
+      const other = files.flatMap((file) =>
+        [...readFileSync(join(root, file), "utf8").matchAll(/anhtranhai835\/([\w-]+)/g)]
+          .filter((m) => m[1] !== repo)
+          .map((m) => `${file}: ${m[0]}`),
+      );
+      expect(other).toEqual([]);
+    });
+
+    it("has a CHANGELOG entry for the current version", () => {
+      expect(readFileSync(join(root, "CHANGELOG.md"), "utf8")).toContain(`## [${pkg.version}]`);
+    });
+  });
+
   it("recorded Claude Code fixtures leak no user paths or names", () => {
     const user = userInfo().username.toLowerCase();
     const leaking = filesUnder("test/fixtures").filter((file) => {
