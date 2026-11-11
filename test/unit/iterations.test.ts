@@ -1,8 +1,8 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { parse } from "yaml";
+import { tempDirs } from "../support/project.js";
 import { parseManifest, renderManifest } from "../../src/core/manifest.js";
 import { durationDays, iterationDates } from "../../src/core/iterations.js";
 import { moduleProblem, parsePlan } from "../../src/core/plan.js";
@@ -12,10 +12,9 @@ import { setLanguage } from "../../src/adapters/i18n.js";
 
 const repo = { path: ".", source_globs: ["src/**"], test_globs: ["test/**"] };
 const schedule = { duration: "2 weeks", start_date: "2026-10-12", demo_day: "Friday" };
-const dirs: string[] = [];
+const newDir = tempDirs("verid-iterations-");
 afterEach(() => {
   setLanguage(null);
-  for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
 describe("iterations manifest", () => {
@@ -361,8 +360,7 @@ describe("Iteration plan lines", () => {
 
 describe("iterations menu", () => {
   it("shows current dates, demo countdown, served totals and late modules in both drives", () => {
-    const project = mkdtempSync(join(tmpdir(), "verid-iterations-menu-"));
-    dirs.push(project);
+    const project = newDir("verid-iterations-menu-");
     mkdirSync(join(project, ".verid"));
     writeFileSync(join(project, ".verid", "research.md"), "research");
     writeFileSync(join(project, ".verid", "design.md"), "design");
@@ -466,8 +464,7 @@ describe("iterations menu", () => {
   });
 
   it("shows a zero module iteration before a plan exists and nothing when iterations are off", () => {
-    const project = mkdtempSync(join(tmpdir(), "verid-iterations-empty-"));
-    dirs.push(project);
+    const project = newDir("verid-iterations-empty-");
     const state = parseState('{"schemaVersion":1}');
     if (!state.ok) throw new Error(state.code);
     setLanguage("en");
@@ -501,8 +498,7 @@ describe("iterations menu", () => {
   });
 
   it("renders a passed demo, today, one day and multiple days in both languages", () => {
-    const project = mkdtempSync(join(tmpdir(), "verid-iterations-wording-"));
-    dirs.push(project);
+    const project = newDir("verid-iterations-wording-");
     const state = parseState('{"schemaVersion":1}');
     const manifest = parseManifest({
       schemaVersion: 1,
