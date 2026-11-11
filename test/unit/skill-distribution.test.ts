@@ -277,7 +277,11 @@ describe("self-contained verid skills", () => {
   it("states the board and drive rules once per context", () => {
     const sentence = "the developer arranges the priority queue";
     expect(read("plugin/templates/workflow.md")).toContain(sentence);
-    for (const file of ["plugin/skills/modules/SKILL.md", "plugin/templates/skill-routing.md"])
+    for (const file of [
+      "plugin/skills/modules/SKILL.md",
+      "plugin/templates/skill-routing.md",
+      "plugin/antigravity/skills/verid-router/SKILL.md",
+    ])
       expect(read(file), file).not.toContain(sentence);
   });
 
