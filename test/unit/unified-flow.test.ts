@@ -1,7 +1,8 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { developerProject } from "../support/cook.js";
+import { existsSync, readFileSync, rmSync } from "node:fs";
+
 import { join } from "node:path";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { expect, it } from "vitest";
 import { parse } from "yaml";
 import { parseManifest, renderManifest, defaultRoles } from "../../src/core/manifest.js";
 import { planCook } from "../../src/cli/init.js";
@@ -10,13 +11,10 @@ import { renderInstructions } from "../../src/core/instructions.js";
 
 let project: string;
 const repo = { path: ".", source_globs: ["src/**"], test_globs: ["test/**"] };
-beforeEach(() => {
-  project = mkdtempSync(join(tmpdir(), "verid-unified-"));
-  vi.stubEnv("CODEX_HOME", join(project, "user-codex"));
-});
-afterEach(() => {
-  vi.unstubAllEnvs();
-  rmSync(project, { recursive: true, force: true });
+developerProject("verid-unified-", {
+  bind: (p) => {
+    project = p.root;
+  },
 });
 
 it("AC-1: legacy workflows load with either drive and do not restrict remix", () => {
