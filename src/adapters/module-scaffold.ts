@@ -7,27 +7,33 @@ import { checkSetupPath } from "./workspace.js";
 import { parsePlan } from "../core/plan.js";
 import { citedIds, liveRequirements } from "../core/spec.js";
 
+/** The dossier a module starts from: the full one, or a short one for a small change or a bug. */
+export type ModulePath = "module" | "quick" | "fix";
+const TEMPLATE = { module: "module", quick: "module-quick", fix: "module-fix" } as const;
+
 /** Checked drafts, also used by setup previews without writing anything. */
-export function moduleDrafts(project: string, name: string) {
+export function moduleDrafts(project: string, name: string, path: ModulePath = "module") {
   if (!/^[a-z0-9][a-z0-9-]{0,79}$/.test(name))
     throw new VeridError("VERID_BURNT_INIT_INVALID", {
       path: "module",
       detail: "use a kebab-case module name, up to 80 characters",
     });
   const base = `.verid/artifacts/03-modules/${name}`;
-  checkSetupPath(project, ".verid/templates/module");
-  const local = existsSync(join(project, ".verid/templates/module"));
+  const template = `.verid/templates/${TEMPLATE[path]}`;
+  checkSetupPath(project, template);
+  const local = existsSync(join(project, template));
   const files = new Map(
-    resourceTree(join(contentRoot(), "templates/module"), base).map((file) => [file.rel, file]),
+    resourceTree(join(contentRoot(), "templates", TEMPLATE[path]), base).map((file) => [
+      file.rel,
+      file,
+    ]),
   );
   if (local)
-    for (const file of resourceTree(join(project, ".verid/templates/module"), base))
-      files.set(file.rel, file);
+    for (const file of resourceTree(join(project, template), base)) files.set(file.rel, file);
   files.delete(`${base}/README.md`);
   return [...files.values()].map((file) => {
     checkSetupPath(project, file.rel);
-    if (local)
-      checkSetupPath(project, `.verid/templates/module/${file.rel.slice(base.length + 1)}`);
+    if (local) checkSetupPath(project, `${template}/${file.rel.slice(base.length + 1)}`);
     return { rel: file.rel, content: file.content.toString().replaceAll("{{module}}", name) };
   });
 }
@@ -77,9 +83,13 @@ function fill(rel: string, content: string, found: ReturnType<typeof seed>): str
 }
 
 /** Creates missing drafts only; never overwrites project content. */
-export function scaffoldModule(project: string, name: string): string[] {
+export function scaffoldModule(
+  project: string,
+  name: string,
+  path: ModulePath = "module",
+): string[] {
   const found = seed(project, name);
-  return moduleDrafts(project, name).map((file) => {
+  return moduleDrafts(project, name, path).map((file) => {
     if (existsSync(join(project, file.rel))) return `= ${file.rel}`;
     mkdirSync(dirname(join(project, file.rel)), { recursive: true });
     writeFileSync(join(project, file.rel), fill(file.rel, file.content, found), { flag: "wx" });

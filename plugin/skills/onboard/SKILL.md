@@ -45,6 +45,8 @@ Write at most 15 lines:
 - each module with its phase, and what the open one is waiting for;
 - the next step exactly as `verid menu` gives it.
 
+For a new small change or bug, propose `--quick` or `--fix` from verid:ba's table.
+
 With no `.verid/research.md` yet, say only: "Nothing researched yet: start with
 verid:ba, and put any documents you already have in `.verid/docs/`."
 

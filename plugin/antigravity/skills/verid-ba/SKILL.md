@@ -19,6 +19,14 @@ Inventory `.verid/docs/` (read-only) first, then the user request, code, and tes
 - Use Antigravity's `ask_question` tool (1–3 focused questions per round, recommended option first).
 - Record every Q -> A under `## Clarifications` in `.verid/research.md`.
 
+## Module path
+
+Size the work and propose its path; the developer runs it:
+
+- feature, or more than one AC: `verid module <name>`;
+- one small change, one AC: `verid module <name> --quick`;
+- bug: `verid module <name> --fix`, root cause with `verid-debugging` before code.
+
 ## Outputs
 
 1. **`.verid/research.md`** ( citing `.verid/docs/` sources with SHA-256/locator):

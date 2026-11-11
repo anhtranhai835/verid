@@ -26,6 +26,12 @@ Then write `.verid/spec.md` as in `references/spec.md` (this skill's folder):
 REQ, NFR and SEC requirements, abuse cases, data classes, out of scope. Agree it with the
 developer before verid:design. The plan's ACs cite these IDs.
 
+Size the work and propose its path; the developer runs it:
+
+- feature, or more than one AC: `verid module <name>`;
+- one small change, one AC: `verid module <name> --quick`;
+- bug: `verid module <name> --fix`, root cause with verid:debugging before code.
+
 Before each `verid order`, map the module: each rule → one testable EARS AC citing its IDs;
 each example → a test name with that AC code, concrete inputs and outcomes; each question →
 ask now or `[NEEDS CLARIFICATION: <question>]` in the module. More than 7 rules suggests a split.

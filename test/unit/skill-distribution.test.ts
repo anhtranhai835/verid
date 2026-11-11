@@ -129,7 +129,8 @@ describe("self-contained verid skills", () => {
     const rows = [
       ["tdd", 3500],
       ["design", 1500],
-      ["ba", 2100],
+      // ba: +250 for the three module paths (full, --quick, --fix) it proposes.
+      ["ba", 2350],
       ["plan", 3900],
       ["build", 2700],
     ] as const;
@@ -293,6 +294,35 @@ describe("self-contained verid skills", () => {
     const workflow = read("plugin/templates/workflow.md");
     expect(workflow).toContain("a document that does not apply is one line");
     expect(existsSync(join(root, "plugin/templates/module/README.md"))).toBe(true);
+  });
+
+  it("proposes a full, quick or fix module by the size of the work; the developer runs it", () => {
+    for (const file of ["plugin/skills/ba/SKILL.md", "plugin/antigravity/skills/verid-ba/SKILL.md"])
+      for (const text of [
+        "`verid module <name>`",
+        "`verid module <name> --quick`",
+        "`verid module <name> --fix`",
+        "debugging",
+      ])
+        expect(read(file), `${file}: ${text}`).toContain(text);
+    for (const file of [
+      "plugin/skills/onboard/SKILL.md",
+      "plugin/antigravity/skills/verid-onboard/SKILL.md",
+    ])
+      expect(read(file), file).toContain("`--quick` or `--fix`");
+    for (const [path, lines] of [
+      ["quick", 40],
+      ["fix", 40],
+    ] as const) {
+      const dir = join(root, `plugin/templates/module-${path}`);
+      const files = readdirSync(dir, { recursive: true, withFileTypes: true }).filter((e) =>
+        e.isFile(),
+      );
+      const text = files.map((e) => read(join(e.parentPath, e.name).slice(root.length + 1)));
+      expect(text.join("").split("\n").length, path).toBeLessThan(lines);
+      expect(text.join(""), path).toContain(`Path: ${path}`);
+    }
+    expect(read("plugin/templates/module-fix/ba/requirements.md")).toContain("## Root cause");
   });
 
   it("keeps reports and handoffs to status, paths, findings and the next step", () => {

@@ -142,6 +142,22 @@ export function dossierStatus(project: string, module: Pick<PlanModule, "name" |
   return { missing, unresolved, problem };
 }
 
+/**
+ * A dossier made with `verid module --quick` or `--fix` keeps the same gates but holds one AC; a
+ * fix also names its root cause before order.
+ */
+function pathProblem(project: string, base: string, module: PlanModule): string | null {
+  const text = readFileSync(join(project, base, "ba/requirements.md"), "utf8");
+  const path = /^Path:[ \t]*(quick|fix)[ \t]*\r?$/m.exec(text)?.[1];
+  if (path === undefined) return null;
+  if (module.acs.length !== 1)
+    return `${module.name}: a ${path} module has one AC, this one has ${module.acs.length}; split it, or make it a full module: delete ${base}, then run verid module ${module.name}`;
+  const cause = /^##[ \t]*Root cause[ \t]*\r?\n([\s\S]*?)(?=^##[ \t]|(?![\s\S]))/m.exec(text);
+  if (path === "fix" && !cause?.[1]?.trim())
+    return `${base}/ba/requirements.md: write the Root cause, found with the debugging skill, before order`;
+  return null;
+}
+
 export type PlanRead =
   | { ok: true; modules: PlanModule[]; hashes: Record<string, string> }
   | { ok: false; detail: string };
@@ -211,6 +227,8 @@ export function readPlan(
           return { ok: false, detail: `${rel}: resolve the module draft before order` };
         hash.update("\0").update(input).update("\0").update(content);
       }
+      const problem = drafts ? null : pathProblem(project, expected, module);
+      if (problem) return { ok: false, detail: problem };
     }
     hashes[module.name] = hash.digest("hex");
   }

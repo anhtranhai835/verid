@@ -1,8 +1,20 @@
 # Thay đổi nhỏ
 
-verid không có đường tắt cho thay đổi nhỏ ở `prep` và `recipe`: mọi thay đổi đều đi qua một
-module (`order`, build, review, `serve`). Chỉ `remix` là ngắn. Bảng dưới là điều hook ép hiện
-nay; mỗi hàng nêu test khẳng định nó.
+Ở `prep` và `recipe` mọi thay đổi đều đi qua một module (`order`, build, review, `serve`),
+nhưng hồ sơ module có thể ngắn. Chọn theo cỡ việc; gate như nhau trên mọi đường.
+
+| Đường  | Khi nào                       | Developer chạy               | Hồ sơ                                                                                      |
+| ------ | ----------------------------- | ---------------------------- | ------------------------------------------------------------------------------------------ |
+| đầy đủ | Tính năng, hoặc nhiều AC      | `verid module <tên>`         | Mọi tài liệu đầu vào lấy từ `.verid/templates/module/`                                     |
+| quick  | Một thay đổi nhỏ, đúng một AC | `verid module <tên> --quick` | Thay đổi và yêu cầu của nó; các tài liệu khác là một dòng `Not applicable`                 |
+| fix    | Sửa bug                       | `verid module <tên> --fix`   | Triệu chứng, cách tái hiện, nguyên nhân gốc (tìm bằng skill debugging trước khi viết code) |
+
+`verid order` từ chối module quick hoặc fix có hơn một AC, và module fix có mục `## Root cause`
+trống; lời từ chối nêu lệnh chuyển sang module đầy đủ. AC duy nhất của fix là một test tái hiện
+bug: đỏ trước khi sửa, xanh sau khi sửa. Test khẳng định: `unified-flow.e2e`, "the quick path
+keeps every gate…" và "the fix path keeps every gate…".
+
+Bảng dưới là điều hook ép ở từng mode và drive; mỗi hàng nêu test khẳng định nó.
 
 | Mode và drive              | Tình huống          | Developer chạy                                             | Agent được làm                                                                                      | Test khẳng định                                                                                                                                              |
 | -------------------------- | ------------------- | ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |

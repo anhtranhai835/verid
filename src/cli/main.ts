@@ -104,6 +104,8 @@ export async function runCli(args: readonly string[]): Promise<CliResult> {
     else if (cmd === "doctor" && (rest.length === 0 || (rest.length === 1 && rest[0] === "--ci")))
       r = await doctorCommand(project, rest[0] === "--ci");
     else if (cmd === "module" && rest.length === 1) r = await moduleCommand(project, rest[0]!);
+    else if (cmd === "module" && rest.length === 2 && ["--quick", "--fix"].includes(rest[1]!))
+      r = await moduleCommand(project, rest[0]!, rest[1] === "--quick" ? "quick" : "fix");
     else if (cmd === "board")
       r = await boardCommand(project, rest, (action, task) =>
         action === "order" ? approve(project, task) : serve(project, task ?? ""),
@@ -433,7 +435,12 @@ function usage(project: string, wrong: Misuse | null, next?: string): CliResult 
       who: dev,
       group: say("usage.group"),
     },
-    { emoji: "📁", command: `${v} module <name>`, what: say("usage.module"), who: "prep, recipe" },
+    {
+      emoji: "📁",
+      command: `${v} module <name> [--quick|--fix]`,
+      what: say("usage.module"),
+      who: "prep, recipe",
+    },
     { emoji: "👅", command: `${v} taste`, what: say("usage.taste") },
     { emoji: "👀", command: `${v} peek`, what: say("usage.peek") },
     { emoji: "📊", command: `${v} usage [module] [--json]`, what: say("usage.ledger") },

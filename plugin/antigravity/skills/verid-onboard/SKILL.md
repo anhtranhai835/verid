@@ -20,4 +20,4 @@ Read and report only — never modify `.verid/manifest.yaml`, source code, or gi
 4. **Output (Max 15 lines):**
    - **Workspace table:** `Repo | Stack | Role | Branch | Status`
    - **Project summary:** 1–2 sentences, mode, drive, module phases.
-   - **Next step:** Exact next action from `verid menu`.
+   - **Next step:** Exact next action from `verid menu`. For a new small change or bug, propose `--quick` or `--fix` from `verid-ba`'s table.

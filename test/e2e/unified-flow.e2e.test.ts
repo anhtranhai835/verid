@@ -523,3 +523,54 @@ it("AC-28, AC-29, AC-30: upgrade is previewable and idempotent, fills partial te
     detail: expect.stringContaining("served: requires Artifacts"),
   });
 });
+
+it.each(["quick", "fix"])(
+  "the %s path keeps every gate: one AC, a short dossier, then order, TDD, review and serve",
+  async (path) => {
+    await cook();
+    const base = ".verid/artifacts/03-modules/tweak";
+    const module = await cli("module", "tweak", `--${path}`);
+    expect(module.code, module.stderr).toBe(0);
+    expect(read(`${base}/ba/requirements.md`)).toMatch(new RegExp(`^Path: ${path}$`, "m"));
+    if (path === "fix") expect(module.stdout).toContain("debugging");
+    const lines = MODULE_INPUTS.map((input) => read(`${base}/${input}`).split("\n").length);
+    expect(lines.reduce((sum, n) => sum + n, 0)).toBeLessThan(40);
+
+    const plan = (acs: string) =>
+      put(".verid/plan.md", `## Module: tweak\nArtifacts: ${base}\n${acs}`);
+    plan("- AC-1: adds two numbers (REQ-1)\n");
+    expect((await cli("order", "tweak")).code).toBe(2);
+    for (const input of MODULE_INPUTS)
+      put(
+        `${base}/${input}`,
+        read(`${base}/${input}`).replace(/\[NEEDS CLARIFICATION[^\]]*\]/g, "Agreed"),
+      );
+    if (path === "fix") {
+      const filled = read(`${base}/ba/requirements.md`);
+      put(`${base}/ba/requirements.md`, filled.replace(/(## Root cause\n)[^#]*/, "$1\n"));
+      const empty = await cli("order", "tweak");
+      expect(empty.code).toBe(2);
+      expect(empty.stderr).toContain("Root cause");
+      put(`${base}/ba/requirements.md`, filled);
+    }
+    plan("- AC-1: adds two numbers (REQ-1)\n- AC-2: subtracts (REQ-2)\n");
+    const two = await cli("order", "tweak");
+    expect(two.code).toBe(2);
+    expect(two.stderr).toContain("one AC");
+    expect(two.stderr).toContain("verid module tweak");
+
+    plan("- AC-1: adds two numbers (REQ-1)\n");
+    const ordered = await cli("order", "tweak");
+    expect(ordered.code, ordered.stderr).toBe(0);
+    await startTaskSession(project, `${path}-session`, "codex");
+    await changed(`${path}-session`, "test/tweak.test.ts");
+    scenario(1, "vitest-add-assert.xml");
+    expect((await cli("taste")).code).toBe(1);
+    await changed(`${path}-session`, "src/tweak.ts");
+    scenario(0, "vitest-ac.xml");
+    expect((await cli("taste")).code).toBe(0);
+    await review(`${path}-session`, `review-${path}`);
+    expect((await cli("serve", "tweak")).code).toBe(0);
+    expect(state().modules.tweak?.served_at).toEqual(expect.any(String));
+  },
+);
