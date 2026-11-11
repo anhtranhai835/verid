@@ -418,3 +418,57 @@ describe("6. state survives restarts and concurrent hooks", () => {
     expect(verifyAuditChain(auditFile)).toEqual({ ok: true, count: 20 });
   });
 });
+
+describe("7. a repeated denial is short", () => {
+  const writeState = (session?: string) =>
+    fixture("pre-tool-use-write-verid-state", (p) => {
+      if (session) p.session_id = session;
+    });
+  const readState = (name: string) => readFile(join(project, ".verid/.state", name));
+  const full = "CLI-owned review packets may be read";
+
+  it("shortens a second denial of the same rule and target in one session to its code and first sentence", () => {
+    const first = hook(writeState());
+    const again = hook(writeState());
+    expect(first.stderr).toContain(full);
+    expect([again.code, again.stderr.startsWith("verid [VERID_BURNT_STATE_PROTECTED]\n")]).toEqual([
+      2,
+      true,
+    ]);
+    expect(again.stderr).not.toContain(full);
+    expect(again.stderr).toMatch(
+      /^en: Same as before: Protected verid data \(.+\): private state cannot be read or written\.$/m,
+    );
+    expect(again.stderr.length).toBeLessThan(first.stderr.length);
+    expect(state().counters.blocked_actions).toBe(2);
+  });
+
+  it("prints the full reason for another target, another rule or another session", () => {
+    hook(readState("a.json"));
+    const target = hook(readState("b.json"));
+    hook(writeManifest());
+    const rule = hook(writeState());
+    const session = hook(writeState("another-session"));
+    expect(
+      [target, rule, session].map((r) => [r.code, r.stderr.includes("Same as before")]),
+    ).toEqual([
+      [2, false],
+      [2, false],
+      [2, false],
+    ]);
+  });
+
+  it("prints the full reason again after the session's context is compacted", () => {
+    hook(writeState());
+    const compacted = fixture("session-start", (p) => (p.source = "compact"));
+    expect(hook(compacted).code).toBe(0);
+    expect(state().last_denied).toBeNull();
+    expect(hook(writeState()).stderr).toContain(full);
+  });
+
+  it("keeps another session's last denial when one session is compacted", () => {
+    hook(writeState("another-session"));
+    hook(fixture("session-start", (p) => (p.source = "compact")));
+    expect(state().last_denied).toMatchObject({ session: "another-session" });
+  });
+});

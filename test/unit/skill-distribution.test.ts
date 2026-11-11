@@ -287,6 +287,12 @@ describe("self-contained verid skills", () => {
     expect(existsSync(join(root, "plugin/templates/module/README.md"))).toBe(true);
   });
 
+  it("keeps reports and handoffs to status, paths, findings and the next step", () => {
+    expect(read("plugin/templates/workflow.md")).toContain(
+      "Reports and handoffs give status, paths, findings and the next step only; do not retell files read or repeat ACs.",
+    );
+  });
+
   it("states the board and drive rules once per context", () => {
     const sentence = "the developer arranges the priority queue";
     expect(read("plugin/templates/workflow.md")).toContain(sentence);

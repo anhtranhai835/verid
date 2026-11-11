@@ -271,7 +271,15 @@ export async function preToolUse(p: z.infer<typeof preToolUseSchema>): Promise<R
           isAbsolute(denied.target) && isUnder(normalizePath(denied.target), normalizePath(project))
             ? relative(project, denied.target).replaceAll("\\", "/")
             : denied.target;
-        const result = shared.deny(denied.code, { ...gate.names, target });
+        const last = state.last_denied;
+        const repeated =
+          last?.session === call.session &&
+          last.rule === denied.code &&
+          last.target === denied.target;
+        const result = (repeated ? shared.denyAgain : shared.deny)(denied.code, {
+          ...gate.names,
+          target,
+        });
         appendAudit(paths.audit, {
           event: "denied",
           ...key,

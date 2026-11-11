@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { systemLanguage, t, veridCommand } from "../../src/adapters/i18n.js";
+import en from "../../i18n/en.json" with { type: "json" };
+import vi from "../../i18n/vi.json" with { type: "json" };
 
 describe("provider status messages", () => {
   it("describes current Codex enforcement without development plan labels", () => {
@@ -137,5 +139,54 @@ describe("systemLanguage: the language a new machine's messages use", () => {
     expect(rows.map(({ env, intl }) => systemLanguage(env, intl))).toEqual(
       rows.map(({ want }) => want),
     );
+  });
+});
+
+describe("agent-facing message length", () => {
+  // Denials, stop holds, session context and next steps reach the agent on every turn they fire.
+  const AGENT_FACING = /^(VERID_BURNT_|stop\.|session\.|taste\.|auto\.|status\.)/;
+  const CAP = 320;
+
+  it("keeps every agent-facing template within 320 characters in both languages", () => {
+    const over = Object.entries({ en, vi }).flatMap(([lang, catalog]) =>
+      Object.entries(catalog as Record<string, string>)
+        .filter(([key, text]) => AGENT_FACING.test(key) && [...text].length > CAP)
+        .map(([key, text]) => `${lang} ${key} ${[...text].length}`),
+    );
+    expect(over).toEqual([]);
+  });
+
+  it("still names the next command or action in the messages that were shortened", () => {
+    const shortened = [
+      "VERID_BURNT_AUTO_WAITING_MERGE",
+      "VERID_BURNT_PLAN_NOT_APPROVED",
+      "VERID_BURNT_AUTO_BRANCH",
+      "VERID_BURNT_RUN_NO_RUNNER",
+      "VERID_BURNT_GIT_UNRESOLVED",
+      "VERID_BURNT_GIT_WORK_BASE",
+      "VERID_BURNT_HOOK_PROTECTED",
+      "VERID_BURNT_TDD_NO_FAILING_TEST",
+      "VERID_BURNT_AUTO_NO_MODULE",
+      "VERID_BURNT_GIT_MAIN_COMMIT",
+      "VERID_BURNT_RUN_RUNNER_GONE",
+      "VERID_BURNT_PLAN_MISSING",
+      "VERID_BURNT_PLAN_INVALID",
+      "auto.plan",
+      "auto.commit",
+      "auto.security",
+      "auto.waiting_merge",
+      "auto.done",
+      "auto.stuck.served_changed",
+      "taste.not_compiled",
+      "status.stub",
+    ];
+    // A next step is a code span naming a command or file, or an instruction to stop or leave it.
+    const next = /^(Next|Tiếp theo): |`[^`]+`|stop here|dừng ở đây|developer/i;
+    const missing = Object.entries({ en, vi }).flatMap(([lang, catalog]) =>
+      shortened
+        .filter((key) => !next.test((catalog as Record<string, string>)[key] ?? ""))
+        .map((key) => `${lang} ${key}`),
+    );
+    expect(missing).toEqual([]);
   });
 });

@@ -152,6 +152,19 @@ export function haltedBy(paths: ReturnType<typeof statePaths>): { reason: string
 export const haltedLines = (halted: { reason: string }) =>
   `verid: halted · ${halted.reason}\n${bilingual("halt.notice", {})}\n`;
 
+/** The first sentence of a message: what is blocked and why, without the rest of the advice. */
+const firstSentence = (text: string): string => /^.*?[.!?](?=\s|$)/s.exec(text)?.[0] ?? text;
+
+/**
+ * The same rule denying the same target again in one session: the code and the first sentence
+ * of the reason, since the full reason is already in the agent's context.
+ */
+export function denyAgain(code: ErrorCode, params: Record<string, string>): Result {
+  const line = (lang: Lang) =>
+    t(lang, "deny.repeat", { reason: firstSentence(t(lang, code, params)) });
+  return { exit: 2, stderr: `verid [${code}]\n${inLanguage(line)}\n` };
+}
+
 export function deny(code: ErrorCode, params: Record<string, string>): Result {
   const rule = (RULE_CODES as readonly string[]).includes(code) ? (code as RuleCode) : undefined;
   const hint: MessageKey | undefined =

@@ -123,6 +123,13 @@ export async function lifecycle(
         : {}),
     }),
   );
+  // Compaction drops the full reasons the agent saw: its next denial is printed in full again.
+  if (event === "session_start" && p.source === "compact")
+    withLock(paths, () => {
+      const state = readState(paths);
+      if (state.last_denied?.session === p.session_id)
+        writeState(paths, { ...state, last_denied: null });
+    });
   if (!manifest) return { exit: 0 };
   let taskContext: string[] = [];
   if (planned(manifest))
