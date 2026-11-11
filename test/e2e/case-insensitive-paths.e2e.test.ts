@@ -20,10 +20,17 @@ let project: string;
 tempProject("verid-case-", {
   cwd: () => project,
   defaultText: "x",
-  bind: (p) => { project = p.root; },
+  bind: (p) => {
+    project = p.root;
+  },
   setup: (p) => {
     p.put(".verid/.state/state.json", '{"schemaVersion":1}');
-    for (const file of [".verid/manifest.yaml", ".verid/review/work.md", ".git/config", "cc/projects/p/s.jsonl"])
+    for (const file of [
+      ".verid/manifest.yaml",
+      ".verid/review/work.md",
+      ".git/config",
+      "cc/projects/p/s.jsonl",
+    ])
       p.put(file);
     p.put(".claude/settings.local.json", "{}");
   },
