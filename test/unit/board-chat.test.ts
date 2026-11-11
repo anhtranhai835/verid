@@ -1,9 +1,89 @@
-import { tempDirs } from "../support/project.js";
+import { tempDirs, tempProject, kanbanManifest } from "../support/project.js";
+import { EventEmitter } from "node:events";
+import { PassThrough } from "node:stream";
+import type { ChildProcess } from "node:child_process";
+import { verifyAuditChain } from "../../src/adapters/audit-log.js";
 const project = tempDirs("verid-chat-", "suite")();
 import { readFileSync } from "node:fs";
 
 import { describe, expect, it } from "vitest";
-import { CLAUDE_ALLOW, launchFor, readEvent, windowsArgs } from "../../src/adapters/board-chat.js";
+import {
+  boardChat,
+  CLAUDE_ALLOW,
+  launchFor,
+  readEvent,
+  windowsArgs,
+} from "../../src/adapters/board-chat.js";
+
+describe("board usage recording", () => {
+  const p = tempProject("verid-chat-usage-", {
+    manifest: kanbanManifest,
+    state: {
+      schemaVersion: 1,
+      kanban: { active: { module: "api", session: null, spec_sha256: "hash" }, sessions: {} },
+    },
+  });
+
+  it("records fragmented and unterminated usage lines once for the selected task", async () => {
+    const run = Object.assign(new EventEmitter(), {
+      stdout: new PassThrough(),
+      stderr: new PassThrough(),
+      stdin: new PassThrough(),
+    });
+    const chat = boardChat(p.root, () => run as unknown as ChildProcess);
+    await chat.send({ task: "api", text: "PRIVATE_PROMPT", provider: "codex" });
+    const line = JSON.stringify({
+      type: "turn.completed",
+      usage: { input_tokens: 20, cached_input_tokens: 4, output_tokens: 5 },
+      result: "PRIVATE_OUTPUT",
+    });
+    run.stdout.write(line.slice(0, 20));
+    run.stdout.write(line.slice(20) + "\n" + line);
+    run.emit("close", 0);
+    expect(p.audit().filter((e) => e.event === "usage_recorded")).toEqual([
+      expect.objectContaining({
+        module: "api",
+        provider: "codex",
+        input: 20,
+        cached: 4,
+        output: 5,
+      }),
+      expect.objectContaining({
+        module: "api",
+        provider: "codex",
+        input: 20,
+        cached: 4,
+        output: 5,
+      }),
+    ]);
+    expect(p.read(".verid/.state/audit.jsonl")).not.toMatch(/PRIVATE_PROMPT|PRIVATE_OUTPUT|result/);
+    expect(verifyAuditChain(p.auditFile)).toEqual({ ok: true, count: 2 });
+  });
+
+  it("does not record absent usage or usage from a different provider", async () => {
+    const run = Object.assign(new EventEmitter(), {
+      stdout: new PassThrough(),
+      stderr: new PassThrough(),
+      stdin: new PassThrough(),
+    });
+    const chat = boardChat(p.root, () => run as unknown as ChildProcess);
+    await chat.send({ task: "api", text: "hello", provider: "codex" });
+    run.stdout.write(
+      JSON.stringify({
+        type: "result",
+        usage: {
+          input_tokens: 1,
+          cache_creation_input_tokens: 0,
+          cache_read_input_tokens: 0,
+          output_tokens: 1,
+        },
+      }) + "\n",
+    );
+    run.stdout.write('{"type":"turn.completed"}');
+    run.emit("close", 0);
+    expect(() => p.read(".verid/.state/audit.jsonl")).toThrow();
+  });
+});
 
 describe("board chat launches", () => {
   it("sends Claude Code's prompt on stdin with narrow settings and resumes by session ID", () => {
@@ -50,6 +130,63 @@ describe("board chat launches", () => {
 });
 
 describe("board chat events", () => {
+  it("reads sanitized Claude result usage including cache creation and cache reads", () => {
+    // Claude Code 2.1.319 emitted these four counters; nonzero values exercise normalization.
+    const event = {
+      type: "result",
+      subtype: "success",
+      usage: {
+        input_tokens: 12,
+        cache_creation_input_tokens: 30,
+        cache_read_input_tokens: 80,
+        output_tokens: 9,
+      },
+    };
+    expect(readEvent(JSON.stringify(event)).usage).toEqual({
+      provider: "claude-code",
+      input: 122,
+      cached: 80,
+      output: 9,
+    });
+  });
+
+  it("reads documented Codex turn usage without adding cached input twice", () => {
+    const event = {
+      type: "turn.completed",
+      usage: {
+        input_tokens: 24763,
+        cached_input_tokens: 24448,
+        output_tokens: 122,
+      },
+    };
+    expect(readEvent(JSON.stringify(event)).usage).toEqual({
+      provider: "codex",
+      input: 24763,
+      cached: 24448,
+      output: 122,
+    });
+  });
+
+  it.each([
+    { type: "result" },
+    { type: "turn.completed", usage: { input_tokens: 3, output_tokens: 1 } },
+    {
+      type: "turn.completed",
+      usage: { input_tokens: -1, cached_input_tokens: 0, output_tokens: 1 },
+    },
+    {
+      type: "turn.completed",
+      usage: { input_tokens: 1, cached_input_tokens: 2, output_tokens: 1 },
+    },
+    {
+      type: "turn.completed",
+      usage: { input_tokens: "3", cached_input_tokens: 0, output_tokens: 1 },
+    },
+    { type: "assistant", usage: { input_tokens: 3, cached_input_tokens: 0, output_tokens: 1 } },
+  ])("ignores absent, partial, invalid or nonterminal usage %#", (event) => {
+    expect(readEvent(JSON.stringify(event))).not.toHaveProperty("usage");
+  });
+
   it("reads Claude Code's stream-json", () => {
     expect(readEvent('{"type":"system","subtype":"init","session_id":"s1"}')).toEqual({
       id: "s1",

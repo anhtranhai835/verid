@@ -9,7 +9,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { join, relative, resolve } from "node:path";
-import { acsInName } from "../core/plan.js";
+import { acsInName, openModule } from "../core/plan.js";
 import {
   classifyRuns,
   e2eCases,
@@ -29,7 +29,7 @@ import { DEFAULT_TIMEOUT_SEC, type Repo } from "../core/manifest.js";
 import { goneRunners, runnerKey, runnerLabel, type Runner } from "../core/runners.js";
 import { runArchitecture } from "../adapters/architecture.js";
 import { appendAudit } from "../adapters/audit-log.js";
-import { architectureLine } from "../adapters/plan-file.js";
+import { architectureLine, readPlan, servedSections, planViews } from "../adapters/plan-file.js";
 import { bilingual } from "../adapters/i18n.js";
 import { readJUnitFiles, xmlReports } from "../adapters/junit.js";
 import { loadManifest, manifestFile } from "../adapters/manifest.js";
@@ -76,10 +76,16 @@ export async function testCommand(project: string): Promise<CliResult> {
   const remix = manifest?.mode === "remix";
   if (remix && readState(paths).baseline === null)
     throw new VeridError("VERID_BURNT_RUN_NO_BASELINE");
+  const state = readState(paths);
+  const plan = readPlan(project, manifest?.iterations !== undefined, false, servedSections(state));
+  const module =
+    state.kanban.active?.module ??
+    state.auto.work?.module ??
+    (plan?.ok ? openModule(planViews(project, plan, state))?.name : undefined);
   const run = await runOnce(project);
-  const { id, log, cases, classified, junitSha256 } = run;
+  const { id, cases, classified, junitSha256 } = run;
 
-  const { verdict, from, to, fresh, known, changed, left, rev } = withLock(paths, () => {
+  const { verdict, result, rev } = withLock(paths, () => {
     const state = readState(paths);
     const from: Cycle = { state: state.tdd.state, stub: state.tdd.stub };
     // A test written meanwhile (or another run finishing) bumped rev: this run may predate it.
@@ -122,7 +128,13 @@ export async function testCommand(project: string): Promise<CliResult> {
       failing: verdict.kind === "fail" ? verdict.failing.map((c) => c.id) : [],
     });
     // Audit first: if it fails, state is untouched and the run is not evidence.
-    appendAudit(paths.audit, { event: "test_run", ...summary });
+    const result = tasteResult(run, verdict, from, to, fresh, known, changed, left);
+    appendAudit(paths.audit, {
+      event: "test_run",
+      ...summary,
+      module,
+      chars: result.stdout.length + result.stderr.length,
+    });
     const runners = remembered(state.runners, run);
     // A runner that ran, even in a run that is not evidence, may not be dropped later.
     if (verdict.kind === "invalid" && runners.length > state.runners.length)
@@ -152,16 +164,51 @@ export async function testCommand(project: string): Promise<CliResult> {
         architecture: {},
       });
     }
-    return { verdict, from, to, fresh, known, changed, left, rev: state.tdd.rev + 1 };
+    return { verdict, result, rev: state.tdd.rev + 1 };
   });
 
-  if (verdict.kind === "invalid") return notEvidence(run, verdict.code, "taste");
+  if (verdict.kind === "invalid") return result;
   // After a passing suite only; a failing check leaves the cycle where the tests put it.
   const architecture =
     manifest && verdict.kind === "pass"
       ? await runArchitecture(project, manifest, run, rev)
       : { lines: [], problems: [] };
 
+  const stdout = architecture.lines.map((line) => `${line}\n`).join("");
+  const stderr = architecture.problems
+    .map(
+      (p) =>
+        [
+          `verid [${p.code}]`,
+          architectureLine(p),
+          ...(p.log ? [tail(join(project, p.log), p.log).trimEnd()] : []),
+        ].join("\n") + "\n",
+    )
+    .join("");
+  // Architecture runs after evidence is committed. Account for its extra text separately.
+  if (stdout || stderr)
+    withLock(paths, () =>
+      appendAudit(paths.audit, {
+        event: "test_context",
+        module,
+        chars: stdout.length + stderr.length,
+      }),
+    );
+  return { ...result, stdout: result.stdout + stdout, stderr: result.stderr + stderr };
+}
+
+function tasteResult(
+  run: RunOnce,
+  verdict: RunVerdict,
+  from: Cycle,
+  to: Cycle,
+  fresh: number,
+  known: TestCase[],
+  changed: TestCase[],
+  left: number,
+): CliResult {
+  if (verdict.kind === "invalid") return notEvidence(run, verdict.code, "taste");
+  const { project, id, log, cases } = run;
   const c = count(cases ?? []);
   const lines = [
     `verid: ${cycleLabel(from)} → ${cycleLabel(to)} · run ${id} · ${c.passed} passed, ${c.failed} failed, ${c.skipped} skipped`,
@@ -182,20 +229,7 @@ export async function testCommand(project: string): Promise<CliResult> {
     lines.push(bilingual("tdd.refactor_broke", { failed: String(verdict.failing.length) }));
   if (cycleLabel(from) !== cycleLabel(to)) lines.push(bilingual(cycleHint(to), {}));
   if (!inAgentShell()) lines.push(bilingual("taste.log", { log: shown(project, log) }));
-  lines.push(...architecture.lines);
-  // The log is under .verid/.state, which the agent cannot read: its tail is shown here.
-  const refused = architecture.problems.map((p) =>
-    [
-      `verid [${p.code}]`,
-      architectureLine(p),
-      ...(p.log ? [tail(join(project, p.log), p.log).trimEnd()] : []),
-    ].join("\n"),
-  );
-  return {
-    exit: verdict.kind === "pass" ? 0 : 1,
-    stdout: `${lines.join("\n")}\n`,
-    stderr: refused.map((line) => `${line}\n`).join(""),
-  };
+  return { exit: verdict.kind === "pass" ? 0 : 1, stdout: `${lines.join("\n")}\n`, stderr: "" };
 }
 
 /**

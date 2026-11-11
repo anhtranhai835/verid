@@ -3,7 +3,9 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Provider } from "../core/manifest.js";
 import { loadManifest } from "./manifest.js";
-import { readState, statePaths } from "./state-store.js";
+import { readState, statePaths, withLock } from "./state-store.js";
+import { appendAudit } from "./audit-log.js";
+import { isCount, type TokenUsage } from "../core/usage.js";
 
 /**
  * The board's chat: it runs the provider's own CLI headless in the project, one run at a time,
@@ -112,7 +114,11 @@ const obj = (value: unknown): Record<string, unknown> | undefined =>
     : undefined;
 
 /** One stdout line of a provider's JSON stream: the session ID it names and what to show. */
-export function readEvent(line: string): { id?: string; lines: ChatLine[] } {
+export function readEvent(line: string): {
+  id?: string;
+  lines: ChatLine[];
+  usage?: TokenUsage & { provider: "claude-code" | "codex" };
+} {
   const trimmed = line.trim();
   if (!trimmed) return { lines: [] };
   let event: Record<string, unknown> | undefined;
@@ -171,7 +177,38 @@ export function readEvent(line: string): { id?: string; lines: ChatLine[] } {
       str(event.text) ?? str(event.content) ?? str(message?.text) ?? str(message?.content);
     if (text) out.push({ role: /error/i.test(type) ? "error" : "ai", text: clip(text) });
   }
-  return { ...(id ? { id } : {}), lines: out };
+  const usage = readUsage(type, obj(event.usage));
+  return { ...(id ? { id } : {}), lines: out, ...(usage ? { usage } : {}) };
+}
+
+function readUsage(type: string, usage: Record<string, unknown> | undefined) {
+  if (!usage || !isCount(usage.input_tokens) || !isCount(usage.output_tokens)) return;
+  if (
+    type === "result" &&
+    isCount(usage.cache_creation_input_tokens) &&
+    isCount(usage.cache_read_input_tokens)
+  ) {
+    const input =
+      usage.input_tokens + usage.cache_creation_input_tokens + usage.cache_read_input_tokens;
+    if (isCount(input))
+      return {
+        provider: "claude-code" as const,
+        input,
+        cached: usage.cache_read_input_tokens,
+        output: usage.output_tokens,
+      };
+  }
+  if (
+    type === "turn.completed" &&
+    isCount(usage.cached_input_tokens) &&
+    usage.cached_input_tokens <= usage.input_tokens
+  )
+    return {
+      provider: "codex" as const,
+      input: usage.input_tokens,
+      cached: usage.cached_input_tokens,
+      output: usage.output_tokens,
+    };
 }
 
 function toolLine(name: unknown, input: unknown): string {
@@ -275,16 +312,31 @@ export function boardChat(project: string, spawner: Spawner = spawnLaunch) {
     child = run;
     const errors: string[] = [];
     let buffer = "";
+    const accept = (part: string) => {
+      const event = readEvent(part);
+      if (event.id) captured = event.id;
+      event.lines.forEach(add);
+      if (event.usage?.provider === chosen) {
+        try {
+          const paths = statePaths(project);
+          withLock(paths, () =>
+            appendAudit(paths.audit, {
+              event: "usage_recorded",
+              module: input.task,
+              ...event.usage!,
+            }),
+          );
+        } catch {
+          add({ role: "error", text: "Không ghi được usage vào audit log." });
+        }
+      }
+    };
     run.stdout?.setEncoding("utf8");
     run.stdout?.on("data", (chunk: string) => {
       buffer += chunk;
       const parts = buffer.split(/\r?\n/);
       buffer = parts.pop() ?? "";
-      for (const part of parts) {
-        const event = readEvent(part);
-        if (event.id) captured = event.id;
-        event.lines.forEach(add);
-      }
+      for (const part of parts) accept(part);
     });
     run.stderr?.setEncoding("utf8");
     run.stderr?.on("data", (chunk: string) => {
@@ -300,7 +352,7 @@ export function boardChat(project: string, spawner: Spawner = spawnLaunch) {
     });
     run.on("close", (code) => {
       clearTimeout(timer);
-      for (const event of buffer ? [readEvent(buffer)] : []) event.lines.forEach(add);
+      if (buffer) accept(buffer);
       if (code !== 0) {
         if (errors.length) add({ role: "error", text: clip(errors.join("\n")) });
         add({ role: "error", text: `${launch.command} kết thúc với mã ${code ?? "?"}.` });

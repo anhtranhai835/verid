@@ -14,6 +14,20 @@ import type { AuditEvent } from "../core/override.js";
 const GENESIS = "0".repeat(64);
 const sha256 = (s: string) => createHash("sha256").update(s, "utf8").digest("hex");
 
+/** Read-only input for reports; missing logs predate measurement. Corruption is not hidden. */
+export function readAudit(file: string): Record<string, unknown>[] {
+  if (!existsSync(file)) return [];
+  return readFileSync(file, "utf8")
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .map((line) => {
+      const event: unknown = JSON.parse(line);
+      if (!event || typeof event !== "object" || Array.isArray(event))
+        throw new Error("Invalid audit record");
+      return event as Record<string, unknown>;
+    });
+}
+
 /**
  * Hash chain over audit.jsonl. For each record:
  *   line = canonicalJson(record without its own `hash` field)  // keys sorted, no newline

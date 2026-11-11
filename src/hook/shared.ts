@@ -23,6 +23,10 @@ import {
   isOverridable,
 } from "../core/errors.js";
 import type * as z from "zod/mini";
+import { type Cycle, cycleLabel } from "../core/tdd.js";
+
+export const statusLine = (mode: string, cycle: Cycle, lastRun: string | null) =>
+  `verid: TDD ${cycleLabel(cycle)} · mode ${mode} · last run ${lastRun ?? "none"}`;
 
 // The host that sent this payload (adapters/host.ts). Rules ask what it can do, never its name.
 // ponytail: one module-wide host set by each run(); overlapping runs in one process would race.
@@ -37,6 +41,21 @@ export const writerFor: typeof writerOf = (...args) =>
 export const splitFor = (roles: Roles | undefined) => !HOST.singleWriter && splitOn(roles);
 export const mappedNames = (roles: Roles | undefined) => mappedAgents(roles, HOST.singleWriter);
 export const sessionKey = (session: string) => `${HOST.id}:${session}`;
+
+export const resultChars = (result: Result): number =>
+  (result.stdout?.length ?? 0) + (result.stderr?.length ?? 0);
+
+export function usageModule(
+  project: string,
+  state: State,
+  manifest?: Manifest,
+): string | undefined {
+  return (
+    state.kanban.active?.module ??
+    state.auto.work?.module ??
+    openModuleName(project, state, manifest)
+  );
+}
 
 export interface CycleEvent {
   session: string;
