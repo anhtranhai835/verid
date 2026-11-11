@@ -618,14 +618,14 @@ describe("menu, peek and session start in an auto drive", () => {
       "stuck calc": stuck.split("\n")[1],
       stuck: stuck.includes(enMessage("auto.stuck.design_changed", { detail: ".verid/design.md" })),
     }).toEqual({
-      unsigned: "verid: mode prep · drive auto · not signed · plan pending · 0 modules",
+      unsigned: "verid: mode prep · drive no-brain · not signed · plan pending · 0 modules",
       pending: [
-        "verid: mode prep · drive auto · signed · plan pending · 2 modules",
+        "verid: mode prep · drive no-brain · signed · plan pending · 2 modules",
         "  calc · planned · 0/1 ACs",
       ],
       "stuck calc": "  calc · cooking · 0/1 ACs",
       open: [
-        "verid: mode prep · drive auto · signed · plan reviewed · 2 modules",
+        "verid: mode prep · drive no-brain · signed · plan reviewed · 2 modules",
         "  calc · cooking · 0/1 ACs",
         "  product · planned · 0/1 ACs",
         "  rounds AC-1 2/3 · module reviews 1/3 · plan reviews 0/3 · stops 0/3",
@@ -649,7 +649,7 @@ describe("menu, peek and session start in an auto drive", () => {
     expect({
       peek: peek.includes(step),
       "/verid:menu":
-        prompted.includes(step) && prompted.startsWith("verid: mode prep · drive auto"),
+        prompted.includes(step) && prompted.startsWith("verid: mode prep · drive no-brain"),
     }).toEqual({ peek: true, "/verid:menu": true });
   });
 

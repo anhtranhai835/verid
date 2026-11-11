@@ -138,10 +138,14 @@ Upgrade refreshes provider wiring and instructions and adds accepted missing
 defaults. Existing repo resources and module documents are preserved. Refresh
 pinned resources by reviewing their changes and replacing the intended copies.
 
+Drives are now named `big-brain` (was `human`) and `no-brain` (was `ai`). Manifests with the
+older names `human`, `ai` or `auto` still load, and `--drive` still takes them; new manifests
+are written with the new names. Nothing needs to change.
+
 ## Upgrading from 1.x
 
-This is version 2.0.0. Legacy manifests with `workflow: classic`, `workflow: modular`, `workflow: kanban` or no workflow still load; `--workflow` is a compatibility flag. `auto` remains an alias of drive `ai`.
+This is version 2.0.0. Legacy manifests with `workflow: classic`, `workflow: modular`, `workflow: kanban` or no workflow still load; `--workflow` is a compatibility flag.
 
-Run `verid upgrade --dry-run`, then `verid upgrade --yes`. Upgrade removes the retired workflow, adds templates/artifact directories, and drafts dossiers and Artifacts references for unserved modules. Complete those inputs and order again; open human tasks require a fresh session. Served sections, approvals and evidence stay intact. Run `verid doctor` to find remaining gaps.
+Run `verid upgrade --dry-run`, then `verid upgrade --yes`. Upgrade removes the retired workflow, adds templates/artifact directories, and drafts dossiers and Artifacts references for unserved modules. Complete those inputs and order again; open big-brain tasks require a fresh session. Served sections, approvals and evidence stay intact. Run `verid doctor` to find remaining gaps.
 
 With repo resources, update the pinned runtime in `.verid/hooks/` and relevant resources after upgrading the package; upgrade preserves existing customizations. Before downgrading to 1.x, remove `kanban.queue` from state in the developer's terminal.

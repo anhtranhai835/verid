@@ -136,10 +136,14 @@ Upgrade cập nhật wiring và chỉ dẫn provider, thêm defaults còn thiế
 nhận. Tài nguyên repo và hồ sơ module đã có được giữ lại. Để làm mới tài nguyên
 được pin, xem diff rồi thay các bản cần cập nhật.
 
+Drive nay tên là `big-brain` (trước là `human`) và `no-brain` (trước là `ai`). Manifest ghi tên
+cũ `human`, `ai` hoặc `auto` vẫn nạp được, `--drive` vẫn nhận các tên đó; manifest mới được ghi
+bằng tên mới. Không cần sửa gì.
+
 ## Nâng cấp từ 1.x
 
-Đây là bản 2.0.0. Manifest cũ với `workflow: classic`, `workflow: modular`, `workflow: kanban` hoặc thiếu trường này vẫn nạp được; `--workflow` chỉ còn là flag tương thích. `auto` vẫn là tên cũ của drive `ai`.
+Đây là bản 2.0.0. Manifest cũ với `workflow: classic`, `workflow: modular`, `workflow: kanban` hoặc thiếu trường này vẫn nạp được; `--workflow` chỉ còn là flag tương thích.
 
-Chạy `verid upgrade --dry-run` rồi `verid upgrade --yes`. Upgrade bỏ workflow cũ, thêm templates/cây artifacts, tạo hồ sơ nháp và dòng Artifacts cho module chưa serve. Điền hồ sơ rồi order lại; task đang mở cần session mới ở human drive. Section, approval và bằng chứng module đã serve được giữ nguyên. Chạy `verid doctor` để xem phần còn thiếu.
+Chạy `verid upgrade --dry-run` rồi `verid upgrade --yes`. Upgrade bỏ workflow cũ, thêm templates/cây artifacts, tạo hồ sơ nháp và dòng Artifacts cho module chưa serve. Điền hồ sơ rồi order lại; task đang mở cần session mới ở big-brain drive. Section, approval và bằng chứng module đã serve được giữ nguyên. Chạy `verid doctor` để xem phần còn thiếu.
 
 Với resources repo, cập nhật runtime pin trong `.verid/hooks/` và tài nguyên cần thiết sau khi nâng gói; upgrade giữ tùy chỉnh đã có. Trước khi hạ về 1.x, bỏ trường `kanban.queue` trong state bằng terminal của người dùng.

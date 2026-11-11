@@ -164,7 +164,7 @@ export async function boardCommand(
   const board = await startBoard(project, command, port);
   const snapshot = await boardSnapshot(project);
   process.stdout.write(
-    `Verid Kanban: ${board.url}\n${snapshot.notice ?? (snapshot.drive === "auto" ? "Drive ai: xếp ưu tiên rồi chạy verid order; một session làm hết hàng đợi." : "Drive human: mỗi task một session AI mới.")} Giữ terminal này mở; Ctrl+C để dừng board.\n`,
+    `Verid Kanban: ${board.url}\n${snapshot.notice ?? (snapshot.drive === "auto" ? "Drive no-brain: xếp ưu tiên rồi chạy verid order; một session làm hết hàng đợi." : "Drive big-brain: mỗi task một session AI mới.")} Giữ terminal này mở; Ctrl+C để dừng board.\n`,
   );
   if (!values["no-open"]) {
     // No shell interpolation. Windows URL is a generated loopback address with a hex fragment.

@@ -47,7 +47,7 @@ it("keeps startup, clear and compact context below the budget with long paths, f
             ? JSON.parse(result.stdout).hookSpecificOutput.additionalContext
             : result.stdout;
         expect(result.code, result.stderr).toBe(0);
-        expect(context).toContain("drive auto");
+        expect(context).toContain("drive no-brain");
         expect(context).toContain("iteration");
         expect([...context].length, `${provider} ${lang} ${source}`).toBeLessThanOrEqual(10_000);
       }

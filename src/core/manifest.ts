@@ -153,6 +153,24 @@ export type RoleName = (typeof ROLE_NAMES)[number];
 /** Who moves the project through the cycle: the developer, or the mapped agents on their own. */
 export const DRIVES = ["human", "auto"] as const;
 export type Drive = (typeof DRIVES)[number];
+/** What developers type and read; human, ai and auto are older names that still load. */
+export const DRIVE_NAMES = { human: "big-brain", auto: "no-brain" } as const satisfies Record<
+  Drive,
+  string
+>;
+const DRIVE_ALIASES: Readonly<Record<string, Drive>> = {
+  "big-brain": "human",
+  human: "human",
+  "no-brain": "auto",
+  ai: "auto",
+  auto: "auto",
+};
+/** The drive a typed or written name stands for, or undefined when the name is unknown. */
+export const driveNamed = (value: unknown): Drive | undefined =>
+  typeof value === "string" && Object.hasOwn(DRIVE_ALIASES, value)
+    ? DRIVE_ALIASES[value]
+    : undefined;
+export const DRIVE_ERROR = "must be no-brain or big-brain";
 
 export const LAYOUTS = ["monorepo", "workspace"] as const;
 export type Layout = (typeof LAYOUTS)[number];
@@ -266,8 +284,8 @@ const manifestSchema = z
     roles: z.optional(roles),
     drive: z._default(
       z.pipe(
-        z.transform((value) => (value === "ai" ? "auto" : value)),
-        z.enum(DRIVES, { error: "must be human or ai" }),
+        z.transform((value) => driveNamed(value) ?? value),
+        z.enum(DRIVES, { error: DRIVE_ERROR }),
       ),
       "human",
     ),
@@ -316,7 +334,7 @@ const manifestSchema = z
         return ctx.addIssue({
           code: "custom",
           path: ["drive"],
-          message: "auto needs mode prep or recipe",
+          message: "no-brain needs mode prep or recipe",
         });
       if (
         !m.roles?.reviewer ||
@@ -325,7 +343,7 @@ const manifestSchema = z
         ctx.addIssue({
           code: "custom",
           path: ["drive"],
-          message: "auto needs roles reviewer, tester and coder",
+          message: "no-brain needs roles reviewer, tester and coder",
         });
     }),
   );
@@ -598,8 +616,8 @@ export function renderManifest(
     "allowed_skills: [] # additional exact names or prefix:*; verid:* is known by default",
     "allowed_agents: [] # roles are known by default",
     `layout: ${JSON.stringify(layout)} # monorepo | workspace`,
-    // human is the default, so only auto is written.
-    ...(drive === "auto" ? ['drive: "ai" # human | ai'] : []),
+    // big-brain is the default, so only no-brain is written.
+    ...(drive === "auto" ? ['drive: "no-brain" # big-brain | no-brain'] : []),
     ...(iterations
       ? [
           "iterations:",

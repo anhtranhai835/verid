@@ -36,7 +36,7 @@ it("AC-1: legacy workflows load with either drive and do not restrict remix", ()
   ).toBe(true);
 });
 
-it("AC-3: ai is the public drive name and auto remains a compatible alias", () => {
+it("AC-3: no-brain is the public drive name and ai and auto remain compatible aliases", () => {
   const read = (drive: string) =>
     parseManifest({
       schemaVersion: 1,
@@ -47,11 +47,14 @@ it("AC-3: ai is the public drive name and auto remains a compatible alias", () =
       repos: [repo],
     });
   expect(read("ai")).toEqual(read("auto"));
-  expect(read("robot")).toMatchObject({ ok: false, detail: "drive: must be human or ai" });
+  expect(read("robot")).toMatchObject({
+    ok: false,
+    detail: "drive: must be no-brain or big-brain",
+  });
   const written = parse(
     renderManifest("prep", repo, defaultRoles(["codex"]), "auto", "monorepo", undefined, ["codex"]),
   );
-  expect(written.drive).toBe("ai");
+  expect(written.drive).toBe("no-brain");
   expect(written).not.toHaveProperty("workflow");
 });
 
@@ -78,7 +81,7 @@ it("AC-6, AC-7: prep and recipe always scaffold modules without a workflow choic
     expect(existsSync(join(project, ".verid/templates/module/ba/requirements.md"))).toBe(true);
     expect(existsSync(join(project, ".verid/artifacts/03-modules/README.md"))).toBe(true);
     expect(parse(readFileSync(join(project, ".verid/manifest.yaml"), "utf8"))).toMatchObject({
-      drive: "ai",
+      drive: "no-brain",
     });
     expect((await moduleCommand(project, "identity")).exit).toBe(0);
     expect(

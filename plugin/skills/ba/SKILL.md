@@ -31,7 +31,7 @@ each example → a test name with that AC code, concrete inputs and outcomes; ea
 ask now or `[NEEDS CLARIFICATION: <question>]` in the module. More than 7 rules suggests a split.
 Route agreed AC changes through verid:plan; the developer orders modules.
 
-During build, settle ambiguous ACs here first; in signed auto drive, put a question for the
+During build, settle ambiguous ACs here first; in signed no-brain drive, put a question for the
 developer in `.verid/blocked.md` and stop.
 
 Keep scope minimal and agree observable success before implementation.

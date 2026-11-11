@@ -1,4 +1,4 @@
-# Planning in the auto drive
+# Planning in the no-brain drive
 
 After the developer signs research/spec/design, propose and write the plan, then give
 the reviewer its path and the design path for a plan review. Follow verid:review's

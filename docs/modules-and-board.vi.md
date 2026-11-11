@@ -6,8 +6,8 @@
 
 | Cấu hình  | Giá trị     | Hành vi                                                                       |
 | --------- | ----------- | ----------------------------------------------------------------------------- |
-| Drive     | `human`     | Người dùng chọn task; mỗi task một session AI mới; người dùng serve.          |
-| Drive     | `ai`        | Người dùng xếp ưu tiên và ký bằng `verid order`; một session đi hết hàng đợi. |
+| Drive     | `big-brain` | Người dùng chọn task; mỗi task một session AI mới; người dùng serve.          |
+| Drive     | `no-brain`  | Người dùng xếp ưu tiên và ký bằng `verid order`; một session đi hết hàng đợi. |
 | Resources | `installed` | Dùng skills và agents đã cài.                                                 |
 | Resources | `repo`      | Pin skills, agents, templates và runtime trong project; giữ tùy chỉnh đã có.  |
 
@@ -31,7 +31,7 @@ URL được in ra, hoặc `--port 4318` để chọn cổng.
    kiểm thử sản phẩm cuối cùng. Giữ nguyên plan đã tồn tại. Chỉnh scope, tiêu chí
    và phụ thuộc trong **Kế hoạch task**, hoặc để AI lập plan chi tiết.
    Mỗi `## Module: <tên>` là một card; `Title:` đặt tên dễ đọc.
-3. Với drive human, chọn task muốn làm trước. Verid duyệt bằng `order`, chỉ mở một task mỗi lần.
+3. Với drive big-brain, chọn task muốn làm trước. Verid duyệt bằng `order`, chỉ mở một task mỗi lần.
    Gửi nội dung session (đã điền sẵn) từ **khung chat** của task: bảng chạy CLI của
    provider ở chế độ headless (`claude -p`, `codex exec`, `agy -p`) trong project, tin
    sau nối tiếp đúng session đó. Hoặc sao chép sang session AI mới trong terminal/IDE.
@@ -43,7 +43,7 @@ khác đang mở và session từng làm task trước không được nhận ta
 giữ task hiện tại; clear context không cho session cũ nhận task tiếp theo. Sửa spec,
 scope trong plan hoặc design phải duyệt lại và mở session mới. AI không tự chọn task kế tiếp.
 
-Dùng ↑/↓ hoặc Alt+↑/↓ trên card để xếp task chưa bắt đầu. Thứ tự lưu cục bộ qua lần khởi động lại; `verid menu` dùng cùng thứ tự. Task đang làm được giữ nguyên, `product` luôn cuối. Drive human đánh dấu task tiếp theo nhưng vẫn cho chọn task khác. Drive ai ẩn nút chọn/chat; ký từ terminal để AI đi theo hàng đợi. Phụ thuộc vẫn là cảnh báo.
+Dùng ↑/↓ hoặc Alt+↑/↓ trên card để xếp task chưa bắt đầu. Thứ tự lưu cục bộ qua lần khởi động lại; `verid menu` dùng cùng thứ tự. Task đang làm được giữ nguyên, `product` luôn cuối. Drive big-brain đánh dấu task tiếp theo nhưng vẫn cho chọn task khác. Drive no-brain ẩn nút chọn/chat; ký từ terminal để AI đi theo hàng đợi. Phụ thuộc vẫn là cảnh báo.
 
 ### Hồ sơ module
 

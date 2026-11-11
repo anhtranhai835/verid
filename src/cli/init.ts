@@ -6,7 +6,8 @@ import { ask, type Io } from "../adapters/terminal.js";
 import { inAgentShell } from "../adapters/agent-environment.js";
 import {
   defaultRoles,
-  DRIVES,
+  DRIVE_ERROR,
+  driveNamed,
   LAYOUTS,
   manifestUpgrade,
   MODES,
@@ -380,11 +381,8 @@ export async function planCook(
       throw new VeridError("VERID_BURNT_INIT_NO_MODE", { suggested: suggestMode(facts) });
     const mode = MODES.find((m) => m === (flags.mode ?? suggestMode(facts)));
     if (!mode) throw invalid("--mode", "must be prep, recipe or remix");
-    const drive =
-      flags.drive === undefined
-        ? undefined
-        : DRIVES.find((d) => d === (flags.drive === "ai" ? "auto" : flags.drive));
-    if (flags.drive !== undefined && !drive) throw invalid("--drive", "must be human or ai");
+    const drive = flags.drive === undefined ? undefined : driveNamed(flags.drive);
+    if (flags.drive !== undefined && !drive) throw invalid("--drive", DRIVE_ERROR);
     if (
       !flags.iterations &&
       [flags.duration, flags.startDate, flags.demoDay].some((v) => v !== undefined)

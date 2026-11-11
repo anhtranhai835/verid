@@ -596,7 +596,7 @@ function autoMenuLines(
     `stops ${auto.stop_holds}/${LIMIT}`,
   ];
   return [
-    `verid: mode ${mode} · drive auto · ${auto.signed === null ? "not signed" : "signed"} · plan ${reviewed ? "reviewed" : "pending"} · ${moduleCount(views)}`,
+    `verid: mode ${mode} · drive no-brain · ${auto.signed === null ? "not signed" : "signed"} · plan ${reviewed ? "reviewed" : "pending"} · ${moduleCount(views)}`,
     ...iterationLines(
       manifest?.iterations,
       displayPlan?.ok ? displayPlan.modules : [],

@@ -99,6 +99,6 @@ its line. Recommend rotation for a real credential.
 verid records the report under `.verid/.state/reviews/`. When `roles.security` is mapped, a
 module is served only with a passing security review after its last change; any later
 project write outside `.verid/` voids it, dependency, config and `.env` files included. In
-auto drive the third failed security review leaves the drive stuck, so say exactly what is
+no-brain drive the third failed security review leaves the drive stuck, so say exactly what is
 wrong. On Codex the reviewer applies this method inside its one combined report: a
 `Security` section, and one final verdict for the whole review.

@@ -192,11 +192,32 @@ describe("parseManifest", () => {
       none: "human",
       human: "human",
       auto: "auto",
-      remix: "drive: auto needs mode prep or recipe",
-      "no reviewer": "drive: auto needs roles reviewer, tester and coder",
-      "no split": "drive: auto needs roles reviewer, tester and coder",
-      "no roles": "drive: auto needs roles reviewer, tester and coder",
-      other: "drive: must be human or ai",
+      remix: "drive: no-brain needs mode prep or recipe",
+      "no reviewer": "drive: no-brain needs roles reviewer, tester and coder",
+      "no split": "drive: no-brain needs roles reviewer, tester and coder",
+      "no roles": "drive: no-brain needs roles reviewer, tester and coder",
+      other: "drive: must be no-brain or big-brain",
+    });
+  });
+
+  it("reads the drive names no-brain and big-brain, and still the older human, ai and auto", () => {
+    const roles = { reviewer: ["r"], tester: ["t"], coder: ["c"] };
+    const repo = { path: ".", source_globs: ["src/**"], test_globs: ["test/**"] };
+    const read = (drive: string) => {
+      const r = parseManifest({ schemaVersion: 1, mode: "prep", repos: [repo], roles, drive });
+      return r.ok ? r.manifest.drive : r.detail;
+    };
+    expect(
+      Object.fromEntries(
+        ["no-brain", "big-brain", "human", "ai", "auto", "robot"].map((d) => [d, read(d)]),
+      ),
+    ).toEqual({
+      "no-brain": "auto",
+      "big-brain": "human",
+      human: "human",
+      ai: "auto",
+      auto: "auto",
+      robot: "drive: must be no-brain or big-brain",
     });
   });
 
@@ -557,11 +578,11 @@ describe("renderManifest", () => {
     });
   });
 
-  it("writes drive only when it is auto", () => {
+  it("writes drive only when it is auto, by its name no-brain", () => {
     const repo = suggestManifest({ src: [], tests: [] });
     expect({
       auto: renderManifest("prep", repo, DEFAULT_ROLES, "auto").includes(
-        'drive: "ai" # human | ai',
+        'drive: "no-brain" # big-brain | no-brain',
       ),
       human: renderManifest("prep", repo, DEFAULT_ROLES, "human").includes("drive:"),
       unset: renderManifest("prep", repo, DEFAULT_ROLES).includes("drive:"),

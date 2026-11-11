@@ -17,4 +17,4 @@ Read `.verid/spec.md`, `.verid/design.md`, and `.verid/manifest.yaml`.
 6. **Module dossiers (prep and recipe):**
    - Run `verid module <name>` (or `node .verid/verid.mjs module <name>`), fill `.verid/artifacts/03-modules/<name>/{ba,ui,spec,tests,security}`, and include `Artifacts: .verid/artifacts/03-modules/<name>` in the module's plan section.
 7. **Approval Gate:**
-   - Ask the developer to review the planned module and run `verid order <module>` in their terminal (or select the task in `verid board` in human drive) before starting `verid-build`.
+   - Ask the developer to review the planned module and run `verid order <module>` in their terminal (or select the task in `verid board` in big-brain drive) before starting `verid-build`.

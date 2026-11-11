@@ -44,7 +44,7 @@ After upgrading hooks, run `verid doctor` and trust the new hook through Codex `
 The final line is exactly `Verdict: pass` or `Verdict: fail`, because the hook
 reads it; a missing verdict fails.
 
-In human drive, ask the developer to run `verid serve <module>`. Closure requires
+In big-brain drive, ask the developer to run `verid serve <module>`. Closure requires
 covered ACs, current passing evidence and required passing reviews. A missing
 reviewer requires `roles.reviewer` mapping. In auto, verid serves and opens the
 next module itself; the third failed module or security review leaves it stuck.

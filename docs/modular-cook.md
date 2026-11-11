@@ -6,7 +6,7 @@ Không yêu cầu chuyển source code dự án sang monorepo Haren/Bun.
 
 ## Luồng module duy nhất
 
-Prep và recipe luôn dùng hồ sơ module và board. Cook hỏi layout monorepo/workspace, resources installed/repo và drive human/ai; không hỏi workflow. Monorepo là một Git repo; workspace gồm các repo con và dùng một harness chung, một vòng TDD tổng hợp các runner. Thư mục workspace không được có .git hoặc nằm trong repo Git cha; phải có repo con.
+Prep và recipe luôn dùng hồ sơ module và board. Cook hỏi layout monorepo/workspace, resources installed/repo và drive big-brain/no-brain; không hỏi workflow. Monorepo là một Git repo; workspace gồm các repo con và dùng một harness chung, một vòng TDD tổng hợp các runner. Thư mục workspace không được có .git hoặc nằm trong repo Git cha; phải có repo con.
 
 Human: chọn task trên board hoặc order từ terminal, rồi mở session AI mới cho đúng task đó. AI: xếp ưu tiên trên board, ký research/spec/design bằng verid order; một session đi hết hàng đợi, không cắt ngang module đang làm. Dùng ↑/↓ hoặc Alt+↑/↓ để đổi thứ tự task chưa bắt đầu; product luôn cuối.
 
@@ -105,8 +105,8 @@ gate tiếp tục chờ tài liệu thật. `verid module` chỉ tạo bản nh�
    - AC-2: invalid credentials return the agreed generic error (REQ-2, SEC-1)
    ```
 
-4. Human drive: developer chạy `verid order identity`. Auto drive: developer chạy
-   `verid order` để ký research/spec/design rồi agent tiếp tục vòng ai hiện có.
+4. Big-brain drive: developer chạy `verid order identity`. No-brain drive: developer chạy
+   `verid order` để ký research/spec/design rồi agent tiếp tục vòng no-brain hiện có.
    Cả hai dùng hồ sơ module khi xét plan. Signature của module gồm section plan
    và sáu file BA/UI/spec/design/test-plan/security; thay đầu vào làm approval cũ
    hết hiệu lực. Review/release là đầu ra, không thay signature này.

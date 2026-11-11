@@ -22,5 +22,6 @@ and code paths. Ask what cannot be built or tested as written. Resolve findings 
 verid:ba. Then have the architect write `.verid/design.md` (main on Codex or if unmapped).
 Document writers run one at a time.
 
-In auto drive, the developer reads research/spec/design and runs `verid order` to sign them.
+In no-brain drive, first write `.verid/summary.md` as `references/summary.md` says. The
+developer reads it and research/spec/design, then runs `verid order` to sign them.
 Design changes are audited; module plan signatures still apply. Continue with verid:plan.

@@ -26,6 +26,9 @@ tags `1.0.0` and `1.2.0` keep their names.
 - The missing-manifest hint is corrected, the command table is shorter, and commands show the
   next step.
 - The instruction block routes bugs to the debugging skill.
+- The drives are renamed: `big-brain` (was `human`) and `no-brain` (was `ai`). The older names
+  `human`, `ai` and `auto` still load and `--drive` still takes them; see "Upgrading" in
+  [docs/installation.md](docs/installation.md).
 
 ## [2.0.0] - 2026-11-10
 

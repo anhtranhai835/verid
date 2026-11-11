@@ -46,7 +46,7 @@ Cần Node.js 22 trở lên, Git, và Claude Code hoặc Codex. Các cách cài 
 npm install -g @anhtranhai835/verid
 ```
 
-**2. Thiết lập project.** Cook hỏi mode (`prep` cho ý tưởng, `recipe` cho đặc tả có sẵn, `remix` cho code có sẵn), drive (`human` hoặc `ai`) và provider. Lệnh tự nhận diện layout và test runner, hiện danh sách file sẽ ghi, và ghi khi bạn xác nhận.
+**2. Thiết lập project.** Cook hỏi mode (`prep` cho ý tưởng, `recipe` cho đặc tả có sẵn, `remix` cho code có sẵn), drive (`big-brain`: bạn chọn và duyệt từng task, hoặc `no-brain`: bạn gõ ý tưởng, agent lo phần còn lại) và provider. Lệnh tự nhận diện layout và test runner, hiện danh sách file sẽ ghi, và ghi khi bạn xác nhận.
 
 ```sh
 cd your-project
@@ -97,7 +97,7 @@ verid serve <module>
 | Spec          | Main với BA ghi yêu cầu truy vết được trong `.verid/spec.md`.                     |
 | Design        | Architect hoặc Codex main thống nhất interface và reuse trong `.verid/design.md`. |
 | Plan          | Planner hoặc Codex main ghi AC theo thứ tự trong `.verid/plan.md`.                |
-| Order         | Developer duyệt module; auto drive làm theo plan đã ký.                           |
+| Order         | Developer duyệt module; no-brain drive làm theo plan đã ký.                       |
 | Build và test | Tester/QA rồi coder trên Claude; main trên Codex; mỗi vòng dùng `verid taste`.    |
 | Review        | Reviewer mới đọc AC, design, hồ sơ module, diff và review packet.                 |
 | Serve         | Bằng chứng, coverage AC và verdict phải đạt để đóng module.                       |
@@ -122,7 +122,7 @@ Cách viết gọn `verid` bên dưới dùng được khi chọn cài global.
 | `verid peek`                          | Xem trạng thái TDD hiện tại.                                              |
 | `verid stock`                         | Ghi các lỗi có trước trong remix.                                         |
 | `verid taste`                         | Chạy test và ghi bằng chứng.                                              |
-| `verid order [module]`                | Duyệt module trong human drive; ký hoặc tiếp tục auto drive.              |
+| `verid order [module]`                | Duyệt module trong big-brain drive; ký hoặc tiếp tục no-brain drive.      |
 | `verid serve <module>`                | Đóng module khi coverage, bằng chứng mới và review đều đạt.               |
 | `verid menu --commits --file`         | Tạo gói review.                                                           |
 | `verid garnish`                       | Bắt đầu phiên chỉ refactor.                                               |
@@ -131,7 +131,7 @@ Cách viết gọn `verid` bên dưới dùng được khi chọn cài global.
 | `verid setup-antigravity`             | Cài hoặc cập nhật plugin Antigravity của verid cho user này.              |
 
 Cook, upgrade, stock, order, serve, garnish, halt và resume do developer chạy ở
-terminal của mình. Agent dùng taste, menu, peek và doctor. Với auto drive đã ký,
+terminal của mình. Agent dùng taste, menu, peek và doctor. Với no-brain drive đã ký,
 harness tự quản lý việc mở và đóng module. Các flag của cook nằm ở [tham chiếu cook](docs/cook-reference.vi.md).
 
 ---
@@ -185,7 +185,7 @@ resources: repo
 providers: [codex]
 architecture: ddd
 layout: monorepo
-drive: human
+drive: big-brain
 allowed_skills: []
 allowed_agents: []
 roles:

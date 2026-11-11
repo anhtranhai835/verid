@@ -72,9 +72,9 @@ Visitors who signed up edit their profile.
 - `product` is last, with all ACs `(e2e)`, and can be ordered only after the other
   modules are served. When product is served last, the product is done.
 
-In human drive, ask the developer to read the module and run `verid order <module>`
+In big-brain drive, ask the developer to read the module and run `verid order <module>`
 from their terminal. One module is open; changing its signed section needs another
 order because approval covers that section. Continue with verid:build.
 
-In auto drive, read `references/auto-drive.md` in this skill's folder before writing the
+In no-brain drive, read `references/auto-drive.md` in this skill's folder before writing the
 plan.

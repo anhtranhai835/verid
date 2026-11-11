@@ -54,7 +54,7 @@ Read UI source to derive Playwright selectors. Keep Playwright under `e2e/` and
 exclude `e2e/**` from the unit runner; another runner needs matching `e2e_globs`.
 Evidence requires a JUnit report.
 
-In a workspace, remix mode or auto drive, read `references/modes.md` first.
+In a workspace, remix mode or no-brain drive, read `references/modes.md` first.
 
 Once all module ACs pass, continue with verid:review. After a failed review, follow
 `references/review-findings.md`.

@@ -50,4 +50,4 @@ Report only:
 
 Pass requires every AC covered and no Critical or Important correctness or
 security finding. Minor and Advisory alone do not fail. The verdict is last
-because the hook reads it; a missing verdict counts as failure in auto drive.
+because the hook reads it; a missing verdict counts as failure in no-brain drive.

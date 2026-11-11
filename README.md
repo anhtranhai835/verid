@@ -46,7 +46,7 @@ Needs Node.js 22 or later, Git, and Claude Code or Codex. Other ways to install,
 npm install -g @anhtranhai835/verid
 ```
 
-**2. Set the project up.** Cook asks for the mode (`prep` for an idea, `recipe` for existing specs, `remix` for existing code), the drive (`human` or `ai`) and the provider. It finds the layout and test runner, previews the files, and writes them when you confirm.
+**2. Set the project up.** Cook asks for the mode (`prep` for an idea, `recipe` for existing specs, `remix` for existing code), the drive (`big-brain`: you pick and approve each task, or `no-brain`: you type the idea and the agent does the rest) and the provider. It finds the layout and test runner, previews the files, and writes them when you confirm.
 
 ```sh
 cd your-project
@@ -97,7 +97,7 @@ verid serve <module>
 | Spec           | Main with BA writes traceable requirements in `.verid/spec.md`.                |
 | Design         | Architect, or Codex main, agrees interfaces and reuse in `.verid/design.md`.   |
 | Plan           | Planner, or Codex main, writes ordered ACs in `.verid/plan.md`.                |
-| Order          | Developer approves the module; auto drive follows its signed plan.             |
+| Order          | Developer approves the module; no-brain drive follows its signed plan.         |
 | Build and test | Tester/QA then coder on Claude; main on Codex; every cycle uses `verid taste`. |
 | Review         | Fresh reviewers inspect ACs, design, dossier, diff and the review packet.      |
 | Serve          | Evidence, AC coverage and verdicts must pass before closure.                   |
@@ -122,7 +122,7 @@ project root. The `verid` shorthand below also works with an optional global ins
 | `verid peek`                           | Show the current TDD state.                                                   |
 | `verid stock`                          | Record pre-existing failures for remix.                                       |
 | `verid taste`                          | Run tests and record evidence.                                                |
-| `verid order [module]`                 | Approve a module in human drive; sign or resume auto drive.                   |
+| `verid order [module]`                 | Approve a module in big-brain drive; sign or resume no-brain drive.           |
 | `verid serve <module>`                 | Close a module when coverage, fresh evidence and reviews pass.                |
 | `verid menu --commits --file`          | Produce the review packet.                                                    |
 | `verid garnish`                        | Start a refactor-only session.                                                |
@@ -131,7 +131,7 @@ project root. The `verid` shorthand below also works with an optional global ins
 | `verid setup-antigravity`              | Install or update verid's Antigravity plugin for this user.                   |
 
 Cook, upgrade, stock, order, serve, garnish, halt and resume are developer commands,
-run in your own terminal. Agents use taste, menu, peek and doctor. In signed auto
+run in your own terminal. Agents use taste, menu, peek and doctor. In signed no-brain
 drive, the harness manages module order and closure. Cook flags are in the [cook reference](docs/cook-reference.md).
 
 ---
@@ -185,7 +185,7 @@ resources: repo
 providers: [codex]
 architecture: ddd
 layout: monorepo
-drive: human
+drive: big-brain
 allowed_skills: []
 allowed_agents: []
 roles:

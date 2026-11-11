@@ -484,7 +484,9 @@ describe("verid cook", () => {
       rmSync(file(project, ".verid"), { recursive: true, force: true });
       const r = init(project, "--lang", "en", ...flags);
       if (r.code === 0)
-        return read(project, ".verid/manifest.yaml").includes('drive: "ai"') ? "auto" : "human";
+        return read(project, ".verid/manifest.yaml").includes('drive: "no-brain"')
+          ? "auto"
+          : "human";
       // The refusal names the code, the flag it cannot use and why: `use <flag> (<why>) and`.
       return /verid \[(\w+)\][\s\S]*?use (\S+) \((.*?)\) and/.exec(r.stderr)?.slice(1).join(" ");
     };
@@ -498,8 +500,8 @@ describe("verid cook", () => {
       default: "human",
       auto: "auto",
       recipe: "auto",
-      remix: "VERID_BURNT_INIT_INVALID --drive drive: auto needs mode prep or recipe",
-      other: "VERID_BURNT_INIT_INVALID --drive must be human or ai",
+      remix: "VERID_BURNT_INIT_INVALID --drive drive: no-brain needs mode prep or recipe",
+      other: "VERID_BURNT_INIT_INVALID --drive must be no-brain or big-brain",
     });
   });
 

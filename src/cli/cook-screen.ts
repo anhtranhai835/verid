@@ -4,6 +4,7 @@ import { inAgentShell } from "../adapters/agent-environment.js";
 import { bannerLines, parsePick, pickLines, type Option } from "../core/cook-ui.js";
 import type { MessageKey } from "../core/errors.js";
 import {
+  DRIVE_NAMES,
   DRIVES,
   LAYOUTS,
   IGNORE_GLOBS,
@@ -258,9 +259,9 @@ export async function interactiveCook(
       const drive = await select(
         io,
         say("cook.drive"),
-        (["human", "ai"] as const).map((d) => ({
-          label: d,
-          hint: say(`cook.drive.${d}`),
+        DRIVES.map((d) => ({
+          label: DRIVE_NAMES[d],
+          hint: say(`cook.drive.${DRIVE_NAMES[d]}`),
         })),
         0,
       );

@@ -1,4 +1,4 @@
-# Building in a workspace, in remix mode and in auto drive
+# Building in a workspace, in remix mode and in no-brain drive
 
 ## Workspace
 
@@ -13,9 +13,9 @@ Characterize untested behaviour before changing it; a known bug needs a regressi
 test, rather than a characterization that blesses the bug. Return an untestable
 boundary to the developer.
 
-## Auto drive
+## No-brain drive
 
-In auto drive, follow the next menu step; verid opens modules after plan review.
+In no-brain drive, follow the next menu step; verid opens modules after plan review.
 Three failing coder rounds per named AC, failed reviews, or idle Stop holds leave
 the drive stuck. A blocker or a question needing the developer goes in
 `.verid/blocked.md`; the developer settles it and runs `verid order` to resume.

@@ -28,17 +28,17 @@ const vitestProject = makeVitestProject(t);
 
 describe("interactiveCook: verid cook in the developer's terminal", () => {
   it.each(["1", "2"])(
-    "AC-5: prep/recipe choice %s offers human and ai and writes the ai pick",
+    "AC-5: prep/recipe choice %s offers big-brain and no-brain and writes the no-brain pick",
     async (mode) => {
       const terminal = scriptedTerminal([ENTER, mode + ENTER, "2" + ENTER, ENTER, ENTER, ENTER]);
       expect((await interactiveCook(project, terminal.io, "en-US")).exit).toBe(0);
       expect(parse(manifest())).toMatchObject({
         mode: mode === "1" ? "prep" : "recipe",
-        drive: "ai",
+        drive: "no-brain",
         layout: "monorepo",
       });
-      expect(terminal.screen()).toContain("human");
-      expect(terminal.screen()).toContain("ai");
+      expect(terminal.screen()).toContain("big-brain");
+      expect(terminal.screen()).toContain("no-brain");
       expect(terminal.screen()).not.toContain("Choose cook workflow");
     },
   );
@@ -633,7 +633,7 @@ describe("interactiveCook: verid cook in the developer's terminal", () => {
         iterations: t.screen().includes("Plan in iterations?"),
         hint: t.screen().includes("one session follows your priority queue"),
         mode: /^mode: "(\w+)"/m.exec(manifest())?.[1],
-        drive: manifest().includes('drive: "ai"') ? "auto" : "human",
+        drive: manifest().includes('drive: "no-brain"') ? "auto" : "human",
       };
     }
     expect(results).toEqual({

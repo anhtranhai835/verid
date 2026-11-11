@@ -140,6 +140,14 @@ describe("self-contained verid skills", () => {
     expect(existsSync(join(root, "plugin/agents/researcher.md"))).toBe(false);
   });
 
+  it("has a no-brain drive write a plain-language summary before the signature", () => {
+    expect(read("plugin/skills/design/SKILL.md")).toContain("references/summary.md");
+    const summary = read("plugin/skills/design/references/summary.md");
+    for (const text of [".verid/summary.md", "verid order", "plain language"])
+      expect(summary, text).toContain(text);
+    expect(read("plugin/antigravity/skills/verid-design/SKILL.md")).toContain(".verid/summary.md");
+  });
+
   it("has BA read the developer's documents and write an EARS spec that plans trace", () => {
     const ba = read("plugin/skills/ba/SKILL.md");
     for (const text of [".verid/docs/", ".verid/spec.md", "references/spec.md"])

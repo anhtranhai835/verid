@@ -25,3 +25,4 @@ Read `.verid/research.md`, `.verid/spec.md`, and `.verid/rules/architecture.md`.
    - `## Out of scope`
 4. **Builder Check:**
    - Verify every `REQ-*`, `NFR-*`, and `SEC-*` in `.verid/spec.md` maps to a module and testable boundary in `.verid/design.md`, then proceed to `verid-plan`.
+5. **No-brain drive:** before asking for the `verid order` signature, write `.verid/summary.md`: one page in plain language, no jargon or code, saying what will be built, what will not, the main choices and their risks. Point the developer to it first.
