@@ -1,21 +1,21 @@
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { dirname, join, relative } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { tempProject } from "../support/project.js";
+import { existsSync } from "node:fs";
+
+import { join, relative } from "node:path";
+import { describe, expect, it } from "vitest";
 import { IGNORE_GLOBS, TEST_GLOBS } from "../../src/core/manifest.js";
 import { detectRunners } from "../../src/core/runners.js";
 import { clearReports, findRunners, reportFolders } from "../../src/adapters/test-runner.js";
 
 const layout = { sourceGlobs: ["**"], testGlobs: TEST_GLOBS, ignoreGlobs: IGNORE_GLOBS };
 let root: string;
-const write = (rel: string, text = "") => {
-  mkdirSync(dirname(join(root, rel)), { recursive: true });
-  writeFileSync(join(root, rel), text);
-};
-beforeEach(() => {
-  root = mkdtempSync(join(tmpdir(), "verid-runners-"));
+
+const t = tempProject("verid-runners-", {
+  bind: (p) => {
+    root = p.root;
+  },
 });
-afterEach(() => rmSync(root, { recursive: true, force: true }));
+const { put: write } = t;
 
 describe("findRunners", () => {
   it("reads the build files of the repo root and of its top-level folders that hold code", () => {
