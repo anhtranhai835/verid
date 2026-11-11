@@ -80,7 +80,9 @@ describe("station independence", () => {
       mode: "prep",
       repos: [{ path: ".", source_globs: ["**"], test_globs: ["test/**"] }],
     };
-    expect(parseManifest(base)).toMatchObject({ ok: true, manifest: { stations: 1 } });
+    const plain = parseManifest(base);
+    // Absent means one station, and the manifest stays as the developer wrote it.
+    expect(plain.ok && plain.manifest.stations).toBeUndefined();
     for (const stations of [0, -1, 1.5, 4, "2"])
       expect(parseManifest({ ...base, stations }).ok).toBe(false);
     expect(parseManifest({ ...base, stations: 3 })).toMatchObject({
