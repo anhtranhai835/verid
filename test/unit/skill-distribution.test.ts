@@ -325,6 +325,39 @@ describe("self-contained verid skills", () => {
     expect(read("plugin/templates/module-fix/ba/requirements.md")).toContain("## Root cause");
   });
 
+  it("fills a served module's release record without pushing or opening a pull request", () => {
+    for (const file of [
+      "plugin/skills/release/SKILL.md",
+      "plugin/antigravity/skills/verid-release/SKILL.md",
+    ]) {
+      const text = read(file);
+      expect(text.split("\n").length, file).toBeLessThan(60);
+      for (const phrase of ["verid serve", "release/release-plan.md", "rollback", "never push"])
+        expect(text, `${file}: ${phrase}`).toContain(phrase);
+    }
+    expect(read("plugin/templates/skill-routing.md")).toContain("(../skills/release/SKILL.md)");
+  });
+
+  it("keeps the always-loaded skill and agent descriptions within their byte budget", () => {
+    const description = (file: string) =>
+      Buffer.byteLength(/^description: (.*)$/m.exec(read(file))?.[1]?.trim() ?? "");
+    const skills = readdirSync(join(root, "plugin/skills")).filter((name) =>
+      existsSync(join(root, "plugin/skills", name, "SKILL.md")),
+    );
+    for (const name of skills)
+      expect(description(`plugin/skills/${name}/SKILL.md`), name).toBeLessThan(150);
+    // 2199 bytes, then +124 for release. Each new skill adds one description under 150 bytes.
+    const total = skills.reduce(
+      (sum, name) => sum + description(`plugin/skills/${name}/SKILL.md`),
+      0,
+    );
+    expect(total).toBeLessThanOrEqual(2323);
+    const agents = readdirSync(join(root, "plugin/agents")).filter((name) => name.endsWith(".md"));
+    expect(
+      agents.reduce((sum, name) => sum + description(`plugin/agents/${name}`), 0),
+    ).toBeLessThanOrEqual(1244);
+  });
+
   it("keeps reports and handoffs to status, paths, findings and the next step", () => {
     expect(read("plugin/templates/workflow.md")).toContain(
       "Reports and handoffs give status, paths, findings and the next step only; do not retell files read or repeat ACs.",

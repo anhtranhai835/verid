@@ -17,7 +17,7 @@ the matching skills and agents. Load only the relevant branch, then resume this 
 8. Order: resolve all [NEEDS CLARIFICATION: ...] in input dossiers and the plan. In big-brain drive the developer runs `verid order <name>`; in no-brain drive the developer signs research/spec/design with `verid order`, then agents follow the normal auto cycle. Module approval includes ba/ui/spec/tests/security inputs; changes require re-ordering.
 9. Build and test: use mapped writers and `verid taste` through RAW → COOKING → PLATED. Codex main writes both tests and code. Store implementation notes in artifacts/05-implementation/ and test evidence pointers in the module's tests/. Keep runtime evidence in .state/.
 10. Evaluate: prepare `verid menu --commits --file`. Give a fresh read-only reviewer that packet, ACs, module dossier, design and diff. Main records its actual findings in the module's review/ and artifacts/06-evaluation/. Reviewers write nothing.
-11. Release: the normal serve gate checks evidence and the review; main records release notes in the module's release/ and artifacts/07-release/. The developer serves in big-brain drive. Continue to the next module.
+11. Release: the normal serve gate checks evidence and the review; main records release notes in the module's release/ and artifacts/07-release/ via verid:release. The developer serves in big-brain drive. Continue to the next module.
 
 Templates are drafts. Do not claim an approval, HMAC signature, scan, test run or review merely because a folder/file exists.
 The approvals/ folder is reserved for human-readable decision records; verid's actual approvals are in .state/, not signed exports.

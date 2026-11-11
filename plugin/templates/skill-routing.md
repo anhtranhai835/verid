@@ -70,6 +70,8 @@ only when the AC touches them; guidance never expands scope or authorizes deploy
 - All module ACs pass, or plan/product needs independent review → [review](../skills/review/SKILL.md),
   fresh mapped [reviewer](../agents/reviewer.md), configured verid_reviewer on Codex:
   full AC coverage and current verdict. Fixes require a fresh packet/review.
+- Module served → [release](../skills/release/SKILL.md), main: its release record with
+  rollout, rollback, migrations and cited evidence. It never pushes, opens a PR or deploys.
 - Correctness passes and security is mapped, or combined review needs security →
   [security skill](../skills/security/SKILL.md), [security agent](../agents/security.md)
   or Codex reviewer's combined contract: complete security coverage and final verdict.

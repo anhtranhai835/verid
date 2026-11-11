@@ -13,7 +13,7 @@ plugin/antigravity/
 ├── hooks/antigravity-hook.mjs   # Finds verid's runtime and runs it in this same process
 ├── rules/AGENTS.md              # Short always-on rule, only for workspaces with .verid/
 ├── agents/                      # verid-reviewer, verid-security, verid-debugger (read_file only)
-├── skills/                      # verid-onboard, -ba, -design, -plan, -build, -debugging, -review, -router
+├── skills/                      # verid-onboard, -ba, -design, -plan, -build, -debugging, -review, -release, -router
 ├── presets/                     # Valid example manifests: lite (remix), standard, strict
 └── workspace-template/.agents/  # Optional workspace skills.json / plugins.json
 ```
