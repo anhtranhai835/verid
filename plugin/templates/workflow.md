@@ -30,6 +30,7 @@ stages; read cited sources and expand through relevant contracts and exceptions.
 Use verid:context-engineering's flow-context guide for large handoffs. Initial BA and
 product review still cover their full scope. Keep reviewer contexts fresh, all gates
 and role boundaries, and the complete review evidence. Use peek within the TDD loop.
+Reports and handoffs give status, paths, findings and the next step only; do not retell files read or repeat ACs.
 
 ## Resources
 

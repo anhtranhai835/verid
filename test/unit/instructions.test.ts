@@ -72,6 +72,7 @@ describe("provider instruction blocks", () => {
   });
 
   it("keeps workflow references short with the effective allowlists", () => {
+    const CAPS = { "claude-code": 2850, codex: 3399 } as const;
     const parsed = parseManifest({
       schemaVersion: 1,
       mode: "prep",
@@ -118,7 +119,8 @@ describe("provider instruction blocks", () => {
       }
       expect(text).toContain("write detail once in its dossier");
       expect(text).not.toContain("fill BA/UI/spec/tests/security");
-      expect(text.length, provider).toBeLessThan(3400);
+      // Measured caps: the block is read on every turn, so it may shrink but not grow.
+      expect(text.length, provider).toBeLessThanOrEqual(CAPS[provider]);
     }
   });
 

@@ -883,7 +883,7 @@ async function serve(project: string, wanted: string): Promise<CliResult> {
     const { review } = state;
     if (review?.module !== name) throw notReady("serve.no_review");
     // A recorded failure never counts as approval.
-    if (review.verdict !== "pass") throw notReady("serve.no_review");
+    if (review.verdict !== "pass") throw notReady("serve.review_failed");
     // A mapped security reviewer must pass the module too, after the last change.
     const security = securityOf(state, manifest.roles);
     if (security !== undefined && !(security?.module === name && security.verdict === "pass"))

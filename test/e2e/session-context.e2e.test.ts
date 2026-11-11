@@ -161,3 +161,16 @@ it("leaves the skill guide and the role notes to the instruction block", async (
   for (const kept of ["verid: TDD RAW", "verid: roles reviewer", "Mode prep:", "Next:"])
     expect(r.stdout, kept).toContain(kept);
 });
+
+it("gives byte-identical session context while state does not change, so a cached prefix stays valid", async () => {
+  for (const provider of ["claude-code", "codex"]) {
+    setup("en", {
+      providers: [provider],
+      roles: defaultRoles([provider as "claude-code" | "codex"]),
+    });
+    const first = await session("compact", provider);
+    const second = await session("compact", provider);
+    expect(first.code, first.stderr).toBe(0);
+    expect(second.stdout, provider).toBe(first.stdout);
+  }
+});

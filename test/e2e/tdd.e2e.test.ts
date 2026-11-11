@@ -1704,7 +1704,12 @@ describe("prep and recipe plan", () => {
       ).toBe(0);
     await verdict("Missing a boundary case\nVerdict: fail");
     const failed = await cli("serve", "calc");
-    expect([failed.code, failed.stderr.includes("no review of calc")]).toEqual([2, true]);
+    expect([
+      failed.code,
+      failed.stderr.includes("VERID_BURNT_SERVE_NOT_READY"),
+      failed.stderr.includes("the latest review of calc failed"),
+      failed.stderr.includes("no review of calc"),
+    ]).toEqual([2, true, true, false]);
     await verdict("LGTM\nVerdict: pass");
     expect(state().review?.verdict).toBe("pass");
     expect((await cli("serve", "calc")).code).toBe(0);

@@ -166,6 +166,21 @@ describe("Codex hook transport and policy", () => {
     expect(r.stdout).toContain("main writes tests and code");
     expect(r.stdout).not.toContain("the tester writes the failing test");
   });
+  it("adds context only at session start and prompts: an allowed tool call prints nothing", async () => {
+    writeFileSync(join(project, "notes.md"), "notes");
+    const rows = {
+      read: await hook(call("Read", { file_path: join(project, "notes.md") })),
+      after: await hook({
+        ...call("Read", { file_path: join(project, "notes.md") }),
+        hook_event_name: "PostToolUse",
+        tool_response: {},
+      }),
+    };
+    expect(Object.values(rows).map((r) => [r.code, r.stdout, r.stderr])).toEqual([
+      [0, "", ""],
+      [0, "", ""],
+    ]);
+  });
   it("refuses developer CLI commands when a Codex tool-shell marker is present", async () => {
     const rows = [
       [["cook", "--dry-run"], "VERID_BURNT_INIT_IN_AGENT"],
