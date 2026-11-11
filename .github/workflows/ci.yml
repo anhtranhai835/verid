@@ -1,7 +1,8 @@
 # Every test of the repo with a coverage floor, on Windows: verid's main platform, and the one
 # the recorded hook payloads in test/e2e/hook.e2e.test.ts come from. Linux and macOS test runs
-# skip pull requests: this repository is private, so Actions minutes are billed (Windows 2x,
-# macOS 10x), and a pull request pays only for typecheck, format and the Windows tests.
+# happen only by hand and before a release: this repository is private, so Actions minutes are
+# billed (Windows 2x, macOS 10x), and a push or pull request pays only for typecheck, format and
+# the Windows tests.
 name: CI
 
 # Branches run through their pull request; pushes run only on main, so a PR is tested once.
@@ -75,8 +76,8 @@ jobs:
 
   posix:
     name: Tests on ${{ matrix.os }}, Node ${{ matrix.node }}
-    # On main, by hand, and from release.yml (which passes its own tag or manual event).
-    if: github.event_name != 'pull_request'
+    # By hand, and from release.yml on a version tag or its own manual run.
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
