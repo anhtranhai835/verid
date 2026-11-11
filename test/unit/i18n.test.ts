@@ -21,6 +21,16 @@ describe("provider status messages", () => {
   });
 });
 
+describe("missing manifest message", () => {
+  it("points to cook in both languages and does not name another command as the reason", () => {
+    for (const lang of ["en", "vi"] as const) {
+      const message = t(lang, "VERID_BURNT_MANIFEST_MISSING", { path: "p", verid: "verid" });
+      expect(message).toContain("verid cook --mode <prep|recipe|remix>");
+      expect(message).not.toContain("taste");
+    }
+  });
+});
+
 describe("hook protection messages", () => {
   it("names all command definitions rather than only verid commands in both languages", () => {
     const rows = [

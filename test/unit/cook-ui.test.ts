@@ -87,6 +87,30 @@ describe("usageLines: the commands, as a menu", () => {
       "   In Claude Code, type /verid:",
     ]);
   });
+
+  it("puts notes above the commands and stacks rows that would pass 100 columns", () => {
+    const rows = [
+      {
+        emoji: "🔪",
+        command: "verid cook --mode <prep|recipe|remix>",
+        what: "w".repeat(50),
+        who: "developer · prep, recipe",
+      },
+      { emoji: "👅", command: "verid taste", what: "run the tests" },
+    ];
+    const lines = usageLines("t", rows, "footer", false, ["verid = node cli.js"]);
+    expect(lines.slice(lines.indexOf("   verid = node cli.js"))).toEqual([
+      "   verid = node cli.js",
+      "",
+      "   🔪 verid cook --mode <prep|recipe|remix>",
+      `      ${"w".repeat(50)}  developer · prep, recipe`,
+      "   👅 verid taste",
+      "      run the tests",
+      "",
+      "   footer",
+    ]);
+    expect(Math.max(...lines.map((line) => [...line].length))).toBeLessThanOrEqual(100);
+  });
 });
 
 describe("pickLines and parsePick: a numbered list to pick several from", () => {

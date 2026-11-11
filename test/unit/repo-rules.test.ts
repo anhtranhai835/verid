@@ -94,6 +94,17 @@ describe("repo rules", () => {
     expect(build).toContain("verid:tdd");
   });
 
+  it("both READMEs point the workflow summary at the one full description", () => {
+    for (const [file, heading] of [
+      ["README.md", "## How a module moves through the workflow"],
+      ["README.vi.md", "## Một module đi qua workflow như thế nào?"],
+    ] as const) {
+      const text = readFileSync(join(root, file), "utf8");
+      const section = text.split(heading)[1]?.split(/\r?\n## /)[0] ?? "";
+      expect(section, file).toContain(".verid/workflow.md");
+    }
+  });
+
   it("keeps the READMEs free of the retired limitations section", () => {
     for (const [file, heading] of [
       ["README.md", "## Limitations"],

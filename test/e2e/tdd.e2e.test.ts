@@ -118,7 +118,7 @@ describe("verid taste: evidence from a real run", () => {
     // Importing the CLI must not start it: a started CLI reads argv and sets the exit code.
     expect(process.exitCode).toBeUndefined();
     const rows = [
-      [["--help"], 0, `${VERID_CMD} cook`, ""],
+      [["--help"], 0, `verid = ${VERID_CMD}`, ""],
       [["bogus"], 2, "", "bogus"],
       [["serve"], 2, "", "serve"],
     ] as const;
@@ -452,8 +452,9 @@ describe("verid taste: evidence from a real run", () => {
       const r = await cli(cmd);
       expect(r).toMatchObject({ code: 2, stdout: "" });
       expect(r.stderr.split("\n")[0], cmd).toContain(cmd);
-      expect(r.stderr).toContain(`🔪 ${VERID_CMD} cook`);
-      expect(r.stderr).toContain(`${VERID_CMD} order [module]`);
+      expect(r.stderr).toContain(`verid = ${VERID_CMD}`);
+      expect(r.stderr).toContain("🔪 verid cook");
+      expect(r.stderr).toContain("verid order [module]");
       expect(r.stderr).toContain("/verid:");
     }
     expect(readFileSync(stateFile, "utf8")).toBe(before);
@@ -482,7 +483,8 @@ describe("verid taste: evidence from a real run", () => {
     expect(r).toMatchObject({ code: 0, stderr: "" });
     expect(r.stdout).toContain("██╗   ██╗███████╗");
     expect(r.stdout).toMatch(/^ 🍳 .* · RAW → COOKING → PLATED$/m);
-    expect(r.stdout).toContain(`👅 ${VERID_CMD} taste`);
+    expect(r.stdout).toContain(`verid = ${VERID_CMD}`);
+    expect(r.stdout).toContain("👅 verid taste");
   });
 });
 
@@ -1331,6 +1333,15 @@ describe("prep and recipe plan", () => {
   const gate = async () =>
     /verid \[(VERID_BURNT_\w+)\]/.exec((await hook(write("src/a.ts"))).stderr)?.[1];
 
+  it("will not let /verid tip lift the task session: a change without a selected task has no shortcut", async () => {
+    writePlan(MODULES_PLAN);
+    expect(await gate()).toBe("VERID_BURNT_TASK_SESSION");
+    const attended = { CLAUDE_CODE_SESSION_ATTENDED: "1" };
+    const tipped = await hook(prompt("/verid tip one-line fix"), attended);
+    expect(tipped.stderr).toContain("VERID_BURNT_OVERRIDE_FORBIDDEN");
+    expect(await gate()).toBe("VERID_BURNT_TASK_SESSION");
+  });
+
   it("approves one module of a plan with modules, and opens production code", async () => {
     writePlan(MODULES_PLAN);
     const which = await cli("order");
@@ -1679,6 +1690,24 @@ describe("prep and recipe plan", () => {
     expect(served.code).toBe(0);
     expect(served.stdout).toContain("feature-dev:code-reviewer");
     expect(served.stdout).toContain(join(".verid", ".state", "reviews", "calc-"));
+  });
+
+  it("refuses a failed review, and a second review of unchanged code replaces it", async () => {
+    writePlan("## Module: calc\n- AC-1: adds\n");
+    expect((await cli("order", "calc")).code).toBe(0);
+    scenario(0, "vitest-ac.xml");
+    expect((await cli("taste")).code).toBe(0);
+    const verdict = async (text: string) =>
+      expect(
+        (await hook(fixture("subagent-stop-reviewer", (p) => (p.last_assistant_message = text))))
+          .code,
+      ).toBe(0);
+    await verdict("Missing a boundary case\nVerdict: fail");
+    const failed = await cli("serve", "calc");
+    expect([failed.code, failed.stderr.includes("no review of calc")]).toEqual([2, true]);
+    await verdict("LGTM\nVerdict: pass");
+    expect(state().review?.verdict).toBe("pass");
+    expect((await cli("serve", "calc")).code).toBe(0);
   });
 
   it("serves a module only with a passing security review after its last change, once one is mapped", async () => {

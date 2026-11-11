@@ -229,6 +229,8 @@ records are outputs and do not change that signature.
 
 The [modular cook guide](docs/modular-cook.md) has the complete template and execution flow.
 
+For a small change, see [small changes](docs/small-changes.md).
+
 ---
 
 ## Repository layouts
@@ -408,6 +410,8 @@ a note. Confirmation applies the checked plan. Existing instruction text outside
 | Review         | Fresh reviewers inspect ACs, design, dossier, diff and the review packet.      |
 | Serve          | Evidence, AC coverage and verdicts must pass before closure.                   |
 | Handoff        | Main prepares the commits and PR after the agreed product checks.              |
+
+This table is a summary. The full steps are in `.verid/workflow.md`.
 
 ### Modes and drive
 

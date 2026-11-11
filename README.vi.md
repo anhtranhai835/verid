@@ -226,6 +226,8 @@ nên không làm thay đổi chữ ký này.
 
 [Hướng dẫn modular cook](docs/modular-cook.md) có đầy đủ template và luồng thực hiện.
 
+Với thay đổi nhỏ, xem [thay đổi nhỏ](docs/small-changes.vi.md).
+
 ---
 
 ## Bố cục repository
@@ -406,6 +408,8 @@ Xác nhận để áp dụng kế hoạch đã kiểm tra. Nội dung chỉ dẫ
 | Review        | Reviewer mới đọc AC, design, hồ sơ module, diff và review packet.                 |
 | Serve         | Bằng chứng, coverage AC và verdict phải đạt để đóng module.                       |
 | Bàn giao      | Main chuẩn bị commits và PR sau các kiểm tra sản phẩm đã thống nhất.              |
+
+Bảng này là bản tóm tắt. Các bước đầy đủ nằm ở `.verid/workflow.md`.
 
 ### Mode và drive
 
