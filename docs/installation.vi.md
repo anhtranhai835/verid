@@ -10,31 +10,38 @@
 
 ### Gói đã phát hành (cài global tùy chọn)
 
-```sh
-npm install -g @anhtranhai835/verid
-```
+verid không có trên registry npm. Mỗi bản là một file `.tgz` đính trong GitHub Release của repo
+không công khai `anhtranhai835/verid`, nên cần tài khoản GitHub có quyền đọc repo và
+[GitHub CLI](https://cli.github.com) đã đăng nhập bằng `gh auth login`.
 
-Các lệnh cài một dòng cài gói npm đã phát hành và thử thiết lập provider.
-Máy cần có Node.js trước.
+Các lệnh cài một dòng tải Release mới nhất (hoặc bản ghi trong `VERID_VERSION`, ví dụ `2.0.0`),
+cài bằng npm và thử thiết lập provider. Máy cần có Node.js trước.
 
 **Windows — PowerShell**
 
 ```powershell
-irm https://raw.githubusercontent.com/anhtranhai835/verid/main/install.ps1 | iex
+gh api -H "Accept: application/vnd.github.raw" repos/anhtranhai835/verid/contents/install.ps1 | Out-String | iex
 ```
 
 **macOS / Linux**
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/anhtranhai835/verid/main/install.sh | sh
+gh api -H "Accept: application/vnd.github.raw" repos/anhtranhai835/verid/contents/install.sh | sh
 ```
+
+Không dùng installer: tải file `.tgz` ở trang Releases của repo, hoặc bằng
+`gh release download --repo anhtranhai835/verid --pattern "*.tgz"`, rồi chạy
+`npm install -g ./anhtranhai835-verid-X.Y.Z.tgz`.
+
+Lệnh plugin của Claude Code `claude plugin marketplace add anhtranhai835/verid` và
+`claude plugin install verid@verid` cũng cần quyền đọc repo.
 
 Trong terminal tương tác, installer có thể hỏi thư mục project rồi chạy
 `verid cook`. Với CI hoặc khi không có terminal, tự chạy cook sau khi cài.
 
 ### Source hiện tại, gồm luồng modular mới
 
-Dùng bản build từ source nếu gói npm chưa có tính năng mô tả trong README này:
+Dùng bản build từ source nếu Release mới nhất chưa có tính năng mô tả trong README này:
 
 ```sh
 git clone https://github.com/anhtranhai835/verid.git
@@ -117,7 +124,8 @@ cho máy hiện tại. Khi đổi phiên bản được pin, xem diff và cập 
 bản tài nguyên trong repo. Nếu chọn cài global, có thể nâng cấp bằng:
 
 ```sh
-npm install -g @anhtranhai835/verid
+gh release download --repo anhtranhai835/verid --pattern "*.tgz" --clobber
+npm install -g ./anhtranhai835-verid-*.tgz
 verid upgrade --dry-run
 verid upgrade --yes
 verid doctor

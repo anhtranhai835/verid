@@ -18,6 +18,9 @@ tags `1.0.0` and `1.2.0` keep their names.
 
 ### Changed
 
+- verid ships as a `.tgz` on a private GitHub Release instead of the npm registry. The one-line
+  installers need the GitHub CLI signed in with read access to the repository. A pushed `vX.Y.Z`
+  tag builds, tests and releases the package; see [docs/releasing.md](docs/releasing.md).
 - Agent-facing messages and repeated denials are shorter.
 - `serve` says the latest review failed when it refuses a failed review.
 - The missing-manifest hint is corrected, the command table is shorter, and commands show the

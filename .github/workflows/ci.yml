@@ -8,6 +8,8 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+  # release.yml runs these same checks before it packages a tag.
+  workflow_call:
 
 permissions:
   contents: read

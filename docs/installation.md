@@ -8,34 +8,41 @@
 
 ## Installation
 
-### Published package (optional global installation)
+### Released package (optional global installation)
 
-```sh
-npm install -g @anhtranhai835/verid
-```
+verid is not on the npm registry. Each version is a `.tgz` file on a GitHub Release of the
+private repository `anhtranhai835/verid`, so you need a GitHub account with read access to it
+and the [GitHub CLI](https://cli.github.com) signed in with `gh auth login`.
 
-The one-line installers install the published npm package and attempt provider setup.
-They need Node.js already installed.
+The one-line installers download the latest Release (or the version in `VERID_VERSION`, such as
+`2.0.0`), install it with npm and attempt provider setup. They need Node.js already installed.
 
 **Windows — PowerShell**
 
 ```powershell
-irm https://raw.githubusercontent.com/anhtranhai835/verid/main/install.ps1 | iex
+gh api -H "Accept: application/vnd.github.raw" repos/anhtranhai835/verid/contents/install.ps1 | Out-String | iex
 ```
 
 **macOS / Linux**
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/anhtranhai835/verid/main/install.sh | sh
+gh api -H "Accept: application/vnd.github.raw" repos/anhtranhai835/verid/contents/install.sh | sh
 ```
 
 In an interactive terminal, the installer can ask for a project folder and start
 `verid cook`. In CI or without a terminal, run cook yourself afterward.
 
+Without the installers, download the `.tgz` from the Releases page of the repository, or with
+`gh release download --repo anhtranhai835/verid --pattern "*.tgz"`, then run
+`npm install -g ./anhtranhai835-verid-X.Y.Z.tgz`.
+
+The Claude Code plugin commands `claude plugin marketplace add anhtranhai835/verid` and
+`claude plugin install verid@verid` also need read access to the repository.
+
 ### Current source, including the new modular workflow
 
-Use the source build when the published npm version does not yet include a feature
-described in this README:
+Use the source build when the latest Release does not yet include a feature described in this
+README:
 
 ```sh
 git clone https://github.com/anhtranhai835/verid.git
@@ -119,7 +126,8 @@ for the current machine. To change that pinned version, review and update the re
 runtime and resource copies. An optional global installation can be upgraded with:
 
 ```sh
-npm install -g @anhtranhai835/verid
+gh release download --repo anhtranhai835/verid --pattern "*.tgz" --clobber
+npm install -g ./anhtranhai835-verid-*.tgz
 verid upgrade --dry-run
 verid upgrade --yes
 verid doctor

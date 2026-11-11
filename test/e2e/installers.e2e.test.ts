@@ -110,6 +110,17 @@ const shells: Installer[] = [
           `echo ${name}^|%*>>"%VERID_TEST_CALLS%"`,
           ...(name === "verid" ? ['echo cwd^|%CD%>>"%VERID_TEST_CALLS%"'] : []),
           ...(name === "node" ? ["if %VERID_TEST_NODE_MAJOR% LSS 22 exit /b 1"] : []),
+          // gh writes the release asset into the folder after --dir, the last argument.
+          ...(name === "gh"
+            ? [
+                'if "%~1"=="auth" exit /b %VERID_TEST_GH_AUTH_EXIT%',
+                'if not "%~1"=="release" exit /b 0',
+                ":last",
+                'if not "%~2"=="" (shift & goto last)',
+                'if "%VERID_TEST_GH_DOWNLOAD_EXIT%"=="0" type nul > "%~1\\verid-test.tgz"',
+                "exit /b %VERID_TEST_GH_DOWNLOAD_EXIT%",
+              ]
+            : []),
           name === "npm"
             ? "exit /b %VERID_TEST_NPM_EXIT%"
             : name === "claude"
@@ -138,6 +149,15 @@ const shells: Installer[] = [
           'printf "\\n" >> "$VERID_TEST_CALLS"',
           ...(name === "verid" ? ['printf \'cwd|%s\\n\' "$PWD" >> "$VERID_TEST_CALLS"'] : []),
           ...(name === "node" ? ['[ "$VERID_TEST_NODE_MAJOR" -ge 22 ] || exit 1'] : []),
+          ...(name === "gh"
+            ? [
+                '[ "$1" = auth ] && exit "$VERID_TEST_GH_AUTH_EXIT"',
+                '[ "$1" = release ] || exit 0',
+                "for last do :; done",
+                '[ "$VERID_TEST_GH_DOWNLOAD_EXIT" = 0 ] && : > "$last/verid-test.tgz"',
+                'exit "$VERID_TEST_GH_DOWNLOAD_EXIT"',
+              ]
+            : []),
           name === "npm"
             ? 'exit "$VERID_TEST_NPM_EXIT"'
             : name === "claude"
@@ -174,6 +194,8 @@ const run = (shell: Installer, extra: NodeJS.ProcessEnv = {}, args = shell.args)
       VERID_TEST_NODE_MAJOR: "22",
       VERID_TEST_NPM_EXIT: "0",
       VERID_TEST_CLAUDE_EXIT: "0",
+      VERID_TEST_GH_AUTH_EXIT: "0",
+      VERID_TEST_GH_DOWNLOAD_EXIT: "0",
       ...extra,
     },
     dir,
@@ -184,7 +206,7 @@ const log = () =>
     ? readFileSync(calls, "utf8")
         .replaceAll("\r", "")
         .replace(
-          /^(node|npm|claude|verid)\|(.+)$/gm,
+          /^(node|npm|gh|claude|verid)\|(.+)$/gm,
           (_, name: string, args: string) =>
             `${name}|${args.replaceAll('"', "").replaceAll(" ", "|")}`,
         )
@@ -259,7 +281,7 @@ for (const shell of shells)
     // Each table starts several powershell.exe processes; startup slows under full-suite load.
     const tableTimeout = shell.posix ? 20_000 : 60_000;
     beforeEach(() => {
-      for (const name of ["node", "npm", "claude", "verid"]) shell.stub(name);
+      for (const name of ["node", "npm", "gh", "claude", "verid"]) shell.stub(name);
     });
 
     it(
@@ -275,18 +297,25 @@ for (const shell of shells)
     );
 
     it(
-      "installs latest or the pinned package and only the verid Claude plugin without prompting",
+      "installs the latest or pinned Release tarball and only the verid Claude plugin without prompting",
       () => {
         const rows = [
-          { version: undefined, package: "@anhtranhai835/verid@latest" },
-          { version: "1.1.0", package: "@anhtranhai835/verid@1.1.0" },
-          { version: "2.0.0-beta.1+build-2", package: "@anhtranhai835/verid@2.0.0-beta.1+build-2" },
+          { version: undefined, tag: "" },
+          { version: "latest", tag: "" },
+          { version: "1.1.0", tag: "v1.1.0|" },
+          { version: "v2.0.0", tag: "v2.0.0|" },
+          { version: "2.0.0-beta.1+build-2", tag: "v2.0.0-beta.1+build-2|" },
         ];
         for (const row of rows) {
           writeFileSync(calls, "");
           const r = run(shell, row.version ? { VERID_VERSION: row.version } : {});
           expect(r.code, r.error ?? r.err + r.out).toBe(0);
-          expect(log()).toContain(`npm|install|-g|${row.package}\n`);
+          expect(log()).toContain("gh|auth|status\n");
+          expect(log()).toContain(
+            `gh|release|download|${row.tag}--repo|anhtranhai835/verid|--pattern|*.tgz|--dir|`,
+          );
+          expect(log()).toMatch(/^npm\|install\|-g\|\S+[\\/]verid-test\.tgz$/m);
+          expect(log()).not.toContain("@anhtranhai835/verid");
           for (const command of [
             "claude|plugin|marketplace|add|anhtranhai835/verid",
             "claude|plugin|install|verid@verid",
@@ -466,6 +495,32 @@ for (const shell of shells)
       }
     });
 
+    it(
+      "explains a missing or signed-out GitHub CLI and a failed download before npm runs",
+      () => {
+        const rows = [
+          { env: {}, removeGh: true, message: "https://cli.github.com" },
+          { env: { VERID_TEST_GH_AUTH_EXIT: "1" }, removeGh: false, message: "gh auth login" },
+          {
+            env: { VERID_TEST_GH_DOWNLOAD_EXIT: "1" },
+            removeGh: false,
+            message: "read access to anhtranhai835/verid",
+          },
+        ];
+        for (const row of rows) {
+          shell.stub("gh");
+          if (row.removeGh) rmSync(join(bin, shell.posix ? "gh" : "gh.cmd"));
+          writeFileSync(calls, "");
+          const r = run(shell, row.env);
+          expect(r.code, r.error ?? r.err + r.out).toBe(1);
+          expect(r.out + r.err).toContain(row.message);
+          expect(log()).not.toContain("npm|");
+          expect(log()).not.toContain("claude|");
+        }
+      },
+      tableTimeout,
+    );
+
     it("stops on npm failure and never attempts plugin installation", () => {
       const r = run(shell, { VERID_TEST_NPM_EXIT: "7" });
       expect(r.code, r.error ?? r.err + r.out).toBe(1);
@@ -505,7 +560,7 @@ for (const shell of shells)
           const r = run(shell, { CI: ci });
           expect(r.code, r.error ?? r.err + r.out).toBe(0);
           expect(log()).not.toContain("claude|");
-          expect(log()).not.toContain("verid|");
+          expect(log()).not.toMatch(/^verid\|/m);
           expect(r.out).toContain("verid cook");
           expect(r.out).toContain("claude plugin marketplace add anhtranhai835/verid");
           expect(r.out).toContain("claude plugin install verid@verid");
