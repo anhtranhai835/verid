@@ -688,7 +688,7 @@
   "board.chat_primary": "Project",
   "doctor.stations.problem": "{detail}",
   "doctor.stations.fix": "Inspect verid station list and repair the worktree or approval in your terminal.",
-  "usage.station": "Open, list or integrate module worktrees",
+  "usage.station": "open, list or integrate module worktrees",
   "board.err_station_open": "Station is not open. Check the station card.",
   "board.err_station_limit": "Process limit reached. Stop a running conversation before starting another.",
   "board.station_launch_failed": "Station launch failed: {detail}"

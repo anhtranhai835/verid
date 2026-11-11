@@ -7,7 +7,8 @@ description: Use when a verid design is agreed and needs modules with testable a
 
 Keep changes local and testable.
 
-Use verid:ba to settle scope from research, spec and design in `.verid/`.
+Use verid:ba to settle scope from `.verid/research.md`, `.verid/spec.md` and
+`.verid/design.md`.
 Read `.verid/manifest.yaml` with Read for the planner mapping and iterations.
 Give a mapped planner file paths and design row names first for a proposal, then
 for writing after the main conversation relays the developer's decisions.

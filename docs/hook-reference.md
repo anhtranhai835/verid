@@ -33,6 +33,12 @@ read them; the developer maintains these copies.
 `.verid/.plugins/` and `.verid/.plugin-data/`, and all `verid plugin` commands.
 It cannot be overridden. See [workflow plugins](plugins.md).
 
+Inside a station, `VERID_BURNT_STATION_WRITE` refuses writes outside the module's `Boundary:`
+and, in the primary worktree, writes to files an open station owns.
+`VERID_BURNT_STATION_SESSION` refuses a provider session that already belongs to another
+station. `VERID_BURNT_STATION_COMMAND` refuses shell commands whose writes cannot be confined
+to the station. See [parallel stations](stations.md).
+
 | Rule                                 | Overridable        | Covers                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | :----------------------------------- | :----------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `VERID_BURNT_STATE_PROTECTED`        | no                 | reading or writing `.verid/.state/`, writing `.verid/review/`, or overwriting the `.verid/` root                                                                                                                                                                                                                                                                                                                                                                                            |

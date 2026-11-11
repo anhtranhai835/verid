@@ -6,6 +6,11 @@
 `.verid/.plugin-data/` và gọi mọi lệnh `verid plugin`. Rule này không mở ngoại lệ.
 Xem [plugin quy trình](plugins.vi.md).
 
+Trong station, `VERID_BURNT_STATION_WRITE` chặn ghi ra ngoài `Boundary:` của module, và ở
+worktree chính chặn ghi vào file thuộc một station đang mở. `VERID_BURNT_STATION_SESSION`
+chặn session của provider đã thuộc station khác. `VERID_BURNT_STATION_COMMAND` chặn lệnh
+shell có việc ghi không giới hạn được trong station. Xem [station chạy song song](stations.vi.md).
+
 `src/hook.ts` định tuyến event và xử lý lỗi. Policy và gate TDD nằm trong
 `src/hook/pre-tool-use.ts`, prompt và event session trong `src/hook/lifecycle.ts`,
 review subagent trong `src/hook/review.ts`. Helper về host, state và payload nằm

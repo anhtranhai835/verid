@@ -688,7 +688,7 @@
   "board.chat_primary": "Dự án",
   "doctor.stations.problem": "{detail}",
   "doctor.stations.fix": "Xem verid station list và sửa worktree hoặc approval trong terminal.",
-  "usage.station": "Mở, liệt kê hoặc gộp worktree module",
+  "usage.station": "mở, liệt kê hoặc gộp worktree module",
   "board.err_station_open": "Station chưa mở. Kiểm tra thẻ station.",
   "board.err_station_limit": "Đã đạt giới hạn tiến trình. Dừng một cuộc hội thoại trước khi mở thêm.",
   "board.station_launch_failed": "Không mở được station: {detail}"
