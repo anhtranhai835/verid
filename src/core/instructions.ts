@@ -135,7 +135,7 @@ export function renderInstructions(
     codex
       ? "- Codex hooks enforce TDD, gates and protected files as strictly as the host allows; run verid doctor and trust the hooks in /hooks."
       : antigravity
-        ? "- Antigravity hooks from verid's plugin enforce TDD (RAW → COOKING → PLATED), module approval and protected files; run verid doctor to check the plugin."
+        ? "- Antigravity hooks enforce TDD (RAW → COOKING → PLATED), module approval and protected files; verid doctor checks the plugin."
         : "- Claude Code hooks enforce TDD (RAW → COOKING → PLATED), module approval, roles and protected files.",
     "- Never bypass a denial; follow its reason.",
     codex
@@ -189,7 +189,7 @@ export function renderInstructions(
           ...(antigravity
             ? [
                 `- Review/serve: verid:review → ${skill("review")}; invoke_subagent verid-reviewer${manifest.roles?.security ? ", then verid-security," : ""} with module/AC identifiers, plan/design paths and .verid/review/work.md from verid menu --commits --file; its final line is Verdict: pass or Verdict: fail. Reviewer mappings: ${agents("reviewer")}.`,
-                "- Antigravity dispatches the verid-* agents of verid's plugin; verid:* agents are Claude Code plugin entries.",
+                "- Antigravity runs the verid-* agents; verid:* agents are Claude Code plugin entries.",
               ]
             : [
                 `- Review/serve: verid:review → ${skill("review")}; spawn verid_reviewer, agent_type and fork_turns: "none"; send module/ACs, plan/design and .verid/review/work.md (verid menu --commits --file). Reviewer mappings: ${agents("reviewer")}.`,
