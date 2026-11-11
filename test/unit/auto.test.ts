@@ -444,9 +444,7 @@ describe("the coder's rounds, closing a module, progress, and the next step", ()
       research = true,
       design = true,
       review: State["review"] = null,
-      git: boolean | null = true,
       security?: State["security"],
-      architecture: readonly unknown[] = [],
     ) => {
       const s = autoNextStep(phase, research, design, review, security);
       return `${s.key}${Object.values(s.params)
@@ -457,12 +455,6 @@ describe("the coder's rounds, closing a module, progress, and the next step", ()
       kind: "module",
       view: { ...view, phase },
     });
-    const unavailable = {
-      code: "VERID_BURNT_ARCHITECTURE_UNAVAILABLE" as const,
-      repo: "api",
-      detail: "timed out after 1 s",
-      log: "l.log",
-    };
     expect({
       research: step({ kind: "unsigned" }, false, false),
       design: step({ kind: "unsigned" }, true, false),
@@ -473,7 +465,7 @@ describe("the coder's rounds, closing a module, progress, and the next step", ()
       review: step({ kind: "plan", missing: false, problem: null }),
       cook: step(open("cooking")),
       evaluate: step(open("evaluating")),
-      commit: step(open("evaluating"), true, true, passReview, false),
+      commit: step(open("evaluating"), true, true, passReview),
       "review failed": step(open("evaluating"), true, true, { ...passReview, verdict: "fail" }),
       "review failed, cooking": step(open("cooking"), true, true, {
         ...passReview,
@@ -484,50 +476,28 @@ describe("the coder's rounds, closing a module, progress, and the next step", ()
         module: "report",
         verdict: "fail",
       }),
-      "review before security": step(open("evaluating"), true, true, null, true, null),
-      security: step(open("evaluating"), true, true, passReview, true, null),
-      "security failed": step(open("evaluating"), true, true, passReview, true, {
+      "review before security": step(open("evaluating"), true, true, null, null),
+      security: step(open("evaluating"), true, true, passReview, null),
+      "security failed": step(open("evaluating"), true, true, passReview, {
         ...passSecurity,
         verdict: "fail",
       }),
-      "security failed, cooking": step(open("cooking"), true, true, null, true, {
+      "security failed, cooking": step(open("cooking"), true, true, null, {
         ...passSecurity,
         verdict: "fail",
       }),
-      "security of another module": step(open("evaluating"), true, true, passReview, true, {
+      "security of another module": step(open("evaluating"), true, true, passReview, {
         ...passSecurity,
         module: "report",
       }),
-      "security passed, dirty": step(
-        open("evaluating"),
-        true,
-        true,
-        passReview,
-        false,
-        passSecurity,
-      ),
-      architecture: step(open("evaluating"), true, true, null, true, undefined, [unavailable]),
-      "architecture after a review": step(
-        open("evaluating"),
-        true,
-        true,
-        passReview,
-        true,
-        undefined,
-        [unavailable],
-      ),
-      "architecture, review failed": step(
-        open("evaluating"),
-        true,
-        true,
-        { ...passReview, verdict: "fail" },
-        true,
-        undefined,
-        [unavailable],
-      ),
-      "architecture, cooking": step(open("cooking"), true, true, null, true, undefined, [
-        unavailable,
-      ]),
+      "security passed, dirty": step(open("evaluating"), true, true, passReview, passSecurity),
+      architecture: step(open("evaluating"), true, true, null),
+      "architecture after a review": step(open("evaluating"), true, true, passReview),
+      "architecture, review failed": step(open("evaluating"), true, true, {
+        ...passReview,
+        verdict: "fail",
+      }),
+      "architecture, cooking": step(open("cooking"), true, true, null),
       done: step({ kind: "done" }),
     }).toEqual({
       research: "menu.research",

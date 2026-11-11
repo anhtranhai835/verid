@@ -1,8 +1,7 @@
 import { autoFactsOf } from "../../src/adapters/plan-file.js";
 import { readState, statePaths } from "../../src/adapters/state-store.js";
-import { readyModulePlan, startTaskSession } from "./helpers.js";
+import { readyModulePlan } from "./helpers.js";
 import { spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
 import {
   cpSync,
   existsSync,

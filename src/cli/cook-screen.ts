@@ -1,14 +1,7 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { inAgentShell } from "../adapters/agent-environment.js";
-import {
-  bannerLines,
-  paint,
-  parsePick,
-  pickLines,
-  type Option,
-  type Rgb,
-} from "../core/cook-ui.js";
+import { bannerLines, parsePick, pickLines, type Option } from "../core/cook-ui.js";
 import type { MessageKey } from "../core/errors.js";
 import {
   DRIVES,
@@ -37,7 +30,6 @@ import { planCook, projectFacts, servedLine, setupDoneLine, manifestUpgradeLines
 import type { CliResult } from "./test.js";
 
 const MODE_EMOJI: Record<Mode, string> = { prep: "🥕", recipe: "📖", remix: "🍲" };
-const SUCCESS_COLOR: Rgb = [60, 179, 113];
 
 const say = (key: MessageKey, params: Record<string, string> = {}) => bilingual(key, params);
 
@@ -82,8 +74,6 @@ export async function interactiveCook(
     return { exit: 0, stdout: "", stderr: "" };
   };
   const cancelled = () => finish(say("cook.cancelled"));
-  const check = (label: string, value: string) =>
-    line(`${paint("✔", SUCCESS_COLOR, io.color)} ${label.padEnd(30)} ${value}`);
   /** Asks until the answer passes `problem`; empty uses a supplied default or cancels. */
   const askUntil = async (
     question: string,

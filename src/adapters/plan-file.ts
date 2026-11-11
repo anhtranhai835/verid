@@ -356,7 +356,7 @@ export function peekLines(
   return [
     head,
     ...(open ? [hint] : []),
-    ...architectureLines(project, manifest, state, plan),
+    ...architectureLines(manifest, state, plan),
     stepLine(plan, roles, singleWriter),
     bilingual("status.menu", {}),
   ];
@@ -364,7 +364,6 @@ export function peekLines(
 
 /** Each configured repo whose check must run (again) before the module under evaluation closes. */
 const architectureLines = (
-  project: string,
   manifest: Manifest | undefined,
   state: State,
   plan: ReturnType<typeof planStanding>,
@@ -554,7 +553,7 @@ export function menuLines(
     ...views.map((v) => moduleLine(v, views)),
     ...plan.questions,
     ...(manifest ? auditLines(project, manifest, state, false) : []),
-    ...architectureLines(project, manifest, state, plan),
+    ...architectureLines(manifest, state, plan),
     stepLine(plan, roles, singleWriter),
   ];
 }
