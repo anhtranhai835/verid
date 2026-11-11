@@ -1,5 +1,7 @@
-# Every test of the repo, on Windows: verid's main platform, and the one the recorded hook
-# payloads in test/e2e/hook.e2e.test.ts come from.
+# Every test of the repo with a coverage floor, on Windows: verid's main platform, and the one
+# the recorded hook payloads in test/e2e/hook.e2e.test.ts come from. Linux and macOS test runs
+# skip pull requests: this repository is private, so Actions minutes are billed (Windows 2x,
+# macOS 10x), and a pull request pays only for typecheck, format and the Windows tests.
 name: CI
 
 # Branches run through their pull request; pushes run only on main, so a PR is tested once.
@@ -19,8 +21,40 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Each check is its own job, so a failure names what broke. Typecheck and format do not depend
+  # on the system, so they run on Linux minutes.
+  typecheck:
+    name: Typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+
+  format:
+    name: Format
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx prettier --check .
+
   test:
-    name: Typecheck, format and all tests (Windows)
+    name: All tests and coverage (Windows)
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
@@ -35,7 +69,58 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm run typecheck
-      - run: npx prettier --check .
-      # Build, then unit, end-to-end and installer tests (install.ps1 and install.sh via Git Bash).
-      - run: npm run test:full
+      # Build, then unit, end-to-end and installer tests (install.ps1 and install.sh via Git
+      # Bash). Fails when coverage of src/ drops under the thresholds in vitest.config.ts.
+      - run: npm run test:coverage
+
+  posix:
+    name: Tests on ${{ matrix.os }}, Node ${{ matrix.node }}
+    # On main, by hand, and from release.yml (which passes its own tag or manual event).
+    if: github.event_name != 'pull_request'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            node: 22
+            pack: true
+          - os: ubuntu-latest
+            node: 24
+          # macOS minutes cost ten times Linux, and Ubuntu already runs the full suite on POSIX.
+          # macOS runs what differs there: the case-insensitive file system, the /var symlink
+          # under the temp folder, the BSD tools install.sh calls, and the gate tests.
+          - os: macos-latest
+            node: 22
+            tests: >-
+              test/e2e/tdd.e2e.test.ts
+              test/e2e/hook.e2e.test.ts
+              test/e2e/review-freshness.e2e.test.ts
+              test/e2e/provider-security.e2e.test.ts
+              test/e2e/case-insensitive-paths.e2e.test.ts
+              test/e2e/install.e2e.test.ts
+              test/e2e/installers.e2e.test.ts
+              test/e2e/init.e2e.test.ts
+              test/e2e/setup.e2e.test.ts
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npx vitest run ${{ matrix.tests }}
+      - name: Install the packed tarball and run it in a fresh repository
+        if: matrix.pack
+        run: |
+          npm pack --ignore-scripts
+          npm install -g --prefix "$RUNNER_TEMP/prefix" ./*.tgz
+          export PATH="$RUNNER_TEMP/prefix/bin:$PATH"
+          cd "$(mktemp -d)"
+          git init -q
+          verid --help
+          verid cook --mode prep --provider claude-code --dry-run --yes

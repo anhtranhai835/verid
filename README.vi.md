@@ -232,11 +232,11 @@ npm ci
 npm run typecheck
 npx prettier --check .
 npm test
-npm run test:full
+npm run test:coverage
 ```
 
-[CI Windows](.github/workflows/ci.yml) chạy typecheck, format và toàn bộ test,
-gồm kiểm thử installer. `npm test` bỏ qua bộ end-to-end của installer.
+[CI](.github/workflows/ci.yml): typecheck, format, toàn bộ test có ngưỡng coverage trên Windows mỗi PR;
+ở `main` và khi phát hành thêm Ubuntu (Node 22, 24) và macOS. `npm test` bỏ qua test installer.
 
 ## Ghi nhận
 
