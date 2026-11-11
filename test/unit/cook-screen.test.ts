@@ -1,7 +1,8 @@
 import { developerProject } from "../support/cook.js";
 import { vitestProject as makeVitestProject } from "../support/cook.js";
 import { scriptedTerminal, ENTER, UP, DOWN, CTRL_C } from "../support/terminal.js";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 
 import { dirname, join } from "node:path";
@@ -643,7 +644,24 @@ describe("interactiveCook: verid cook in the developer's terminal", () => {
     expect((await interactiveCook(project, again.io, "en-US")).exit).toBe(0);
     expect(new Set(again.screen().match(/^\? .*? \(↑\/↓/gm)).size).toBeLessThanOrEqual(4);
     expect(again.screen()).toMatch(/^Found: Claude Code · monorepo · test runner: vitest$/m);
+    // Doctor reads Claude Code's plugin record; use one of our own, not this machine's.
+    const config = mkdtempSync(join(tmpdir(), "verid-claude-config-"));
+    vi.stubEnv("CLAUDE_CONFIG_DIR", config);
+    expect((await doctorCommand(project)).exit).toBe(1);
+    const installPath = join(config, "plugins/cache/verid");
+    for (const agent of ["reviewer", "tester", "coder", "architect", "planner", "qa", "security"]) {
+      mkdirSync(join(installPath, "agents"), { recursive: true });
+      writeFileSync(join(installPath, "agents", `${agent}.md`), `---\nname: ${agent}\n---\n`);
+    }
+    writeFileSync(
+      join(config, "plugins/installed_plugins.json"),
+      JSON.stringify({
+        version: 2,
+        plugins: { "verid@verid": [{ scope: "user", installPath }] },
+      }),
+    );
     expect((await doctorCommand(project)).exit).toBe(0);
+    rmSync(config, { recursive: true, force: true });
   });
 
   it("says what it locks before writing anything, with examples from the project", async () => {
