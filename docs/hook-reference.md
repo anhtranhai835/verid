@@ -2,6 +2,11 @@
 
 [Back to README](../README.md)
 
+`src/hook.ts` routes events and handles errors. Tool policy and TDD gates live in
+`src/hook/pre-tool-use.ts`, prompts and session events in `src/hook/lifecycle.ts`,
+and subagent reviews in `src/hook/review.ts`. Host, state and parsing helpers live
+in `src/hook/shared.ts`.
+
 `SubagentStart` records the subject and input fingerprint for each mapped reviewer.
 Code/test writes and new approvals invalidate an in-progress correctness review;
 project writes outside `.verid/` invalidate an in-progress security review too.

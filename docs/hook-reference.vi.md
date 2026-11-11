@@ -2,6 +2,11 @@
 
 [Về README](../README.vi.md)
 
+`src/hook.ts` định tuyến event và xử lý lỗi. Policy và gate TDD nằm trong
+`src/hook/pre-tool-use.ts`, prompt và event session trong `src/hook/lifecycle.ts`,
+review subagent trong `src/hook/review.ts`. Helper về host, state và payload nằm
+trong `src/hook/shared.ts`.
+
 `SubagentStart` ghi nhận đối tượng và dấu vân tay đầu vào của từng reviewer đã ánh xạ.
 Ghi code/test hoặc duyệt lại module làm mất hiệu lực review correctness đang chạy;
 ghi file project ngoài `.verid/` cũng làm mất hiệu lực security review đang chạy.

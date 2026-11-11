@@ -45,7 +45,7 @@ flowchart LR
 
 Shim ưu tiên runtime ghim trong project (`.verid/hooks/hook-run.js`, khi `resources: repo`), sau đó tới bundle cài cùng plugin (`<plugin>/dist/hook-run.js`). Không có runtime thì mọi tool call bị từ chối.
 
-Trong lõi, mỗi provider là một `Host` (`src/adapters/host.ts`): cách đọc payload, cách trả lời, single-writer hay không, có nhận `/verid tip` hay không. Luật trong `src/hook.ts` chỉ hỏi khả năng của host, không hỏi tên host.
+Trong lõi, mỗi provider là một `Host` (`src/adapters/host.ts`): cách đọc payload, cách trả lời, single-writer hay không, có nhận `/verid tip` hay không. Luật trong `src/hook/` chỉ hỏi khả năng của host, không hỏi tên host.
 
 ### 3.1. Sự kiện
 
