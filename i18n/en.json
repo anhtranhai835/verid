@@ -1,4 +1,8 @@
 {
+  "usage.ledger": "show measured usage by module",
+  "ledger.columns": "Module | Sessions | Taste | Denied | Stop held | Chars | Input/cached/output (total)",
+  "ledger.unavailable": "unavailable",
+  "ledger.scope": "Tokens: reported board chat usage only; cached reads are included in input. Chars: text of denials, stop holds and taste output (not session start context); old events may lack counts.",
   "init.module_reapproval": "Module inputs added for {modules}. Fill the drafts, then run verid order again; served module sections and evidence are preserved.",
   "doctor.workflow_legacy": "workflow: {workflow} is retired; all planned projects use module dossiers and the board",
   "doctor.workflow_fix": "Run verid upgrade --dry-run, then verid upgrade --yes.",

@@ -60,6 +60,46 @@ const patch = (session: string, path: string) =>
     tool_input: { command: `*** Begin Patch\n*** Add File: ${path}\n+content\n*** End Patch` },
   });
 
+it("reports usage after a blocked write and a red to green cycle without storing output", async () => {
+  split();
+  await cli("order", "req-1");
+  await hook("SessionStart", "usage-task", { source: "startup" });
+  await patch("usage-task", "src/add.ts");
+  await patch("usage-task", "test/add.test.ts");
+  t.put("test/add.test.ts", "// AC-1 adds two numbers\n");
+  t.put(
+    "scenario.json",
+    JSON.stringify({ exit: 1, junit: "vitest-add-assert.xml", output: "PRIVATE_TEST_OUTPUT" }),
+  );
+  expect((await cli("taste")).code).toBe(1);
+  await patch("usage-task", "src/add.ts");
+  t.put("src/add.ts", "export const add = (a, b) => a + b;\n");
+  t.put(
+    "scenario.json",
+    JSON.stringify({ exit: 0, junit: "vitest-ac.xml", output: "PRIVATE_TEST_OUTPUT" }),
+  );
+  expect((await cli("taste")).code).toBe(0);
+  const before = t.read(".verid/.state/state.json");
+  const audit = t.read(".verid/.state/audit.jsonl");
+  const result = await cli("usage", "req-1", "--json");
+  expect(result.code, result.stderr).toBe(0);
+  const [row] = JSON.parse(result.stdout);
+  expect(row).toMatchObject({
+    module: "req-1",
+    sessions: 1,
+    taste: 2,
+    denied: 1,
+    stopBlocked: 0,
+    tokens: null,
+  });
+  expect(row.chars).toBeGreaterThan(0);
+  expect((await cli("usage")).stdout).toContain("unavailable");
+  expect((await cli("usage", "missing", "--json")).stdout.trim()).toBe("[]");
+  expect(t.read(".verid/.state/state.json")).toBe(before);
+  expect(t.read(".verid/.state/audit.jsonl")).toBe(audit);
+  expect(audit).not.toContain("PRIVATE_TEST_OUTPUT");
+});
+
 it("uses developer-selected order and binds a new session, preserving resume and compact", async () => {
   await hook("SessionStart", "planning", { source: "startup" });
   split();

@@ -23,7 +23,8 @@ import { guardsToolCalls } from "../adapters/claude-settings.js";
 import { hasCurrentCodexHooks } from "../adapters/codex-settings.js";
 import { bilingual, setLanguage, t, veridName, type Lang } from "../adapters/i18n.js";
 import { loadManifest, manifestFile } from "../adapters/manifest.js";
-import { appendAudit } from "../adapters/audit-log.js";
+import { appendAudit, readAudit } from "../adapters/audit-log.js";
+import { usageReport } from "../core/usage.js";
 import { captureWork, gitTree, gitView, workLog } from "../adapters/git.js";
 import {
   autoFactsOf,
@@ -103,6 +104,7 @@ export async function runCli(args: readonly string[]): Promise<CliResult> {
         action === "order" ? approve(project, task) : serve(project, task),
       );
     else if (cmd === "peek" && rest.length === 0) r = await status(project);
+    else if (cmd === "usage") r = usageCommand(project, rest);
     else if (cmd === "menu" && rest.length === 0) r = await menu(project);
     else if (
       cmd === "menu" &&
@@ -195,6 +197,43 @@ function findProject(cwd: string): string {
   }
 }
 
+function usageCommand(project: string, args: string[]): CliResult {
+  const modules = args.filter((arg) => !arg.startsWith("--"));
+  if (
+    modules.length > 1 ||
+    args.filter((arg) => arg === "--json").length > 1 ||
+    args.some((arg) => arg.startsWith("-") && arg !== "--json")
+  )
+    return usage(project, {
+      key: "usage.unexpected",
+      params: { command: "usage", args: args.join(" ") },
+    });
+  const rows = usageReport(readAudit(statePaths(project).audit)).filter(
+    (row) => modules.length === 0 || row.module === modules[0],
+  );
+  if (args.includes("--json"))
+    return { exit: 0, stdout: JSON.stringify(rows, null, 2) + "\n", stderr: "" };
+  const lang = languageOf(project) ?? systemLang();
+  const lines = [
+    t(lang, "ledger.columns", {}),
+    ...rows.map((row) =>
+      [
+        row.module,
+        row.sessions,
+        row.taste,
+        row.denied,
+        row.stopBlocked,
+        row.chars,
+        row.tokens
+          ? `${row.tokens.input}/${row.tokens.cached}/${row.tokens.output} (${row.tokens.total})`
+          : t(lang, "ledger.unavailable", {}),
+      ].join(" | "),
+    ),
+    t(lang, "ledger.scope", {}),
+  ];
+  return { exit: 0, stdout: lines.join("\n") + "\n", stderr: "" };
+}
+
 async function status(project: string): Promise<CliResult> {
   const state = readState(statePaths(project));
   const manifest = await loadManifest(project);
@@ -236,6 +275,7 @@ type Misuse = { key: MessageKey; params: Record<string, string> };
 
 // How many arguments each command takes after its name; cook takes flags.
 const ARGS: Record<string, number> = {
+  usage: 2,
   module: 1,
   doctor: 0,
   taste: 0,
@@ -304,6 +344,7 @@ function usage(project: string, wrong: Misuse | null, next?: string): CliResult 
     { emoji: "📁", command: `${v} module <name>`, what: say("usage.module"), who: "prep, recipe" },
     { emoji: "👅", command: `${v} taste`, what: say("usage.taste") },
     { emoji: "👀", command: `${v} peek`, what: say("usage.peek") },
+    { emoji: "📊", command: `${v} usage [module] [--json]`, what: say("usage.ledger") },
     { emoji: "📋", command: `${v} menu [--commits [--file]]`, what: say("usage.menu") },
     {
       emoji: "▦",
