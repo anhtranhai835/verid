@@ -66,6 +66,8 @@ export interface UsageRow {
   what: string;
   /** Who runs it and in which modes, when not anyone in any mode. */
   who?: string;
+  /** A heading that opens a new group of commands with this row, after a blank line. */
+  group?: string;
 }
 
 /** The widest the command table may be in columns; wider rows stack over two lines. */
@@ -92,11 +94,13 @@ export function usageLines(
     ...notes.flatMap((note) => [`   ${note}`, ""]),
     ...rows.flatMap((r) => {
       const who = r.who ? paint(r.who, DIM, color) : "";
+      const heading = r.group ? ["", `   ${r.group}`] : [];
       if (columns <= USAGE_WIDTH) {
         const command = paint(r.command.padEnd(cw), PICK, color);
-        return [`   ${r.emoji} ${command}  ${r.what.padEnd(ww)}  ${who}`.trimEnd()];
+        return [...heading, `   ${r.emoji} ${command}  ${r.what.padEnd(ww)}  ${who}`.trimEnd()];
       }
       return [
+        ...heading,
         `   ${r.emoji} ${paint(r.command, PICK, color)}`,
         `      ${r.what}  ${who}`.trimEnd(),
       ];

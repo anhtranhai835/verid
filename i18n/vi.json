@@ -18,7 +18,7 @@
   "VERID_BURNT_TASK_SESSION": "Mỗi task một session AI. {target}",
   "usage.board": "mở bảng Kanban cục bộ (mỗi task một session AI)",
   "usage.module": "tạo hồ sơ module từ template trong project",
-  "usage.cook_options": "Tùy chọn cook: --layout <monorepo|workspace> --resources <installed|repo> --drive <big-brain|no-brain>",
+  "usage.cook_options": "cook: --layout <monorepo|workspace> --resources <installed|repo> --drive <big-brain|no-brain>",
   "doctor.resources_missing": "Tài nguyên repo bị thiếu hoặc là liên kết: {file}",
   "doctor.resources_fix": "khôi phục bản trong repo hoặc chạy verid cook để thêm file thiếu",
   "cook.resources": "Lưu tài nguyên cook ở đâu?",
@@ -355,8 +355,8 @@
   "command.peek": "Xem vòng TDD đang ở đâu và đang cho làm gì",
   "command.menu": "Xem plan, các module và bước tiếp theo",
   "command.body": "Lệnh này do hook của verid xử lý, và verid đã trả lời ở trên. Nếu verid không nói gì, hook của verid chưa được đăng ký trên máy này: hãy nhờ developer chạy `verid cook` từ terminal của họ.",
-  "cook.served": "Xong! Mở Claude Code và nói bạn muốn làm gì. Bước tiếp theo luôn có ở: {verid} menu",
-  "cook.served_remix": "Xong! Trước hết hãy chạy `{verid} stock` ở đây: nó ghi các test đang đỏ thành baseline, và cho tới lúc đó `{verid} taste` từ chối chạy. Rồi mở Claude Code và nói bạn muốn làm gì. Bước tiếp theo luôn có ở: {verid} menu",
+  "cook.served": "Xong! Bước tiếp theo luôn có ở: {verid} menu",
+  "cook.served_remix": "Xong! Trước hết hãy chạy `{verid} stock` ở đây: nó ghi các test đang đỏ thành baseline, và cho tới lúc đó `{verid} taste` từ chối chạy. Bước tiếp theo luôn có ở: {verid} menu",
   "taste.log": "Log đầy đủ, cho developer: {log}",
   "taste.setup": "{runner} ({dir}) không ghi báo cáo JUnit nào: có thể còn thiếu công cụ hay thư viện. Cài bằng `{setup}`, rồi chạy lại `{verid} {command}`.",
   "taste.not_compiled": "{runner} ({dir}) không ghi báo cáo test nào. Nếu output có lỗi biên dịch thì test chưa biên dịch được: thường do test mới gọi class hay hàm chưa có. verid chỉ đọc bước stub từ báo cáo test, nên hãy nhờ developer cho phép viết stub bằng `/verid tip <lý do>`, chỉ viết stub, rồi chạy lại `{verid} {command}`.",
@@ -396,5 +396,10 @@
   "setup.antigravity_done": "Plugin Antigravity của verid đã nằm ở {dir} ({created} tạo mới, {updated} cập nhật, {kept} giữ nguyên). Khởi động lại Antigravity rồi chạy verid doctor trong từng project.",
   "doctor.antigravity.plugin_missing": "Plugin Antigravity của verid thiếu hoặc đã cũ trên máy này",
   "doctor.antigravity.plugin_fix": "chạy verid setup-antigravity trong terminal của bạn rồi khởi động lại Antigravity",
-  "doctor.antigravity.plugin_ok": "= Plugin Antigravity của verid đã được cài"
+  "doctor.antigravity.plugin_ok": "= Plugin Antigravity của verid đã được cài",
+  "cook.found": "Tìm thấy: {provider} · {layout} · test runner: {runner}",
+  "cook.found_no_runner": "chưa có",
+  "cook.change": "Đổi thiết lập (provider, layout, tài nguyên, iteration, kiến trúc)",
+  "cook.say_next": "Mở {agent} và nói: what's next?",
+  "usage.group": "Lệnh gate:"
 }

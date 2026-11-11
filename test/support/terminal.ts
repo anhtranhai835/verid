@@ -32,9 +32,17 @@ export function scriptedTerminal(
   architectureKeys = ENTER,
   layoutKeys: string | (string | (() => string))[] = ENTER,
   resourceKeys = ENTER,
+  /** Answers the first Apply question, e.g. to open cook's "Change settings". */
+  firstApply?: string,
 ) {
   const t = fakeTerminal();
   t.io.output.on("data", (d) => {
+    if (firstApply !== undefined && /\? (Apply\?|Áp dụng\?)/.test(String(d))) {
+      const next = firstApply;
+      firstApply = undefined;
+      setImmediate(() => t.type(next));
+      return;
+    }
     if (/\? (How are your repositories organized|Repo của bạn tổ chức thế nào)/.test(String(d))) {
       const next = Array.isArray(layoutKeys) ? (layoutKeys.shift() ?? ENTER) : layoutKeys;
       setImmediate(() => t.type(typeof next === "function" ? next() : next));

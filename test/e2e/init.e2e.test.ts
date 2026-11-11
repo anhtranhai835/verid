@@ -373,18 +373,21 @@ describe("verid cook", () => {
   });
 
   // In remix the developer records the baseline before the agent can run a test.
-  it("ends with the next step, as the screen in a terminal does", () => {
-    const last = (mode: string) => {
+  it("ends with the one sentence to say to the agent, the baseline just above it in remix", () => {
+    const tail = (mode: string) => {
       const dir = newProject();
       vitestProject(dir);
-      return init(dir, "--mode", mode, "--lang", "en").stdout.trimEnd().split("\n").at(-1) ?? "";
+      return init(dir, "--mode", mode, "--lang", "en").stdout.trimEnd().split("\n").slice(-2);
     };
-    const remix = last("remix");
-    const prep = last("prep");
+    const remix = tail("remix");
+    const prep = tail("prep");
     expect({
-      remix: [remix.includes('cli.js" stock`'), remix.includes("Then open Claude Code")],
-      prep: [prep.includes("stock"), prep.includes("Open Claude Code and say what you want.")],
-    }).toEqual({ remix: [true, true], prep: [false, true] });
+      remix: [remix[0]!.includes('cli.js" stock`'), remix[1]],
+      prep: [prep[0]!.includes("stock"), prep[1]],
+    }).toEqual({
+      remix: [true, "💬 Open Claude Code and say: what's next?"],
+      prep: [false, "💬 Open Claude Code and say: what's next?"],
+    });
   });
 
   it("forgets, when run again, a runner whose build file the developer removed", () => {

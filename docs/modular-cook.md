@@ -6,9 +6,9 @@ Không yêu cầu chuyển source code dự án sang monorepo Haren/Bun.
 
 ## Luồng module duy nhất
 
-Prep và recipe luôn dùng hồ sơ module và board. Cook hỏi layout monorepo/workspace, resources installed/repo và drive big-brain/no-brain; không hỏi workflow. Monorepo là một Git repo; workspace gồm các repo con và dùng một harness chung, một vòng TDD tổng hợp các runner. Thư mục workspace không được có .git hoặc nằm trong repo Git cha; phải có repo con.
+Prep và recipe luôn dùng hồ sơ module và board. Cook hỏi mode và drive big-brain/no-brain; layout monorepo/workspace, resources installed/repo và các thiết lập khác nằm trong "Đổi thiết lập"; không hỏi workflow. Monorepo là một Git repo; workspace gồm các repo con và dùng một harness chung, một vòng TDD tổng hợp các runner. Thư mục workspace không được có .git hoặc nằm trong repo Git cha; phải có repo con.
 
-Human: chọn task trên board hoặc order từ terminal, rồi mở session AI mới cho đúng task đó. AI: xếp ưu tiên trên board, ký research/spec/design bằng verid order; một session đi hết hàng đợi, không cắt ngang module đang làm. Dùng ↑/↓ hoặc Alt+↑/↓ để đổi thứ tự task chưa bắt đầu; product luôn cuối.
+Big-brain: chọn task trên board hoặc order từ terminal, rồi mở session AI mới cho đúng task đó. No-brain: xếp ưu tiên trên board, ký research/spec/design bằng verid order; một session đi hết hàng đợi, không cắt ngang module đang làm. Dùng ↑/↓ hoặc Alt+↑/↓ để đổi thứ tự task chưa bắt đầu; product luôn cuối.
 
 Resources installed dùng tài nguyên đã cài; repo pin tài nguyên trong project và giữ các tùy chỉnh đã có. Chạy verid upgrade để chuyển project 1.x; module đã serve giữ nguyên, module chưa serve nhận hồ sơ nháp cần điền và order lại.
 

@@ -46,40 +46,30 @@ Needs Node.js 22 or later, Git, and Claude Code or Codex. Other ways to install,
 npm install -g @anhtranhai835/verid
 ```
 
-**2. Set the project up.** Cook asks for the mode (`prep` for an idea, `recipe` for existing specs, `remix` for existing code), the drive (`big-brain`: you pick and approve each task, or `no-brain`: you type the idea and the agent does the rest) and the provider. It finds the layout and test runner, previews the files, and writes them when you confirm.
+**2. Set the project up.** Press Enter at each question: the language, the mode (`prep` for an idea, `recipe` for existing specs, `remix` for existing code) and, for prep and recipe, the drive (`big-brain`: you pick and approve each task; `no-brain`: you type the idea and the agent does the rest). Cook shows the provider, layout and test runner it found and the files it will write; "Change settings" changes the rest.
 
 ```sh
 cd your-project
 verid cook
 ```
 
-It ends with `Served! Open Claude Code and say what you want. The next step is always in: verid menu`. In a `remix` project it first asks you to run `verid stock`.
+Its last line is the sentence to say: `Open Claude Code and say: what's next?`. In a `remix` project the line above asks you to run `verid stock` first.
 
-**3. Check the setup.** A healthy project ends with `No problems found.`
+**3. Say "what's next?".** Open Claude Code or Codex at the project root and say it. The agent checks the setup (as `verid doctor` does) and names the next step; then describe your idea. It works through `ba`, `design` and `plan`; `verid menu` shows where it stands.
 
-```sh
-verid doctor
-```
-
-**4. Say what you want.** Open Claude Code or Codex at the project root and describe the idea. The agent works through `ba`, `design` and `plan`. `verid menu` shows where it stands, for example `Next: clarify scope and constraints with verid:ba; record .verid/research.md.`
-
-```sh
-verid menu
-```
-
-**5. Approve a module.** Read the module the agent wrote in `.verid/plan.md`. When the ACs are right, order it.
+**4. Approve a module.** Read the module the agent wrote in `.verid/plan.md`. When the ACs are right, order it.
 
 ```sh
 verid order <module>
 ```
 
-**6. Watch it build.** The agent writes a failing test, then code, with `verid taste` between. The cycle goes RAW, COOKING, PLATED.
+**5. Watch it build.** The agent writes a failing test, then code, with `verid taste` between. The cycle goes RAW, COOKING, PLATED.
 
 ```sh
 verid peek
 ```
 
-**7. Review and serve.** A fresh reviewer checks the module. When evidence and reviews pass, close it.
+**6. Review and serve.** A fresh reviewer checks the module. When evidence and reviews pass, close it.
 
 ```sh
 verid serve <module>

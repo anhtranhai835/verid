@@ -18,7 +18,7 @@
   "VERID_BURNT_TASK_SESSION": "One task per AI session. {target}",
   "usage.board": "open the local Kanban board (one task per AI session)",
   "usage.module": "draft a module dossier from project templates",
-  "usage.cook_options": "cook options: --layout <monorepo|workspace> --resources <installed|repo> --drive <big-brain|no-brain>",
+  "usage.cook_options": "cook: --layout <monorepo|workspace> --resources <installed|repo> --drive <big-brain|no-brain>",
   "doctor.resources_missing": "Repo resource is missing or linked: {file}",
   "doctor.resources_fix": "restore the repo copy or run verid cook to fill missing files",
   "cook.resources": "Where should cook resources live?",
@@ -355,8 +355,8 @@
   "command.peek": "Show where the TDD cycle stands and what it allows",
   "command.menu": "Show the plan, its modules and the next step",
   "command.body": "verid's hook handles this command and has answered above. If verid said nothing, its hooks are not registered on this machine: ask the developer to run `verid cook` from their terminal.",
-  "cook.served": "Served! Open Claude Code and say what you want. The next step is always in: {verid} menu",
-  "cook.served_remix": "Served! First run `{verid} stock` here: it records the tests that already fail as the baseline, and until then `{verid} taste` refuses to run. Then open Claude Code and say what you want. The next step is always in: {verid} menu",
+  "cook.served": "Served! The next step is always in: {verid} menu",
+  "cook.served_remix": "Served! First run `{verid} stock` here: it records the tests that already fail as the baseline, and until then `{verid} taste` refuses to run. The next step is always in: {verid} menu",
   "taste.log": "Full log, for the developer: {log}",
   "taste.setup": "{runner} ({dir}) wrote no JUnit report: a tool or library may be missing. Install it with `{setup}`, then run `{verid} {command}` again.",
   "taste.not_compiled": "{runner} ({dir}) wrote no test report. If its output shows a compile error, the tests did not compile: usually a new test calls a class or method that does not exist. verid reads the stub step only from a test report: ask the developer for `/verid tip <reason>`, write only the stub, then run `{verid} {command}` again.",
@@ -396,5 +396,10 @@
   "setup.antigravity_done": "verid's Antigravity plugin is in {dir} ({created} created, {updated} updated, {kept} unchanged). Restart Antigravity, then run verid doctor in each project.",
   "doctor.antigravity.plugin_missing": "verid's Antigravity plugin is missing or stale on this machine",
   "doctor.antigravity.plugin_fix": "run verid setup-antigravity in your own terminal, then restart Antigravity",
-  "doctor.antigravity.plugin_ok": "= verid's Antigravity plugin is installed"
+  "doctor.antigravity.plugin_ok": "= verid's Antigravity plugin is installed",
+  "cook.found": "Found: {provider} · {layout} · test runner: {runner}",
+  "cook.found_no_runner": "none yet",
+  "cook.change": "Change settings (provider, layout, resources, iterations, architecture)",
+  "cook.say_next": "Open {agent} and say: what's next?",
+  "usage.group": "Gate commands:"
 }

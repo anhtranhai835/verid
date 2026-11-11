@@ -159,11 +159,24 @@ export async function initCommand(
 /** cook's last line: the next step, which in remix is the baseline, until there is one. */
 export async function servedLine(project: string): Promise<string> {
   const manifest = await loadManifest(project, { readOnly: true });
-  if (manifest && !manifest.providers.includes("claude-code"))
-    return `🍽️  ${bilingual(manifest.providers.includes("codex") ? "cook.codex_served" : "cook.antigravity_served", {})}`;
+  const providers = manifest?.providers ?? ["claude-code"];
+  const agent = providers.includes("claude-code")
+    ? "Claude Code"
+    : providers.includes("codex")
+      ? "Codex"
+      : "Antigravity";
   const remix = manifest?.mode === "remix";
   const first = remix && readState(statePaths(project)).baseline === null;
-  return `🍽️  ${bilingual(first ? "cook.served_remix" : "cook.served", {})}`;
+  const key =
+    agent === "Claude Code"
+      ? first
+        ? "cook.served_remix"
+        : "cook.served"
+      : agent === "Codex"
+        ? "cook.codex_served"
+        : "cook.antigravity_served";
+  // The last line is the one sentence to say to the agent; the onboard skill answers it.
+  return `🍽️  ${bilingual(key, {})}\n💬 ${bilingual("cook.say_next", { agent })}`;
 }
 
 /** Completion follows the provider files that were actually generated. */

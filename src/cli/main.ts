@@ -421,19 +421,21 @@ function usage(project: string, wrong: Misuse | null, next?: string): CliResult 
   // Outside a real terminal, cook asks nothing and needs the mode: never point to what fails.
   const cook = interactive() ? `${v} cook` : `${v} cook --mode <prep|recipe|remix>`;
   const rows: UsageRow[] = [
+    // The three everyday commands first, then the gate commands as a second group.
     { emoji: "🔪", command: cook, what: say("usage.cook"), who: dev },
+    { emoji: "🩺", command: `${v} doctor`, what: say("usage.doctor") },
+    { emoji: "📋", command: `${v} menu [--commits [--file [--compact]]]`, what: say("usage.menu") },
     {
       emoji: "⬆️",
       command: `${v} upgrade [--dry-run] [--yes]`,
       what: say("usage.upgrade"),
       who: dev,
+      group: say("usage.group"),
     },
-    { emoji: "🩺", command: `${v} doctor`, what: say("usage.doctor") },
     { emoji: "📁", command: `${v} module <name>`, what: say("usage.module"), who: "prep, recipe" },
     { emoji: "👅", command: `${v} taste`, what: say("usage.taste") },
     { emoji: "👀", command: `${v} peek`, what: say("usage.peek") },
     { emoji: "📊", command: `${v} usage [module] [--json]`, what: say("usage.ledger") },
-    { emoji: "📋", command: `${v} menu [--commits [--file [--compact]]]`, what: say("usage.menu") },
     { emoji: "🗂️", command: `${v} context [module] [--ac <id>]`, what: say("usage.context") },
     {
       emoji: "▦",

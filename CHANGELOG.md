@@ -26,6 +26,10 @@ tags `1.0.0` and `1.2.0` keep their names.
 - The missing-manifest hint is corrected, the command table is shorter, and commands show the
   next step.
 - The instruction block routes bugs to the debugging skill.
+- `verid cook` in a terminal asks only the language, the mode and the drive, then shows the
+  provider, layout and test runner it found; "Change settings" asks the rest. Its last line is
+  the one sentence to say to the agent: "what's next?". Bare `verid` lists `cook`, `doctor` and
+  `menu` first, the gate commands as a second group.
 - The drives are renamed: `big-brain` (was `human`) and `no-brain` (was `ai`). The older names
   `human`, `ai` and `auto` still load and `--drive` still takes them; see "Upgrading" in
   [docs/installation.md](docs/installation.md).

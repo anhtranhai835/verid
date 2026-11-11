@@ -88,6 +88,21 @@ describe("usageLines: the commands, as a menu", () => {
     ]);
   });
 
+  it("opens a second group of commands with a blank line and its heading", () => {
+    const rows = [
+      { emoji: "🔪", command: "verid cook", what: "set verid up" },
+      { emoji: "👅", command: "verid taste", what: "run the tests", group: "Gate commands:" },
+    ];
+    expect(usageLines("t", rows, "footer", false).slice(-6)).toEqual([
+      "   🔪 verid cook   set verid up",
+      "",
+      "   Gate commands:",
+      "   👅 verid taste  run the tests",
+      "",
+      "   footer",
+    ]);
+  });
+
   it("puts notes above the commands and stacks rows that would pass 100 columns", () => {
     const rows = [
       {

@@ -46,40 +46,30 @@ Cần Node.js 22 trở lên, Git, và Claude Code hoặc Codex. Các cách cài 
 npm install -g @anhtranhai835/verid
 ```
 
-**2. Thiết lập project.** Cook hỏi mode (`prep` cho ý tưởng, `recipe` cho đặc tả có sẵn, `remix` cho code có sẵn), drive (`big-brain`: bạn chọn và duyệt từng task, hoặc `no-brain`: bạn gõ ý tưởng, agent lo phần còn lại) và provider. Lệnh tự nhận diện layout và test runner, hiện danh sách file sẽ ghi, và ghi khi bạn xác nhận.
+**2. Thiết lập project.** Nhấn Enter ở mỗi câu hỏi: ngôn ngữ, mode (`prep` cho ý tưởng, `recipe` cho đặc tả có sẵn, `remix` cho code có sẵn) và, với prep và recipe, drive (`big-brain`: bạn chọn và duyệt từng task; `no-brain`: bạn gõ ý tưởng, agent lo phần còn lại). Cook hiện provider, layout, test runner tìm được và các file sẽ ghi; "Đổi thiết lập" để đổi phần còn lại.
 
 ```sh
 cd your-project
 verid cook
 ```
 
-Dòng cuối là `Served! ...` (bản tiếng Việt: `Xong! ...`) kèm lệnh `verid menu`. Với project `remix`, cook trước hết nhắc chạy `verid stock`.
+Dòng cuối là câu cần nói: `Mở Claude Code và nói: what's next?`. Với project `remix`, dòng ngay trên nhắc chạy `verid stock` trước.
 
-**3. Kiểm tra cài đặt.** Project ổn sẽ kết thúc bằng `No problems found.`
+**3. Nói "what's next?".** Mở Claude Code hoặc Codex ở gốc project và nói câu đó. Agent kiểm tra cài đặt (như `verid doctor`) và nêu bước tiếp theo; rồi mô tả ý tưởng. Agent đi qua `ba`, `design` và `plan`; `verid menu` cho biết đang ở đâu.
 
-```sh
-verid doctor
-```
-
-**4. Nói bạn muốn gì.** Mở Claude Code hoặc Codex ở gốc project và mô tả ý tưởng. Agent đi qua `ba`, `design` và `plan`. `verid menu` cho biết đang ở đâu, ví dụ `Next: clarify scope and constraints with verid:ba; record .verid/research.md.`
-
-```sh
-verid menu
-```
-
-**5. Duyệt module.** Đọc module agent đã viết trong `.verid/plan.md`. Khi AC đúng, order nó.
+**4. Duyệt module.** Đọc module agent đã viết trong `.verid/plan.md`. Khi AC đúng, order nó.
 
 ```sh
 verid order <module>
 ```
 
-**6. Xem agent build.** Agent viết test fail trước, rồi code, giữa hai bước chạy `verid taste`. Vòng đi RAW, COOKING, PLATED.
+**5. Xem agent build.** Agent viết test fail trước, rồi code, giữa hai bước chạy `verid taste`. Vòng đi RAW, COOKING, PLATED.
 
 ```sh
 verid peek
 ```
 
-**7. Review và serve.** Reviewer mới kiểm tra module. Khi bằng chứng và review đều đạt, đóng module.
+**6. Review và serve.** Reviewer mới kiểm tra module. Khi bằng chứng và review đều đạt, đóng module.
 
 ```sh
 verid serve <module>

@@ -15,8 +15,10 @@ import {
   suggestMode,
   type InitFlags,
   type Mode,
+  type Provider,
   type Repo,
 } from "../core/manifest.js";
+import { launchable } from "../adapters/architecture.js";
 import { fileRole } from "../core/tdd.js";
 import { WEEKDAYS } from "../core/iterations.js";
 import { setupPreview } from "../core/setup-plan.js";
@@ -161,7 +163,7 @@ export async function interactiveCook(
   const flags: InitFlags = { lang, src: [], tests: [], ignore: [] };
 
   const manifest = await loadManifest(project, { readOnly: true, checkPaths: false });
-  let detected = manifest ? null : detectLayout(project);
+  const detected = manifest ? null : detectLayout(project);
   let layout = manifest?.layout ?? detected?.layout ?? "monorepo";
   let providers = manifest?.providers ?? ["claude-code"];
   let repoPaths = manifest ? manifest.repos.map((repo) => repo.path) : ["."];
@@ -186,13 +188,69 @@ export async function interactiveCook(
       flags.upgrade = add === 0;
     }
   } else {
+    // What verid can see is shown in the plan, not asked; "Change settings" asks everything.
+    flags.providers = installedProviders(project);
+    if (layout === "workspace")
+      try {
+        checkWorkspaceRoot(project);
+      } catch (error) {
+        if (!(error instanceof VeridError)) throw error;
+        layout = "monorepo";
+      }
+    flags.layout = layout;
+    repoPaths = layout === "workspace" ? (detected?.repos ?? []).map((repo) => repo.path) : ["."];
+    if (!(await askModeAndDrive())) return cancelled();
+  }
+
+  /** The mode, then for prep and recipe who runs the kitchen; false when cancelled. */
+  async function askModeAndDrive(): Promise<boolean> {
+    const facts = projectFacts(project, repoPaths);
+    const mode = await select(
+      io,
+      say("cook.mode"),
+      MODES.map((m) => ({
+        label: `${MODE_EMOJI[m]} ${m}`,
+        hint: say(`cook.mode.${m}`),
+      })),
+      MODES.indexOf(suggestMode(facts)),
+    );
+    if (mode === null) return false;
+    flags.mode = MODES[mode];
+    // Remix has no plan to walk module by module, so only prep and recipe can run on their own.
+    if (flags.mode === "remix") {
+      delete flags.drive;
+      return true;
+    }
+    const drive = await select(
+      io,
+      say("cook.drive"),
+      DRIVES.map((d) => ({
+        label: DRIVE_NAMES[d],
+        hint: say(`cook.drive.${DRIVE_NAMES[d]}`),
+      })),
+      Math.max(
+        0,
+        DRIVES.findIndex((d) => d === flags.drive),
+      ),
+    );
+    if (drive === null) return false;
+    flags.drive = DRIVES[drive];
+    return true;
+  }
+
+  /** Every setting of a new manifest, each defaulting to the current pick; false when cancelled. */
+  async function askSettings(): Promise<boolean> {
+    const current = (flags.providers ?? ["claude-code"]).join();
     const provider = await select(
       io,
       say("cook.providers"),
       PROVIDER_CHOICES.map(({ label }) => ({ label })),
-      0,
+      Math.max(
+        0,
+        PROVIDER_CHOICES.findIndex((c) => c.providers.join() === current),
+      ),
     );
-    if (provider === null) return cancelled();
+    if (provider === null) return false;
     flags.providers = [...PROVIDER_CHOICES[provider]!.providers];
     const children = detectLayout(project, "workspace").repos;
     for (;;) {
@@ -212,7 +270,7 @@ export async function interactiveCook(
         })),
         LAYOUTS.indexOf(layout),
       );
-      if (choice === null) return cancelled();
+      if (choice === null) return false;
       const selected = LAYOUTS[choice]!;
       if (selected === "workspace") {
         try {
@@ -229,7 +287,6 @@ export async function interactiveCook(
       }
       layout = selected;
       flags.layout = selected;
-      detected = { layout, repos: selected === "workspace" ? children : [] };
       repoPaths = selected === "workspace" ? children.map((repo) => repo.path) : ["."];
       break;
     }
@@ -237,45 +294,22 @@ export async function interactiveCook(
       io,
       say("cook.resources"),
       RESOURCE_MODES.map((value) => ({ label: value, hint: say(`cook.resources.${value}`) })),
-      0,
+      flags.resources === "repo" ? 1 : 0,
     );
-    if (resources === null) return cancelled();
+    if (resources === null) return false;
     flags.resources = RESOURCE_MODES[resources];
-    const facts = projectFacts(project, repoPaths);
-    const mode = await select(
-      io,
-      say("cook.mode"),
-      MODES.map((m) => ({
-        label: `${MODE_EMOJI[m]} ${m}`,
-        hint: say(`cook.mode.${m}`),
-      })),
-      MODES.indexOf(suggestMode(facts)),
-    );
-    if (mode === null) return cancelled();
-    flags.mode = MODES[mode];
+    if (!(await askModeAndDrive())) return false;
 
-    // Remix has no plan to walk module by module, so only prep and recipe can run on their own.
     if (flags.mode !== "remix") {
-      const drive = await select(
-        io,
-        say("cook.drive"),
-        DRIVES.map((d) => ({
-          label: DRIVE_NAMES[d],
-          hint: say(`cook.drive.${DRIVE_NAMES[d]}`),
-        })),
-        0,
-      );
-      if (drive === null) return cancelled();
-      flags.drive = DRIVES[drive];
-
       const iterations = await select(
         io,
         say("cook.iterations"),
         [{ label: say("cook.iterations_no") }, { label: say("cook.iterations_yes") }],
-        0,
+        flags.iterations ? 1 : 0,
       );
-      if (iterations === null) return cancelled();
-      if (iterations === 1) {
+      if (iterations === null) return false;
+      if (iterations === 0) clearIterations();
+      else {
         const now = clock();
         const today = [
           String(now.getFullYear()).padStart(4, "0"),
@@ -296,7 +330,7 @@ export async function interactiveCook(
           },
           today,
         );
-        if (startDate === null) return cancelled();
+        if (startDate === null) return false;
         const end = new Date(`${startDate}T00:00:00Z`);
         end.setUTCDate(end.getUTCDate() + 13);
         flags.iterations = true;
@@ -304,39 +338,54 @@ export async function interactiveCook(
         flags.startDate = startDate;
         flags.demoDay = WEEKDAYS[(end.getUTCDay() + 6) % 7];
       }
-    }
+    } else clearIterations();
 
     const architecture = await select(
       io,
       say("cook.architecture"),
       ARCHITECTURES.map((label) => ({ label })),
-      0,
+      Math.max(
+        0,
+        ARCHITECTURES.findIndex((a) => a === flags.architecture),
+      ),
     );
-    if (architecture === null) return cancelled();
+    if (architecture === null) return false;
     flags.architecture = ARCHITECTURES[architecture];
 
     // verid finds the runners at each run; the plan says which it sees. With none yet, the
     // developer may still type their own command.
-    if (
-      repoPaths.every(
-        (path) =>
-          findRunners(resolve(project, path), layoutOf(suggestManifest(flags))).runners.length ===
-          0,
-      )
-    ) {
+    if (runnersSeen().length === 0) {
       const runner = await select(
         io,
         say("cook.runner"),
         [{ label: say("cook.runner_later") }, { label: say("cook.own_command") }],
-        0,
+        flags.testCmd === undefined ? 0 : 1,
       );
-      if (runner === null) return cancelled();
+      if (runner === null) return false;
+      delete flags.testCmd;
       if (runner === 1) {
         const typed = await askUntil(say("cook.own_command"), (c) => problemWith({ test_cmd: c }));
-        if (typed === null) return cancelled();
+        if (typed === null) return false;
         flags.testCmd = typed;
       }
     }
+    return true;
+  }
+
+  function clearIterations(): void {
+    delete flags.iterations;
+    delete flags.duration;
+    delete flags.startDate;
+    delete flags.demoDay;
+  }
+
+  /** The test runners verid sees in the repos now. */
+  function runnersSeen(): string[] {
+    return repoPaths.flatMap((path) =>
+      findRunners(resolve(project, path), layoutOf(suggestManifest(flags))).runners.map(
+        (runner) => runner.name,
+      ),
+    );
   }
 
   // The folders whose code is locked by default: the ones a developer may unlock.
@@ -349,18 +398,28 @@ export async function interactiveCook(
     for (const row of setupPreview(plan.files, plan.notes)) line(row);
     const { repo } = plan;
     if (repo) summary(repo);
+    if (!manifest) {
+      const runners = [...new Set(runnersSeen())];
+      const providerLabel = plan.providers.join();
+      line();
+      line(
+        say("cook.found", {
+          provider:
+            PROVIDER_CHOICES.find((c) => c.providers.join() === providerLabel)?.label ??
+            plan.providers.join(" + "),
+          layout: plan.layout,
+          runner: runners.length ? runners.join(", ") : say("cook.found_no_runner"),
+        }),
+      );
+    }
     line();
-    const go = await select(
-      io,
-      say("cook.confirm"),
-      [
-        { label: say("cook.start") },
-        ...(repo ? [{ label: say("cook.unlock") }] : []),
-        { label: say("cook.cancel") },
-      ],
-      0,
-      { y: 0, n: repo ? 2 : 1 },
-    );
+    const options = [
+      { label: say("cook.start") },
+      ...(repo ? [{ label: say("cook.unlock") }] : []),
+      ...(manifest ? [] : [{ label: say("cook.change") }]),
+      { label: say("cook.cancel") },
+    ];
+    const go = await select(io, say("cook.confirm"), options, 0, { y: 0, n: options.length - 1 });
     if (go === 0) {
       const fresh = await planCook(project, flags);
       if (fresh.revision !== plan.revision) continue;
@@ -370,6 +429,10 @@ export async function interactiveCook(
       layout = fresh.layout;
       providers = [...fresh.providers];
       break;
+    }
+    if (!manifest && go === options.length - 2) {
+      if (!(await askSettings())) return cancelled();
+      continue;
     }
     if (!(repo && go === 1)) return cancelled();
     codeDirs ??= topDirs(project).filter((d) => fileRole(`${d}/x`, layoutOf(repo)) === "code");
@@ -382,6 +445,10 @@ export async function interactiveCook(
   line();
   return finish(await servedLine(project));
 }
+
+/** The provider whose command is installed, Claude Code first; Claude Code when neither is. */
+export const installedProviders = (project: string): Provider[] =>
+  !launchable("claude", project) && launchable("codex", project) ? ["codex"] : ["claude-code"];
 
 const layoutOf = (repo: Repo) => ({
   sourceGlobs: repo.source_globs,

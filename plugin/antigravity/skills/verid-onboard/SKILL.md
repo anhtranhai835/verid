@@ -1,6 +1,6 @@
 ---
 name: verid-onboard
-description: Use when onboarding to a verid workspace, checking setup health, or reporting current module status and next step without modifying files.
+description: Use when onboarding to a verid workspace, asked "what's next?", checking setup health, or reporting current module status and next step without modifying files.
 ---
 
 # verid-onboard (Antigravity)

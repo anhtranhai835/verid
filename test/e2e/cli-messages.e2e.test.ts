@@ -48,6 +48,13 @@ describe("the command table", () => {
     expect(r.stdout.match(/node "/g)).toHaveLength(1);
   });
 
+  it("lists cook, doctor and menu first, then the gate commands as a second group", async () => {
+    const out = (await cli("help")).stdout;
+    const at = (text: string) => out.indexOf(text);
+    const order = ["🔪 verid cook", "verid doctor", "verid menu", "Gate commands", "verid upgrade"];
+    expect(order.map(at).every((i, n, all) => i >= 0 && (n === 0 || i > all[n - 1]!))).toBe(true);
+  });
+
   it("starts every row's description in lower case", async () => {
     const rows = (await cli("help")).stdout.match(/^ {6}\S.*$/gm) ?? [];
     expect(rows.length).toBeGreaterThanOrEqual(13);

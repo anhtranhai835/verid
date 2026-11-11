@@ -1,6 +1,6 @@
 ---
 name: onboard
-description: Use when a developer is new to a verid project or asks whether their workspace is set up and where the project stands.
+description: Use when a developer is new to a verid project, asks "what's next?", or asks whether their workspace is set up and where the project stands.
 ---
 
 # verid: onboard
