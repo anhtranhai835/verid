@@ -11,7 +11,7 @@
 ## EARS requirements
 
 [NEEDS CLARIFICATION: globally unique REQ-n/NFR-n/SEC-n; trigger/state → observable result; source]
-Publish agreed lines in .verid/spec.md, linking back here.
+Copy each ID with one line to .verid/spec.md.
 
 ## Examples and boundaries
 

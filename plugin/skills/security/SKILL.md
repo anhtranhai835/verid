@@ -44,6 +44,8 @@ safe" claim is not evidence; evidence is code you read and artifacts with a name
 
    `references/personas.md` gives an attacker's questions per surface. Mark a surface that
    does not apply `not applicable` with the reason; a pure CLI needs no web checks.
+   A module's threat model may be one `Not applicable: <reason>` line; reject a reason
+   that does not hold against the code you read.
    For a deeper pass, `references/stride-owasp-checklist.md` and
    `references/red-team-personas.md` hold the full original lists; their fix and loop steps
    do not apply here, since you only read.

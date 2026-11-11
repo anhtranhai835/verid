@@ -169,7 +169,7 @@ export function renderInstructions(
       : []),
     ...(planned(manifest)
       ? [
-          `- Modules: read .verid/workflow.md and ${skill("modules")}. Run verid module <name>; fill BA/UI/spec/tests/security before order. Every plan module needs Artifacts: .verid/artifacts/03-modules/<name>.`,
+          `- Modules: read .verid/workflow.md and ${skill("modules")}. Run verid module <name>; write detail once in its dossier. Every plan module needs Artifacts: .verid/artifacts/03-modules/<name>.`,
           "- Templates: .verid/templates/; main records evidence; reviewers read only.",
           ...(manifest.drive === "auto"
             ? [

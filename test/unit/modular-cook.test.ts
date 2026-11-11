@@ -146,3 +146,56 @@ it("signs module inputs independently, blocks unfinished drafts and keeps review
     detail: expect.stringContaining("Artifacts must be"),
   });
 });
+
+const dossier = (name: string) => `.verid/artifacts/03-modules/${name}`;
+const SPEC_LINES =
+  "- REQ-1: The system shall sign users in.\n- SEC-1: The system shall hash secrets.\n";
+const SEEDED_PLAN =
+  "## Module: identity\nArtifacts: .verid/artifacts/03-modules/identity\n" +
+  "- AC-1: sign in works (REQ-1)\n- AC-2 (e2e): secrets are hashed | stored (SEC-1)\n";
+
+it("fills requirements and the AC table from the plan section and spec, and has no module README", async () => {
+  expect((await planCook(project, flags)).apply().failed).toBe(false);
+  put(".verid/spec.md", `# Spec\n${SPEC_LINES}- REQ-9: Unrelated.\n`);
+  put(".verid/plan.md", SEEDED_PLAN);
+  await moduleCommand(project, "identity");
+  const requirements = read(`${dossier("identity")}/ba/requirements.md`);
+  const lines = requirements.split(/\r?\n/);
+  for (const line of SPEC_LINES.trimEnd().split("\n")) expect(lines).toContain(line);
+  expect(requirements).not.toContain("REQ-9");
+  const rows = read(`${dossier("identity")}/tests/test-plan.md`)
+    .split(/\r?\n/)
+    .filter((line) => /^\| (REQ|SEC)-/.test(line));
+  expect(rows).toEqual([
+    "| REQ-1 | AC-1 | unit |  | sign in works (REQ-1) |",
+    "| SEC-1 | AC-2 | e2e |  | secrets are hashed \| stored (SEC-1) |",
+  ]);
+  expect(existsSync(join(project, dossier("identity"), "README.md"))).toBe(false);
+});
+
+it("leaves the drafts blank without a plan section and never overwrites existing files", async () => {
+  expect((await planCook(project, flags)).apply().failed).toBe(false);
+  put(".verid/spec.md", `# Spec\n${SPEC_LINES}`);
+  await moduleCommand(project, "identity");
+  expect(read(`${dossier("identity")}/ba/requirements.md`)).not.toContain("REQ-1");
+  expect(read(`${dossier("identity")}/tests/test-plan.md`)).not.toMatch(/^\| REQ-/m);
+  put(`${dossier("billing")}/ba/requirements.md`, "Mine\n");
+  put(".verid/plan.md", SEEDED_PLAN.replaceAll("identity", "billing"));
+  await moduleCommand(project, "billing");
+  expect(read(`${dossier("billing")}/ba/requirements.md`)).toBe("Mine\n");
+  expect(read(`${dossier("billing")}/tests/test-plan.md`)).toContain("| REQ-1 | AC-1 |");
+});
+
+it("orders a module whose inputs are one Not applicable line, and a template README never changes its hash", async () => {
+  expect((await planCook(project, flags)).apply().failed).toBe(false);
+  await moduleCommand(project, "identity");
+  put(".verid/plan.md", SEEDED_PLAN);
+  for (const input of MODULE_INPUTS)
+    put(`${dossier("identity")}/${input}`, "Not applicable: nothing user-facing here\n");
+  const before = readPlan(project, false, true);
+  expect(before).toMatchObject({ ok: true });
+  put(`${dossier("identity")}/README.md`, "# Module\n[NEEDS CLARIFICATION: anything]\n");
+  const after = readPlan(project, false, true);
+  if (!before?.ok || !after?.ok) throw new Error("plan invalid");
+  expect(after.hashes.identity).toBe(before.hashes.identity);
+});

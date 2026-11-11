@@ -116,6 +116,8 @@ describe("provider instruction blocks", () => {
         expect(text).toContain("exceptions require Claude Code");
         expect(text).toContain("Advisory");
       }
+      expect(text).toContain("write detail once in its dossier");
+      expect(text).not.toContain("fill BA/UI/spec/tests/security");
       expect(text.length, provider).toBeLessThan(3400);
     }
   });

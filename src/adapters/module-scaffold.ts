@@ -1,9 +1,11 @@
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { contentRoot } from "./codex-settings.js";
 import { resourceTree } from "./repo-resources.js";
 import { VeridError } from "./state-store.js";
 import { checkSetupPath } from "./workspace.js";
+import { parsePlan } from "../core/plan.js";
+import { citedIds, liveRequirements } from "../core/spec.js";
 
 /** Checked drafts, also used by setup previews without writing anything. */
 export function moduleDrafts(project: string, name: string) {
@@ -21,6 +23,7 @@ export function moduleDrafts(project: string, name: string) {
   if (local)
     for (const file of resourceTree(join(project, ".verid/templates/module"), base))
       files.set(file.rel, file);
+  files.delete(`${base}/README.md`);
   return [...files.values()].map((file) => {
     checkSetupPath(project, file.rel);
     if (local)
@@ -29,12 +32,57 @@ export function moduleDrafts(project: string, name: string) {
   });
 }
 
+const readText = (file: string) => (existsSync(file) ? readFileSync(file, "utf8") : "");
+const AC = /^[ \t]*[-*][ \t]+(AC-\d+)[ \t]*(\([eE]2[eE]\))?:[ \t]*(.*?)[ \t]*$/;
+const REQ_PLACEHOLDER = /^\[NEEDS CLARIFICATION: globally unique REQ-n[^\r\n]*\r?\n/m;
+const TABLE_HEAD = /^\| Requirement[^\r\n]*\r?\n\|[-| ]*\r?\n/m;
+
+/**
+ * What the plan section and spec already say about the module: its cited requirement lines and
+ * one test-plan row per AC. Null when the plan has no section for it.
+ */
+function seed(project: string, name: string) {
+  const plan = parsePlan(readText(join(project, ".verid", "plan.md")));
+  const module = plan.ok ? plan.modules.find((m) => m.name === name) : undefined;
+  if (!module) return null;
+  const live = new Map(liveRequirements(readText(join(project, ".verid", "spec.md"))));
+  const acs = module.text.split(/\r?\n/).flatMap((line) => {
+    const m = AC.exec(line);
+    return m ? [{ code: m[1]!, level: m[2] ? "e2e" : "unit", text: m[3]!, line }] : [];
+  });
+  const requirements = citedIds(acs.map((a) => a.line).join("\n")).flatMap((id) => {
+    const line = live.get(id);
+    return line === undefined ? [] : [line];
+  });
+  const rows = acs.map(
+    (a) =>
+      `| ${citedIds(a.line).join(", ")} | ${a.code} | ${a.level} |  | ${a.text.replaceAll("|", "\|")} |`,
+  );
+  return { requirements, rows };
+}
+
+/** Puts the module's known requirement lines and AC rows into the two drafts that take them. */
+function fill(rel: string, content: string, found: ReturnType<typeof seed>): string {
+  if (!found) return content;
+  const eol = content.includes("\r\n") ? "\r\n" : "\n";
+  if (rel.endsWith("/ba/requirements.md") && found.requirements.length)
+    return content.replace(
+      REQ_PLACEHOLDER,
+      () =>
+        `${found.requirements.join(eol)}${eol}[NEEDS CLARIFICATION: add missing requirements and sources]${eol}`,
+    );
+  if (rel.endsWith("/tests/test-plan.md") && found.rows.length)
+    return content.replace(TABLE_HEAD, (head) => `${head}${found.rows.join(eol)}${eol}`);
+  return content;
+}
+
 /** Creates missing drafts only; never overwrites project content. */
 export function scaffoldModule(project: string, name: string): string[] {
+  const found = seed(project, name);
   return moduleDrafts(project, name).map((file) => {
     if (existsSync(join(project, file.rel))) return `= ${file.rel}`;
     mkdirSync(dirname(join(project, file.rel)), { recursive: true });
-    writeFileSync(join(project, file.rel), file.content, { flag: "wx" });
+    writeFileSync(join(project, file.rel), fill(file.rel, file.content, found), { flag: "wx" });
     return `+ ${file.rel}`;
   });
 }
