@@ -1,12 +1,12 @@
+import { tempProject, HOOK } from "../support/project.js";
 import { autoFactsOf } from "../../src/adapters/plan-file.js";
 import { readState, statePaths } from "../../src/adapters/state-store.js";
-import { readyModulePlan } from "./helpers.js";
+
 import { spawnSync } from "node:child_process";
 import {
   cpSync,
   existsSync,
   mkdirSync,
-  mkdtempSync,
   readdirSync,
   readFileSync,
   renameSync,
@@ -14,47 +14,35 @@ import {
   symlinkSync,
   writeFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
+
 import { dirname, join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { parse, stringify } from "yaml";
 import { cloneMarkerFile } from "../../src/adapters/workspace.js";
-import { runCli, runHook } from "./in-process.js";
-import { developerEnv } from "./helpers.js";
 
-const root = join(import.meta.dirname, "../..");
-const HOOK = join(root, "dist/hook.js");
 let temp: string;
 let project: string;
-const env = () => ({
-  ...developerEnv("GIT_"),
-  GIT_CONFIG_NOSYSTEM: "1",
-  GIT_CONFIG_GLOBAL: join(temp, "gitconfig"),
-  XDG_CONFIG_HOME: temp,
+
+const t = tempProject("verid-workspace-", {
+  subdir: "workspace",
+  cwd: () => project,
+  claudeProject: false,
+  defaultText: "x",
+  gitPrefix: "",
+  omitEnv: ["GIT_"],
+  env: () => inProcessEnv(),
+  hookEnv: () => ({ CLAUDE_PROJECT_DIR: project }),
+  gitEnv: () => env(),
+  bind: (p) => {
+    temp = p.root;
+    project = join(temp, "workspace");
+  },
+  setup: () => {
+    writeFileSync(join(temp, "gitconfig"), "");
+  },
 });
-beforeEach(() => {
-  temp = mkdtempSync(join(tmpdir(), "verid-workspace-"));
-  project = join(temp, "workspace");
-  mkdirSync(project);
-  writeFileSync(join(temp, "gitconfig"), "");
-});
-afterEach(() => rmSync(temp, { recursive: true, force: true }));
-const put = (rel: string, text = "x") => {
-  mkdirSync(dirname(join(project, rel)), { recursive: true });
-  writeFileSync(
-    join(project, rel),
-    rel === ".verid/plan.md" ? readyModulePlan(project, text) : text,
-  );
-};
-const git = (cwd: string, ...args: string[]) => {
-  const result = spawnSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], {
-    cwd,
-    env: env(),
-    encoding: "utf8",
-  });
-  if (result.status !== 0) throw new Error(`${args.join(" ")}: ${result.stderr}`);
-  return result.stdout.trim();
-};
+const { env, putPlan: put, gitAt: git, shortCliAt: cli, state, pathHook: hook } = t;
+
 const makeRepo = (rel: string, branch = "main", committed = false) => {
   const dir = join(project, rel);
   mkdirSync(dir, { recursive: true });
@@ -73,10 +61,7 @@ const inProcessEnv = (extra: NodeJS.ProcessEnv = {}) => ({
   XDG_CONFIG_HOME: temp,
   ...extra,
 });
-const cli = async (args: string[], cwd = project, extraEnv: NodeJS.ProcessEnv = {}) => {
-  const r = await runCli(args, cwd, inProcessEnv(extraEnv));
-  return { code: r.code, out: r.stdout, err: r.stderr };
-};
+
 const repo = (path: string, extra = {}) => ({
   path,
   source_globs: ["src/**"],
@@ -94,23 +79,9 @@ const manifest = (repos = [repo("api"), repo("web", { role: "frontend" })], extr
     JSON.stringify({ schemaVersion: 1, language: "en", baseline: [] }),
   );
 };
-const state = () => JSON.parse(readFileSync(join(project, ".verid/.state/state.json"), "utf8"));
+
 const writeState = (extra: object) =>
   put(".verid/.state/state.json", JSON.stringify({ ...state(), ...extra }));
-const hook = async (path: string, writer?: string, tool = "Write", input?: object) => {
-  const r = await runHook(
-    JSON.stringify({
-      hook_event_name: "PreToolUse",
-      session_id: "workspace",
-      cwd: project,
-      tool_name: tool,
-      tool_input: input ?? { file_path: path, content: "test" },
-      ...(writer && { agent_id: "worker", agent_type: `verid:${writer}` }),
-    }),
-    inProcessEnv({ CLAUDE_PROJECT_DIR: project }),
-  );
-  return { code: r.code, err: r.stderr };
-};
 
 describe("workspace setup", () => {
   it("strips origin userinfo before writing shared repo metadata", async () => {
