@@ -1681,6 +1681,24 @@ describe("prep and recipe plan", () => {
     expect(served.stdout).toContain(join(".verid", ".state", "reviews", "calc-"));
   });
 
+  it("refuses a failed review, and a second review of unchanged code replaces it", async () => {
+    writePlan("## Module: calc\n- AC-1: adds\n");
+    expect((await cli("order", "calc")).code).toBe(0);
+    scenario(0, "vitest-ac.xml");
+    expect((await cli("taste")).code).toBe(0);
+    const verdict = async (text: string) =>
+      expect(
+        (await hook(fixture("subagent-stop-reviewer", (p) => (p.last_assistant_message = text))))
+          .code,
+      ).toBe(0);
+    await verdict("Missing a boundary case\nVerdict: fail");
+    const failed = await cli("serve", "calc");
+    expect([failed.code, failed.stderr.includes("no review of calc")]).toEqual([2, true]);
+    await verdict("LGTM\nVerdict: pass");
+    expect(state().review?.verdict).toBe("pass");
+    expect((await cli("serve", "calc")).code).toBe(0);
+  });
+
   it("serves a module only with a passing security review after its last change, once one is mapped", async () => {
     const security = `${ROLES}  security: ["verid:security"]\n`;
     // The mapped security reviewer stops: verid records its final report beside the review.
