@@ -364,6 +364,29 @@ describe("self-contained verid skills", () => {
     expect(read("plugin/templates/skill-routing.md")).toContain("(../skills/release/SKILL.md)");
   });
 
+  it("drives a read-only legacy rewrite through the adapter commands and leaves the signature to the developer", () => {
+    for (const file of [
+      "plugin/skills/reheat/SKILL.md",
+      "plugin/antigravity/skills/verid-reheat/SKILL.md",
+    ]) {
+      const text = read(file);
+      expect(text.split("\n").length, file).toBeLessThan(60);
+      for (const phrase of [
+        "verid reheat inventory",
+        "verid reheat extract <unit>",
+        "verid reheat gate <unit>",
+        "release/parity.md",
+        "only the developer signs parity",
+        "never write in",
+      ])
+        expect(text.toLowerCase(), `${file}: ${phrase}`).toContain(phrase.toLowerCase());
+    }
+    expect(read("plugin/templates/skill-routing.md")).toContain("(../skills/reheat/SKILL.md)");
+    const parity = read("plugin/templates/module-reheat/release/parity.md");
+    for (const heading of ["## Inputs", "## Legacy results", "## New results"])
+      expect(parity, heading).toContain(heading);
+  });
+
   it("keeps the always-loaded skill and agent descriptions within their byte budget", () => {
     const description = (file: string) =>
       Buffer.byteLength(/^description: (.*)$/m.exec(read(file))?.[1]?.trim() ?? "");
@@ -372,12 +395,13 @@ describe("self-contained verid skills", () => {
     );
     for (const name of skills)
       expect(description(`plugin/skills/${name}/SKILL.md`), name).toBeLessThan(150);
-    // 2199 bytes, then +124 for release. Each new skill adds one description under 150 bytes.
+    // 2199 bytes, then +124 for release and +98 for reheat. Each new skill adds one description
+    // under 150 bytes.
     const total = skills.reduce(
       (sum, name) => sum + description(`plugin/skills/${name}/SKILL.md`),
       0,
     );
-    expect(total).toBeLessThanOrEqual(2323);
+    expect(total).toBeLessThanOrEqual(2421);
     const agents = readdirSync(join(root, "plugin/agents")).filter((name) => name.endsWith(".md"));
     expect(
       agents.reduce((sum, name) => sum + description(`plugin/agents/${name}`), 0),
