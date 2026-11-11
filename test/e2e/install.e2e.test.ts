@@ -117,9 +117,11 @@ describe("npm skill distribution", () => {
       "CHANGELOG.md",
     ])
       expect(files).toContain(path);
-    // The release tarball carries the built CLI, not the sources, tests or release tooling.
+    // The release tarball carries the built CLI, not the sources, tests, sample project or release tooling.
     expect(
-      files.filter((path: string) => /^(src|test|scripts|plans|\.github|\.verid)\//.test(path)),
+      files.filter((path: string) =>
+        /^(src|test|examples|scripts|plans|\.github|\.verid)\//.test(path),
+      ),
     ).toEqual([]);
   }, 60_000);
 

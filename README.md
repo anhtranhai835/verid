@@ -40,6 +40,8 @@ evidence and checks approvals; hooks refuse writes that skip an approval or a fa
 
 Needs Node.js 22 or later, Git, and Claude Code or Codex. Other ways to install, and Codex and Antigravity setup, are in [installation](docs/installation.md).
 
+To try verid on a small project first, follow [examples/slugify](examples/slugify/README.md).
+
 **1. Install.**
 
 ```sh

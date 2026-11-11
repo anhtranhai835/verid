@@ -40,6 +40,8 @@ và kiểm tra approval; hook từ chối các lần ghi bỏ qua approval hoặ
 
 Cần Node.js 22 trở lên, Git, và Claude Code hoặc Codex. Các cách cài khác, cùng thiết lập Codex và Antigravity, nằm ở [cài đặt](docs/installation.vi.md).
 
+Muốn thử verid trên một project nhỏ trước, làm theo [examples/slugify](examples/slugify/README.md).
+
 **1. Cài.**
 
 ```sh
