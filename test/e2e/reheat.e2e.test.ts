@@ -418,7 +418,7 @@ it("leaves the legacy repo out of test runs and tells doctor what is wrong", asy
   const doctor = await t.cli("doctor");
   expect(doctor.code).toBe(1);
   expect(doctor.stdout).toContain("read_only");
-  expect(doctor.stdout).toContain("read_only: true on every repo with role legacy");
+  expect(doctor.stdout).toContain("a legacy repo must set read_only: true");
 });
 
 it("tells doctor that a reheat project has no adapter", async () => {

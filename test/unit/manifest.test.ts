@@ -102,7 +102,7 @@ describe("parseManifest", () => {
     const ok = MODES.map(
       (mode) => parseManifest({ schemaVersion: 1, mode, repos: [{ ...repo, test_cmd }] }).ok,
     );
-    expect(ok).toEqual([true, true, true]);
+    expect(ok).toEqual(MODES.map(() => true));
   });
 
   it("rejects a manifest it cannot trust, naming the field", () => {
