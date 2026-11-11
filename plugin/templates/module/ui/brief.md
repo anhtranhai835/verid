@@ -1,5 +1,7 @@
 # {{module}} — UI brief
 
+No UI? Replace this file with one line: `Not applicable: <reason>`.
+
 ## Applicability
 
 [NEEDS CLARIFICATION: user-facing screens, or the reason this module has no UI]

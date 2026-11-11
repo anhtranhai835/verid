@@ -274,6 +274,19 @@ describe("self-contained verid skills", () => {
       expect(iterative, text).toContain(text);
   });
 
+  it("has module dossiers hold the detail once and accept a one-line Not applicable", () => {
+    const modules = read("plugin/skills/modules/SKILL.md");
+    for (const text of ["Write detail once", "`Not applicable: <reason>`", "only the interfaces"])
+      expect(modules, text).toContain(text);
+    expect(modules).not.toContain("Publish agreed requirements");
+    expect(read("plugin/skills/security/SKILL.md")).toContain("reject a reason");
+    for (const file of ["ui/brief.md", "security/threat-model.md"])
+      expect(read(`plugin/templates/module/${file}`), file).toContain("Not applicable: <reason>");
+    const workflow = read("plugin/templates/workflow.md");
+    expect(workflow).toContain("a document that does not apply is one line");
+    expect(existsSync(join(root, "plugin/templates/module/README.md"))).toBe(true);
+  });
+
   it("states the board and drive rules once per context", () => {
     const sentence = "the developer arranges the priority queue";
     expect(read("plugin/templates/workflow.md")).toContain(sentence);

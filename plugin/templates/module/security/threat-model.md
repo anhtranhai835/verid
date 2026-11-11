@@ -1,5 +1,7 @@
 # {{module}} — security
 
+Nothing to protect? Replace this file with one line: `Not applicable: <reason>`. The reviewer rejects weak reasons.
+
 ## Assets, classification and trust boundaries
 
 [NEEDS CLARIFICATION: public/internal/personal/secret data, actors and entry points]
