@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { ownEntry } from "../core/station.js";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { moveInQueue, planFromSpec } from "../core/kanban.js";
@@ -58,7 +59,7 @@ function snapshotOf(project: string, manifest: Manifest, state: State) {
     : null;
   const facts =
     manifest.drive === "auto" && planned(manifest)
-      ? autoFactsOf(project, state, manifest.iterations !== undefined, true, manifest.stations)
+      ? autoFactsOf(project, state, manifest.iterations !== undefined, true, manifest.stations ?? 1)
       : null;
   const phase = facts ? autoPhase(facts) : null;
   const spec = textOf(specFile(project));
@@ -128,7 +129,7 @@ function snapshotOf(project: string, manifest: Manifest, state: State) {
         .filter((module) => !state.station || state.station.module === module.name)
         .map((module) => {
           const view = views.find((item) => item.name === module.name)!;
-          const station = stations[module.name] ?? null;
+          const station = ownEntry(stations, module.name) ?? null;
           const selected = station !== null || active?.module === module.name;
           const dossier =
             view.phase === "done" && !/^Artifacts:/m.test(module.text)

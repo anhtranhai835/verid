@@ -297,7 +297,8 @@ const manifestSchema = z
       z.strictObject({ mockups: z._default(z.enum(["ask", "ascii", "browser"]), "ask") }),
     ),
     iterations: z.optional(iterations),
-    stations: z._default(z.int().check(z.minimum(1), z.maximum(3)), 1),
+    // Absent means one station: projects that never opt in keep their manifest unchanged.
+    stations: z.optional(z.int().check(z.minimum(1), z.maximum(3))),
     git: z.optional(git),
     architecture: z._default(z.enum(ARCHITECTURES), "ddd"),
     repos: z.array(repo).check(z.minLength(1, nonEmpty)),
@@ -307,7 +308,7 @@ const manifestSchema = z
     // fill in, a role left unmapped would leave a step with no one to take it.
     z.superRefine((m, ctx) => {
       const paths: string[] = [];
-      if (m.stations > 1 && (m.layout === "workspace" || m.mode === "remix"))
+      if ((m.stations ?? 1) > 1 && (m.layout === "workspace" || m.mode === "remix"))
         return ctx.addIssue({
           code: "custom",
           path: ["stations"],

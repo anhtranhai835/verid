@@ -1,4 +1,5 @@
 import { existsSync, realpathSync, statSync } from "node:fs";
+import { ownEntry } from "../core/station.js";
 import { dirname, join, resolve } from "node:path";
 import { folderKey, runGit } from "./git.js";
 import { readState, statePaths, VeridError, withLock, writeState } from "./state-store.js";
@@ -91,7 +92,7 @@ export function stationSessionProblem(
   const paths = statePaths(context.project);
   return withLock(paths, () => {
     const state = readState(paths);
-    const owner = state.station_sessions[session];
+    const owner = ownEntry(state.station_sessions, session);
     const identity = `${folderKey(context.root)}\0${context.station?.at ?? ""}`;
     if (owner && owner !== identity) return session;
     const local = readState(statePaths(context.root));

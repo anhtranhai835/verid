@@ -31,7 +31,7 @@ export function reviewSnapshot(
             state,
             manifest.iterations !== undefined,
             planned(manifest),
-            manifest.stations,
+            manifest.stations ?? 1,
           ),
         )
       : null;

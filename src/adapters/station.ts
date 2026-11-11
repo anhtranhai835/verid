@@ -4,7 +4,7 @@ import type { Manifest } from "../core/manifest.js";
 import type { State } from "../core/state.js";
 import { FRESH_AUTO, parseState } from "../core/state.js";
 import { autoPhase } from "../core/auto.js";
-import { stationProblem } from "../core/station.js";
+import { ownEntry, stationProblem } from "../core/station.js";
 import { integrationProblem } from "../core/integration.js";
 import { runGit, gitView } from "./git.js";
 import { canonicalFolder, sameFolder, stationContext } from "./project.js";
@@ -111,7 +111,7 @@ export function openStation(project: string, name: string, manifest: Manifest): 
           .map((view) => view.name),
       ),
       active: Object.values(state.stations),
-      limit: manifest.drive === "auto" ? manifest.stations : 3,
+      limit: manifest.drive === "auto" ? (manifest.stations ?? 1) : 3,
     });
     if (code) throw new VeridError(code, { detail: name });
     if (
@@ -173,6 +173,9 @@ export function openStation(project: string, name: string, manifest: Manifest): 
       mkdirSync(dirname(join(path, file)), { recursive: true });
       copyFileSync(join(root, file), join(path, file));
     }
+    // The copies match the committed blobs once normalized, but keep the checkout's stat data;
+    // refreshing tracked entries stops Git from reporting the station dirty. Untracked files stay so.
+    stationGit(path, ["add", "-u", "--", ".verid"]);
     const plan = approvedPlan(path, manifest, parent);
     if (
       plan.hashes[name] !== record.sha256 ||
@@ -279,10 +282,10 @@ export function scheduleStations(project: string, manifest: Manifest): void {
     throw invalid("research, spec or design changed; sign again before opening stations");
   for (const module of orderedModules(facts.plan.modules, state)) {
     const current = readState(paths);
-    if (Object.keys(current.stations).length >= manifest.stations) break;
+    if (Object.keys(current.stations).length >= (manifest.stations ?? 1)) break;
     if (
       module.name === "product" ||
-      current.stations[module.name] ||
+      ownEntry(current.stations, module.name) ||
       current.modules[module.name]?.served_at
     )
       continue;
@@ -295,7 +298,7 @@ export function scheduleStations(project: string, manifest: Manifest): void {
           .map((view) => view.name),
       ),
       active: Object.values(current.stations),
-      limit: manifest.stations,
+      limit: manifest.stations ?? 1,
     });
     if (code === "VERID_BURNT_STATION_DEPENDENCY" || code === "VERID_BURNT_STATION_OVERLAP")
       continue;
@@ -393,7 +396,7 @@ export async function closeStation(
 ): Promise<CliResult> {
   const root = primary(project, manifest);
   const paths = statePaths(root);
-  const record = readState(paths).stations[name];
+  const record = ownEntry(readState(paths).stations, name);
   if (!record) throw invalid(`no station: ${name}`);
   if (record.stage === "cleanup") return cleanup(root, record);
   if (record.stage !== "open") throw invalid(`station ${record.stage}; inspect before retrying`);
@@ -444,7 +447,7 @@ export async function closeStation(
   withLock(paths, () => {
     const state = readState(paths);
     if (
-      state.stations[name]?.stage !== "open" ||
+      ownEntry(state.stations, name)?.stage !== "open" ||
       Object.values(state.stations).some((item) => item.stage === "integrating")
     )
       throw invalid("another integration is running");
@@ -547,7 +550,7 @@ export async function closeStation(
         security: null,
       });
     });
-    return cleanup(root, readState(paths).stations[name]!);
+    return cleanup(root, ownEntry(readState(paths).stations, name)!);
   } catch (error) {
     if (!committed) {
       // Only an initially clean merge is rolled back; a concurrent edit requires developer repair.

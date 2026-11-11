@@ -4,6 +4,10 @@ import { matchesGlob } from "./glob.js";
 
 export const STATION_LIMIT = 3;
 
+/** Module names come from the plan, so "constructor" must not find Object.prototype. */
+export const ownEntry = <T>(map: Readonly<Record<string, T>>, key: string): T | undefined =>
+  Object.hasOwn(map, key) ? map[key] : undefined;
+
 /** A conservative intersection: uncertain glob intersections reserve the whole fixed prefix. */
 export function boundariesOverlap(a: readonly string[], b: readonly string[]): boolean {
   const prefix = (glob: string) => glob.toLowerCase().split(/[?*]/, 1)[0]!;

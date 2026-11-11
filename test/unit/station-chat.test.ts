@@ -11,7 +11,8 @@ const t = tempProject("verid-station-chat-", {
   setup: (p) => {
     p.contextSetup("en", {
       providers: ["codex"],
-      drive: "no-brain",
+      // The no-brain drive would launch the next station itself when one closes.
+      drive: "big-brain",
       stations: 2,
       roles: { reviewer: ["verid_reviewer"] },
     });

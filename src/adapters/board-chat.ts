@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
+import { ownEntry } from "../core/station.js";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Provider } from "../core/manifest.js";
@@ -424,7 +425,7 @@ export function stationBoardChat(project: string, spawner: Spawner = spawnLaunch
     t(languageOf(project) ?? systemLanguage(), `board.${key}`, params);
   const keyOf = (name: string | null) => name ?? "";
   const get = (name: string | null, forLaunch = false): Chat => {
-    const record = name === null ? null : readState(statePaths(project)).stations[name];
+    const record = name === null ? null : ownEntry(readState(statePaths(project)).stations, name);
     if (name !== null && (!record || (forLaunch && record.stage !== "open")))
       throw new Error(say("err_station_open"));
     const root = record?.path ?? project;
@@ -478,12 +479,12 @@ export function stationBoardChat(project: string, spawner: Spawner = spawnLaunch
     pumping = true;
     try {
       const manifest = await loadManifest(project, { readOnly: true });
-      if (!manifest || manifest.drive !== "auto" || manifest.stations === 1) return;
+      if (!manifest || manifest.drive !== "auto" || (manifest.stations ?? 1) === 1) return;
       scheduleStations(project, manifest);
       const state = readState(statePaths(project));
       if (state.halted) return;
       for (const record of Object.values(state.stations)) {
-        if (running() + launching.size >= manifest.stations) break;
+        if (running() + launching.size >= (manifest.stations ?? 1)) break;
         if (record.stage !== "open" || started.has(record.module)) continue;
         const local = readState(statePaths(record.path));
         const phase = autoPhase(
@@ -492,7 +493,7 @@ export function stationBoardChat(project: string, spawner: Spawner = spawnLaunch
             local,
             manifest.iterations !== undefined,
             true,
-            manifest.stations,
+            manifest.stations ?? 1,
           ),
         );
         if (phase.kind === "stuck" || phase.kind === "done") continue;

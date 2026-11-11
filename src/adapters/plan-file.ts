@@ -1,4 +1,5 @@
 import { planned } from "../core/manifest.js";
+import { ownEntry } from "../core/station.js";
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";
@@ -85,7 +86,9 @@ export const planViews = (
       (module) => !state.station || module.name === state.station.module,
     ),
     plan.hashes,
-    Object.fromEntries(Object.entries(approvals).filter(([name]) => !state.stations[name])),
+    Object.fromEntries(
+      Object.entries(approvals).filter(([name]) => !ownEntry(state.stations, name)),
+    ),
     evidenceOf(project, state),
   );
 

@@ -1,11 +1,11 @@
 import { planned } from "../core/manifest.js";
 import { stationDiagnostics } from "../adapters/station.js";
+import { projectHook } from "../adapters/hook-wiring.js";
 import { spawnSync } from "node:child_process";
 import { antigravityPluginInstalled } from "../adapters/antigravity-settings.js";
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 import { node22OrLater } from "../core/doctor.js";
 import { instructionBlock, instructionBlocks } from "../core/instructions.js";
 import { hasCurrentVeridHooks } from "../adapters/claude-settings.js";
@@ -91,10 +91,7 @@ export async function doctorCommand(project: string, ci = false): Promise<CliRes
 
   if (!ci && (!manifest || manifest.providers.includes("claude-code"))) {
     const settingsFile = join(project, ".claude/settings.local.json");
-    const hook =
-      manifest?.resources === "repo"
-        ? join(project, ".verid/hooks/hook.js")
-        : fileURLToPath(new URL("./hook.js", import.meta.url));
+    const hook = projectHook(project, manifest?.resources);
     let currentHooks = false;
     try {
       currentHooks = hasCurrentVeridHooks(JSON.parse(readFileSync(settingsFile, "utf8")), hook);
@@ -250,9 +247,7 @@ export async function doctorCommand(project: string, ci = false): Promise<CliRes
     }
     if (provider === "codex") {
       const local = manifest?.resources === "repo";
-      const hook = local
-        ? join(project, ".verid/hooks/hook.js")
-        : fileURLToPath(new URL("./hook.js", import.meta.url));
+      const hook = projectHook(project, manifest?.resources);
       const hookFile = join(project, ".codex", "hooks.json");
       let settings: unknown;
       try {

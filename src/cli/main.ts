@@ -1,9 +1,9 @@
 import { planned, taskSessions } from "../core/manifest.js";
+import { ownEntry } from "../core/station.js";
 import type { ErrorCode, MessageKey } from "../core/errors.js";
 import { inAgentShell } from "../adapters/agent-environment.js";
 import { existsSync, readFileSync, rmSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { autoNextStep, autoPhase, changedServed, securityOf } from "../core/auto.js";
 import type { Manifest } from "../core/manifest.js";
@@ -69,6 +69,7 @@ import { baselineCommand, lastRefusal, testCommand, type CliResult } from "./tes
 import { pluginCommand } from "./plugin.js";
 import { emitPluginEvent } from "../adapters/plugin-hooks.js";
 import { resolveProject } from "../adapters/project.js";
+import { projectHook } from "../adapters/hook-wiring.js";
 import { stationCommand } from "./station.js";
 
 /** `dist/cli.js`: the command line in, its output and exit code out. */
@@ -325,7 +326,7 @@ async function status(project: string): Promise<CliResult> {
   const state = readState(statePaths(project));
   const manifest = await loadManifest(project);
   // A teammate who cloned the project but never ran cook has state and manifest, and no hooks.
-  const hook = fileURLToPath(new URL("./hook.js", import.meta.url));
+  const hook = projectHook(project);
   const claude = ["settings.local.json", "settings.json"].some((f) =>
     guardsToolCalls(readJson(join(project, ".claude", f)), hook),
   );
@@ -657,14 +658,14 @@ async function approve(project: string, wanted: string | undefined): Promise<Cli
   const result = withLock(paths, () => {
     const state = readState(paths);
     const views = planViews(project, plan, state);
-    const open = openModule(views.filter((view) => !state.stations[view.name]));
+    const open = openModule(views.filter((view) => !ownEntry(state.stations, view.name)));
     const kanban = manifest && taskSessions(manifest);
     const specHash = kanban ? readFileHash(specFile(project)) : null;
     if (kanban && specHash === null)
       throw new VeridError("VERID_BURNT_PLAN_NO_SPEC", { target: specFile(project) });
     if (kanban && state.kanban.active && state.kanban.active.module !== name)
       throw new VeridError("VERID_BURNT_MODULE_OPEN", { module: state.kanban.active.module });
-    if (state.stations[name])
+    if (ownEntry(state.stations, name))
       throw new VeridError("VERID_BURNT_STATION_INVALID", {
         detail: `module already has a station: ${name}`,
       });
@@ -725,7 +726,7 @@ async function approve(project: string, wanted: string | undefined): Promise<Cli
     // and needs a new review.
     const served = Object.entries(state.modules).filter(
       ([other, a]) =>
-        other !== name && (a.served_at !== null || state.stations[other] !== undefined),
+        other !== name && (a.served_at !== null || ownEntry(state.stations, other) !== undefined),
     );
     writeState(paths, {
       ...state,
@@ -885,7 +886,7 @@ async function serve(project: string, wanted: string): Promise<CliResult> {
     const state = readState(paths);
     const views = planViews(project, plan, state);
     const view = views.find((v) => v.name === name) as ModuleView;
-    if (state.stations[name])
+    if (ownEntry(state.stations, name))
       throw new VeridError("VERID_BURNT_STATION_INVALID", {
         detail: "serve inside the station, then station close from the primary worktree",
       });
