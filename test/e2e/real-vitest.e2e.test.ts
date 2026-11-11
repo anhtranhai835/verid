@@ -1,49 +1,35 @@
+import { tempProject, CLI, TEST_ROOT as root } from "../support/project.js";
+import { manifest } from "../support/project.js";
 import { spawnSync } from "node:child_process";
-import {
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  realpathSync,
-  rmSync,
-  symlinkSync,
-  writeFileSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+
 import { join } from "node:path";
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { expect, it } from "vitest";
 import { developerEnv } from "./helpers.js";
 
-// The other e2e tests feed recorded reports through a fake runner. This one runs vitest itself
-// (verid's own devDependency) in a scratch project, so the whole chain is real on the machine that
-// runs it: the platform shell, vitest's JUnit reporter, the report path verid passes in.
-const root = join(import.meta.dirname, "..", "..");
-const CLI = join(root, "dist", "cli.js");
 const VITEST = join(root, "node_modules", "vitest", "vitest.mjs");
 
 let project: string;
-beforeEach(() => {
-  // The long name: a Windows temp dir can be an 8.3 short name (RUNNER~1) that vite resolves away.
-  project = realpathSync.native(mkdtempSync(join(tmpdir(), "verid-vitest-")));
-  mkdirSync(join(project, ".verid", ".state"), { recursive: true });
-  mkdirSync(join(project, "src"));
-  mkdirSync(join(project, "test"));
-  writeFileSync(join(project, ".verid", ".state", "state.json"), '{"schemaVersion":1}');
-  const testCmd = `"${process.execPath}" "${VITEST}" run --globals --reporter=junit --outputFile={junit}`;
-  writeFileSync(
-    join(project, ".verid", "manifest.yaml"),
-    [
-      "schemaVersion: 1",
-      "mode: remix",
-      "repos:",
-      "  - path: .",
-      `    test_cmd: ${JSON.stringify(testCmd)}`,
-      '    source_globs: ["src/**"]',
-      '    test_globs: ["test/**"]',
-      "",
-    ].join("\n"),
-  );
+tempProject("verid-vitest-", {
+  canonical: true,
+  state: '{"schemaVersion":1}',
+  manifest: () =>
+    manifest(
+      "src/**",
+      '"' +
+        process.execPath +
+        '" "' +
+        VITEST +
+        '" run --globals --reporter=junit --outputFile={junit}',
+    ),
+  bind: (p) => {
+    project = p.root;
+  },
+  setup: (p) => {
+    mkdirSync(p.path("src"));
+    mkdirSync(p.path("test"));
+  },
 });
-afterEach(() => rmSync(project, { recursive: true, force: true }));
 
 function verid(...args: string[]) {
   const env = developerEnv("VITEST");
