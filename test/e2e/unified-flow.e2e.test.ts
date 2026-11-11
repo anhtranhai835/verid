@@ -150,7 +150,8 @@ it("AC-15: remix displays a no-task notice and leaves baseline gates unchanged",
 });
 
 it("AC-17: the board is self-contained and adds no runtime dependency", () => {
-  expect(boardHtml).not.toMatch(/<(?:script|link)[^>]+(?:src|href)=["']https?:/i);
+  for (const lang of ["en", "vi"] as const)
+    expect(boardHtml(lang)).not.toMatch(/<(?:script|link)[^>]+(?:src|href)=["']https?:/i);
   const pkg = JSON.parse(readFileSync(join(import.meta.dirname, "../../package.json"), "utf8"));
   expect(pkg.dependencies).toBeUndefined();
 });

@@ -27,16 +27,16 @@ to open the printed URL yourself, or `--port 4318` to choose a port.
 1. Write requirements in `.verid/spec.md` as `- REQ-1: testable behaviour` (also
    `NFR-1` and `SEC-1`). The board can edit spec and plan. Complete research and
    design before selecting a task.
-2. Use **Tách task từ spec** to seed a draft task for each live requirement and a
+2. Use **Split tasks from the spec** to seed a draft task for each live requirement and a
    final product task. Existing plans are kept. Refine task scope, ACs and
-   dependencies in **Kế hoạch task**, or let the planning agent write the plan.
+   dependencies in **Task plan**, or let the planning agent write the plan.
    Each `## Module: <name>` becomes a card; `Title:` supplies its display title.
 3. In big-brain drive, select the task you want first. Selection uses `verid order` and keeps one task
    open. Send the prefilled session prompt from the task's **chat box**: the board
    runs the provider's CLI headless (`claude -p`, `codex exec`, `agy -p`) in the
    project and later messages resume that same session. Or copy the prompt into a
    new AI session in a terminal or IDE.
-4. Follow TDD and independent review. **Duyệt & lên món** calls `verid serve` and
+4. Follow TDD and independent review. **Approve & serve** calls `verid serve` and
    checks the same evidence as the CLI. Stop that session, select another task,
    and open another new session.
 

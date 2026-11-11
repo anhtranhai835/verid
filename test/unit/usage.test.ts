@@ -203,6 +203,6 @@ describe("usage views", () => {
   });
 
   it("labels cards without reported tokens in readable Vietnamese", () => {
-    expect(boardHtml).toContain("'Token: không có'");
+    expect(boardHtml("vi")).toContain('"tokens_none":"Token: không có"');
   });
 });

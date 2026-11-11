@@ -25,7 +25,7 @@ No new browser dependencies are required.
 
 Write `.verid/research.md`, `.verid/spec.md` and `.verid/design.md` before ordering
 a task. Spec and plan can be edited from the board while no task is open.
-**Tách task từ spec** reads live `REQ-*`, `NFR-*` and `SEC-*` bullet requirements,
+**Split tasks from the spec** reads live `REQ-*`, `NFR-*` and `SEC-*` bullet requirements,
 ignores dropped requirements, and creates a draft `.verid/plan.md` only if none
 exists. Broad requirements still need a planner to refine their scope and ACs.
 Generated task IDs are stable requirement IDs; AC IDs are unique across the plan.
@@ -50,13 +50,13 @@ The `product` task comes last and requires end-to-end ACs.
 
 The columns reflect real state:
 
-| Column      | Meaning                                                                          |
-| ----------- | -------------------------------------------------------------------------------- |
-| Chờ gọi món | Task is planned and not selected.                                                |
-| Đã chốt món | Developer ordered it; it awaits a fresh session.                                 |
-| Đang nấu    | A new session has claimed the task.                                              |
-| Nếm & duyệt | The current task's ACs have passing test evidence; review and acceptance follow. |
-| Lên bàn     | `serve` accepted the evidence and closed the task.                               |
+| Column           | Meaning                                                                          |
+| ---------------- | -------------------------------------------------------------------------------- |
+| Waiting to order | Task is planned and not selected.                                                |
+| Ordered          | Developer ordered it; it awaits a fresh session.                                 |
+| Cooking          | A new session has claimed the task.                                              |
+| Taste & review   | The current task's ACs have passing test evidence; review and acceptance follow. |
+| Served           | `serve` accepted the evidence and closed the task.                               |
 
 In big-brain drive, selection calls the same `order` implementation as the CLI. It signs the task's
 plan section and design and stores the spec hash, resets TDD for new work, and
@@ -84,7 +84,7 @@ provider's CLI headless in the project, one run at a time:
 
 The prompt goes to Claude Code and Codex on stdin, never on a command line. verid's
 `SessionStart` hook binds the new session to the task as for any session. Later
-messages resume the bound session, and its provider is fixed. **Dừng** stops the
+messages resume the bound session, and its provider is fixed. **Stop** stops the
 run. The transcript lives in the board process only. A restarted board continues
 the bound session, not the old transcript. Every tool call still passes verid's
 hook. A copy of the prompt also works in a new terminal or IDE session.

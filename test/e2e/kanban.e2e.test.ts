@@ -304,6 +304,20 @@ it("serves a protected local board with real selection and rejects CSRF, stale r
   expect((await duplicate.json()).error).toContain("Tiếp tục session hiện tại");
 });
 
+it("serves the board and its task reasons in the project's language", async () => {
+  split();
+  expect((await cli("order", "req-1")).code).toBe(0);
+  server = await startBoard(project, async () => ({ exit: 0, stdout: "", stderr: "" }));
+  const page = await (await fetch(server.origin)).text();
+  expect(page).toContain('<html lang="en">');
+  expect(page).not.toMatch(/[À-ỹ]/);
+  const reasons = (await boardSnapshot(project)).tasks.map((task) => task.reason ?? "");
+  expect(reasons.join("\n")).toContain("Finish req-1 before selecting the next task");
+  expect(reasons.join("\n")).not.toMatch(/[À-ỹ]/);
+  const denied = await fetch(`${server.origin}/api/board`);
+  expect((await denied.json()).error).not.toMatch(/[À-ỹ]/);
+});
+
 it("chats with the selected task's AI from the board: new session first, then the bound one", async () => {
   split();
   const launches: Launch[] = [];
@@ -338,7 +352,7 @@ it("chats with the selected task's AI from the board: new session first, then th
 
   const early = await chat("start");
   expect(early.status).toBe(409);
-  expect((await early.json()).error).toContain("Chọn task");
+  expect((await early.json()).error).toContain("Select this task");
   const board = await (await fetch(`${server.origin}/api/board`, { headers })).json();
   expect((await post({ action: "select", task: "req-1", revision: board.revision })).status).toBe(
     200,

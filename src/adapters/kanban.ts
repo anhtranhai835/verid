@@ -22,19 +22,31 @@ import {
 import { scaffoldModule, moduleDrafts } from "./module-scaffold.js";
 import { appendAudit, readAudit } from "./audit-log.js";
 import { usageReport } from "../core/usage.js";
-import { readFileHash, readState, statePaths, withLock, writeState } from "./state-store.js";
+import {
+  languageOf,
+  readFileHash,
+  readState,
+  statePaths,
+  withLock,
+  writeState,
+} from "./state-store.js";
 import { checkSetupPath } from "./workspace.js";
+import { systemLanguage, t } from "./i18n.js";
 
+const boardMessage = (project: string, key: string) =>
+  t(languageOf(project) ?? systemLanguage(), `board.${key}`, {});
 const textOf = (file: string) => (existsSync(file) ? readFileSync(file, "utf8") : "");
 
 export async function boardSnapshot(project: string) {
   const manifest = await loadManifest(project, { readOnly: true });
-  if (!manifest) throw new Error("Chưa có manifest. Chạy verid cook trước khi mở board.");
+  if (!manifest) throw new Error(boardMessage(project, "err_no_manifest"));
   const state = readState(statePaths(project));
   return snapshotOf(project, manifest, state);
 }
 
 function snapshotOf(project: string, manifest: Manifest, state: State) {
+  const lang = state.language ?? systemLanguage();
+  const say = (key: string, params: Record<string, string> = {}) => t(lang, `board.${key}`, params);
   const usage = new Map(
     usageReport(readAudit(statePaths(project).audit)).map((row) => [row.module, row]),
   );
@@ -103,18 +115,20 @@ function snapshotOf(project: string, manifest: Manifest, state: State) {
           (id) => views.find((item) => item.name === id)?.phase !== "done",
         );
         const reason = state.halted
-          ? `Workflow đang dừng: ${state.halted.reason}`
+          ? say("halted", { reason: state.halted.reason })
           : view.phase === "done"
-            ? "Task đã hoàn tất"
+            ? say("reason_done")
             : active && !selected
-              ? `Hoàn tất ${active.module} trước khi chọn task tiếp theo`
+              ? say("reason_finish_active", { module: active.module })
               : missing.length
-                ? `Cần hoàn thiện .verid/${missing.join(", .verid/")}`
+                ? say("reason_missing", {
+                    files: missing.map((file) => `.verid/${file}`).join(", "),
+                  })
                 : (dossier.problem ??
                   moduleProblem(module) ??
                   (module.name === PRODUCT &&
                   views.some((item) => item.name !== PRODUCT && item.phase !== "done")
-                    ? "Hoàn tất các task khác trước khi kiểm thử sản phẩm"
+                    ? say("reason_product")
                     : null));
         const isNext = !next && column === "backlog";
         if (isNext) next = true;
@@ -160,9 +174,7 @@ function snapshotOf(project: string, manifest: Manifest, state: State) {
   return {
     project: basename(project),
     drive: manifest.drive,
-    notice: planned(manifest)
-      ? null
-      : "Mode remix không có task; dùng verid stock và luồng baseline.",
+    notice: planned(manifest) ? null : say("notice_remix"),
     spec,
     plan: planText,
     planError:
@@ -258,12 +270,12 @@ export async function moveTask(
   const paths = statePaths(project);
   // Resolve manifest before taking the lock: the snapshot itself is read-only under it.
   const manifest = await loadManifest(project, { readOnly: true });
-  if (!manifest || !planned(manifest)) throw new Error("Mode remix không có task.");
+  if (!manifest || !planned(manifest)) throw new Error(boardMessage(project, "err_remix"));
   withLock(paths, () => {
     const snapshot = snapshotOf(project, manifest, readState(paths));
-    if (snapshot.revision !== revision) throw new Error("Bảng đã thay đổi. Tải lại rồi thử lại.");
+    if (snapshot.revision !== revision) throw new Error(boardMessage(project, "err_stale"));
     const item = snapshot.tasks.find((item) => item.id === task);
-    if (!item?.canMove) throw new Error("Chỉ đổi ưu tiên task chưa bắt đầu; product luôn cuối.");
+    if (!item?.canMove) throw new Error(boardMessage(project, "err_cannot_move"));
     const state = readState(paths);
     const movable = snapshot.tasks.filter((item) => item.canMove).map((item) => item.id);
     const queue = moveInQueue(movable, task, direction);

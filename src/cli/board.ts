@@ -3,6 +3,8 @@ import { spawn } from "node:child_process";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { parseArgs } from "node:util";
 import { inAgentShell } from "../adapters/agent-environment.js";
+import { systemLanguage, t } from "../adapters/i18n.js";
+import { languageOf } from "../adapters/state-store.js";
 import { boardChat, type Spawner } from "../adapters/board-chat.js";
 import { boardSnapshot, moveTask, saveBoardDocument, taskPrompt } from "../adapters/kanban.js";
 import { boardHtml } from "./board-page.js";
@@ -10,9 +12,13 @@ import type { CliResult } from "./test.js";
 
 type Command = (command: "order" | "serve", task: string) => Promise<CliResult>;
 
+/** A board message in the project's language, else the machine's. */
+const say = (project: string, key: string, params: Record<string, string> = {}) =>
+  t(languageOf(project) ?? systemLanguage(), `board.${key}`, params);
+
 /** A loopback-only developer UI. All mutations use the same approval/evidence gates as the CLI. */
 export async function startBoard(project: string, command: Command, port = 0, spawner?: Spawner) {
-  if (inAgentShell()) throw new Error("verid board chỉ chạy từ terminal của người dùng.");
+  if (inAgentShell()) throw new Error(say(project, "err_agent_shell"));
   await boardSnapshot(project);
   const chat = boardChat(project, spawner);
   const token = randomBytes(32).toString("hex");
@@ -39,11 +45,11 @@ export async function startBoard(project: string, command: Command, port = 0, sp
         "Content-Type": "text/html; charset=utf-8",
         "Cache-Control": "no-store",
       });
-      res.end(boardHtml);
+      res.end(boardHtml(languageOf(project) ?? systemLanguage()));
       return;
     }
     if (req.headers.authorization !== `Bearer ${token}`)
-      return send(res, 401, { error: "Mở board bằng URL được in trong terminal." });
+      return send(res, 401, { error: say(project, "err_auth") });
     if (req.method === "GET" && url.pathname === "/api/board")
       return send(res, 200, await boardSnapshot(project));
     if (req.method === "GET" && url.pathname === "/api/chat")
@@ -57,7 +63,7 @@ export async function startBoard(project: string, command: Command, port = 0, sp
     for await (const chunk of req) {
       body += String(chunk);
       if (Buffer.byteLength(body) > 512_000)
-        return send(res, 413, { error: "Tài liệu quá lớn (tối đa 512 KB)." });
+        return send(res, 413, { error: say(project, "err_too_large") });
     }
     const data: unknown = JSON.parse(body);
     if (!data || typeof data !== "object" || Array.isArray(data))
@@ -74,14 +80,12 @@ export async function startBoard(project: string, command: Command, port = 0, sp
       snapshot.drive === "auto" &&
       ["select", "serve", "prompt", "chat"].includes(String(input.action))
     )
-      return send(res, 409, {
-        error: "AI drive làm theo hàng đợi trong session đã ký. Chạy verid order từ terminal.",
-      });
+      return send(res, 409, { error: say(project, "err_auto_queue") });
     if (input.action === "chat") {
       const task = snapshot.tasks.find((item) => item.id === input.task);
-      if (!task?.selected) return send(res, 409, { error: "Chọn task này trước khi chat." });
+      if (!task?.selected) return send(res, 409, { error: say(project, "err_chat_select") });
       if (task.needsReapproval)
-        return send(res, 409, { error: "Phạm vi đã đổi. Duyệt lại task trước khi chat." });
+        return send(res, 409, { error: say(project, "err_chat_reapprove") });
       await chat.send({
         task: task.id,
         text: typeof input.text === "string" ? input.text : "",
@@ -90,9 +94,7 @@ export async function startBoard(project: string, command: Command, port = 0, sp
       return send(res, 200, await chat.status());
     }
     if (input.revision !== snapshot.revision)
-      return send(res, 409, {
-        error: "Bảng đã thay đổi. Đã tải lại dữ liệu; hãy thực hiện lại thao tác.",
-      });
+      return send(res, 409, { error: say(project, "err_stale") });
     if (input.action === "spec" || input.action === "plan" || input.action === "split") {
       if (input.action !== "split" && typeof input.content !== "string")
         return send(res, 400, { error: "Missing document" });
@@ -111,7 +113,7 @@ export async function startBoard(project: string, command: Command, port = 0, sp
       await moveTask(project, input.task, input.direction, snapshot.revision);
     } else if (input.action === "select" || input.action === "serve") {
       const task = snapshot.tasks.find((item) => item.id === input.task);
-      if (!task) return send(res, 400, { error: "Task không tồn tại." });
+      if (!task) return send(res, 400, { error: say(project, "err_no_task") });
       if (input.action === "select" && task.reason) return send(res, 409, { error: task.reason });
       const result = await command(input.action === "select" ? "order" : "serve", task.id);
       if (result.exit !== 0) return send(res, 409, { error: result.stderr });
@@ -152,7 +154,7 @@ export async function boardCommand(
   args: string[],
   command: Command,
 ): Promise<CliResult> {
-  if (inAgentShell()) throw new Error("verid board chỉ chạy từ terminal của người dùng.");
+  if (inAgentShell()) throw new Error(say(project, "err_agent_shell"));
   const { values } = parseArgs({
     args,
     options: { port: { type: "string" }, "no-open": { type: "boolean" } },
@@ -160,11 +162,11 @@ export async function boardCommand(
   });
   const port = values.port === undefined ? 0 : Number(values.port);
   if (!Number.isInteger(port) || port < 0 || port > 65535)
-    throw new Error("--port cần là số từ 0 đến 65535.");
+    throw new Error(say(project, "err_port"));
   const board = await startBoard(project, command, port);
   const snapshot = await boardSnapshot(project);
   process.stdout.write(
-    `Verid Kanban: ${board.url}\n${snapshot.notice ?? (snapshot.drive === "auto" ? "Drive no-brain: xếp ưu tiên rồi chạy verid order; một session làm hết hàng đợi." : "Drive big-brain: mỗi task một session AI mới.")} Giữ terminal này mở; Ctrl+C để dừng board.\n`,
+    `Verid Kanban: ${board.url}\n${snapshot.notice ?? say(project, snapshot.drive === "auto" ? "terminal_auto" : "terminal_human")} ${say(project, "terminal_keep")}\n`,
   );
   if (!values["no-open"]) {
     // No shell interpolation. Windows URL is a generated loopback address with a hex fragment.
@@ -179,9 +181,7 @@ export async function boardCommand(
       process.platform === "win32" ? ["url.dll,FileProtocolHandler", board.url] : [board.url],
       { windowsHide: true, stdio: "ignore" },
     );
-    child.on("error", () =>
-      process.stderr.write("Không tự mở được trình duyệt. Mở URL ở trên để dùng board.\n"),
-    );
+    child.on("error", () => process.stderr.write(`${say(project, "err_open")}\n`));
     child.unref();
   }
   return { exit: 0, stdout: "", stderr: "" };
