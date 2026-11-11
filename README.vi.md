@@ -22,307 +22,88 @@ research → spec → design → plan → order → build & test → review → 
 ```
 
 Yêu cầu, quyết định và hồ sơ module nằm trong `.verid/`. CLI ghi bằng chứng test
-và kiểm tra approval; agent làm theo skills đã cài hoặc bản tài nguyên được commit
-cùng project.
+và kiểm tra approval; hook từ chối các lần ghi bỏ qua approval hoặc test đang fail.
 
 ---
 
 ## Vì sao dùng verid?
 
-Trước khi triển khai, project cần thống nhất hành vi, interface và tiêu chí nghiệm
-thu. verid ghi những điều đó thành tài liệu rồi nối chúng với test.
-
 - **Lập kế hoạch theo module.** Mỗi module có AC kiểm thử được; developer quyết định khi bắt đầu.
 - **Dùng bằng chứng đã ghi nhận.** `verid taste` đối chiếu exit code của runner với báo cáo JUnit.
-- **Phân vai rõ ràng.** Claude Code có thể tách tester, coder và reviewer. Codex dùng
-  luồng chính viết test/code và reviewer độc lập chỉ đọc.
-- **Mang workflow theo repo.** Luồng modular có hồ sơ riêng từng module; tài nguyên
-  repo gồm agents, skills, templates và bản hook runtime được pin.
-- **Tiếp tục dựa trên trạng thái thực.** `verid menu` cho biết tiến độ module,
-  cảnh báo audit và bước tiếp theo.
-
----
-
-## Yêu cầu
-
-- Node.js **22 trở lên**, có npm trong `PATH`.
-- Git để thao tác repository và workspace.
-- Claude Code, Codex CLI hoặc cả hai.
-
-## Cài đặt
-
-### Gói đã phát hành (cài global tùy chọn)
-
-```sh
-npm install -g @anhtranhai835/verid
-```
-
-Các lệnh cài một dòng cài gói npm đã phát hành và thử thiết lập provider.
-Máy cần có Node.js trước.
-
-**Windows — PowerShell**
-
-```powershell
-irm https://raw.githubusercontent.com/anhtranhai835/aeriq/main/install.ps1 | iex
-```
-
-**macOS / Linux**
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/anhtranhai835/aeriq/main/install.sh | sh
-```
-
-Trong terminal tương tác, installer có thể hỏi thư mục project rồi chạy
-`verid cook`. Với CI hoặc khi không có terminal, tự chạy cook sau khi cài.
-
-### Source hiện tại, gồm luồng modular mới
-
-Dùng bản build từ source nếu gói npm chưa có tính năng mô tả trong README này:
-
-```sh
-git clone https://github.com/anhtranhai835/aeriq.git
-cd aeriq
-npm ci
-npm run build
-```
-
-Từ project đích, chạy CLI đã build một lần, thay đường dẫn bằng checkout của bạn:
-
-```sh
-node /path/to/aeriq/dist/cli.js cook --mode prep --resources repo --provider codex --yes
-```
-
-Sau cook, repo có CLI và các thư viện runtime đi kèm. Từ gốc project:
-
-```sh
-node .verid/verid.mjs module identity
-node .verid/verid.mjs menu
-node .verid/verid.mjs taste
-```
-
-Chế độ repo chạy được mà không cần cài verid global hoặc một bộ `node_modules` riêng
-cho verid. Máy vẫn cần Node.js, provider và test runner của project.
-Tên lệnh khi cài global tùy chọn là `verid`; tên gói npm là `@anhtranhai835/verid`.
+- **Phân vai rõ ràng.** Test, code và review là các vai riêng, reviewer chỉ đọc.
+- **Mang workflow theo repo.** Agents, skills, templates và bản hook runtime được pin có thể nằm trong project.
+- **Tiếp tục dựa trên trạng thái thực.** `verid menu` cho biết tiến độ module, cảnh báo audit và bước tiếp theo.
 
 ---
 
 ## Bắt đầu nhanh
 
-Trong project cần làm việc:
+Cần Node.js 22 trở lên, Git, và Claude Code hoặc Codex. Các cách cài khác, cùng thiết lập Codex và Antigravity, nằm ở [cài đặt](docs/installation.vi.md).
+
+**1. Cài.**
+
+```sh
+npm install -g @anhtranhai835/verid
+```
+
+**2. Thiết lập project.** Cook hỏi mode (`prep` cho ý tưởng, `recipe` cho đặc tả có sẵn, `remix` cho code có sẵn), drive (`human` hoặc `ai`) và provider. Lệnh tự nhận diện layout và test runner, hiện danh sách file sẽ ghi, và ghi khi bạn xác nhận.
 
 ```sh
 cd your-project
 verid cook
 ```
 
-Cook hỏi ngôn ngữ, provider, layout, nơi lưu tài nguyên, mode, drive và kiến trúc.
-Lệnh tự nhận diện layout và test runner, rồi hiện danh sách file sẽ ghi.
-Xác nhận bản xem trước để áp dụng.
+Dòng cuối là `Served! ...` (bản tiếng Việt: `Xong! ...`) kèm lệnh `verid menu`. Với project `remix`, cook trước hết nhắc chạy `verid stock`.
 
-Đặt tài liệu có sẵn vào `.verid/docs/`. Mở provider ở gốc project hoặc workspace
-và giao việc:
-
-> Đọc AGENTS.md và tài liệu nguồn, rồi hướng dẫn tôi thực hiện bước tiếp theo.
+**3. Kiểm tra cài đặt.** Project ổn sẽ kết thúc bằng `No problems found.`
 
 ```sh
 verid doctor
+```
+
+**4. Nói bạn muốn gì.** Mở Claude Code hoặc Codex ở gốc project và mô tả ý tưởng. Agent đi qua `ba`, `design` và `plan`. `verid menu` cho biết đang ở đâu, ví dụ `Next: clarify scope and constraints with verid:ba; record .verid/research.md.`
+
+```sh
 verid menu
 ```
 
-Nếu dùng mode `remix` cho code có sẵn, chạy `verid stock` trước khi agent sửa code.
-
-### Bắt đầu với hồ sơ modular và tài nguyên trong repo
+**5. Duyệt module.** Đọc module agent đã viết trong `.verid/plan.md`. Khi AC đúng, order nó.
 
 ```sh
-verid cook --mode prep --resources repo --provider codex --yes
-node .verid/verid.mjs module identity
+verid order <module>
 ```
 
-Điền bản nháp của module, rồi tổng hợp yêu cầu, thiết kế và AC đã thống nhất vào
-`.verid/spec.md`, `.verid/design.md` và `.verid/plan.md`. Cook chờ nội dung thật
-của các tài liệu đầu vào này để xét approval.
+**6. Xem agent build.** Agent viết test fail trước, rồi code, giữa hai bước chạy `verid taste`. Vòng đi RAW, COOKING, PLATED.
 
-Với Codex, trust project và hook đã tạo qua `/hooks` rồi chạy `verid doctor`.
-Xem [thiết lập Codex](#thiết-lập-codex).
+```sh
+verid peek
+```
+
+**7. Review và serve.** Reviewer mới kiểm tra module. Khi bằng chứng và review đều đạt, đóng module.
+
+```sh
+verid serve <module>
+```
+
+**Bị chặn?** Mỗi lần từ chối đều in mã và bước tiếp theo; xem [xử lý sự cố](docs/troubleshooting.vi.md).
 
 ---
 
-## Luồng module và tài nguyên
+## Một module đi qua workflow như thế nào?
 
-`prep` và `recipe` luôn có hồ sơ module và board, cho cả monorepo (một Git repo) và workspace (nhiều repo con). Cook cho chọn layout, mặc định theo tự nhận diện. Workspace phải nằm ngoài repo Git và có ít nhất một repo con. Project đã có manifest giữ layout đã chọn.
+| Bước          | Người thực hiện và kết quả                                                        |
+| ------------- | --------------------------------------------------------------------------------- |
+| Research      | Main với BA đọc `.verid/docs/`, ghi phạm vi và nguồn.                             |
+| Spec          | Main với BA ghi yêu cầu truy vết được trong `.verid/spec.md`.                     |
+| Design        | Architect hoặc Codex main thống nhất interface và reuse trong `.verid/design.md`. |
+| Plan          | Planner hoặc Codex main ghi AC theo thứ tự trong `.verid/plan.md`.                |
+| Order         | Developer duyệt module; auto drive làm theo plan đã ký.                           |
+| Build và test | Tester/QA rồi coder trên Claude; main trên Codex; mỗi vòng dùng `verid taste`.    |
+| Review        | Reviewer mới đọc AC, design, hồ sơ module, diff và review packet.                 |
+| Serve         | Bằng chứng, coverage AC và verdict phải đạt để đóng module.                       |
+| Bàn giao      | Main chuẩn bị commits và PR sau các kiểm tra sản phẩm đã thống nhất.              |
 
-| Cấu hình  | Giá trị     | Hành vi                                                                       |
-| --------- | ----------- | ----------------------------------------------------------------------------- |
-| Drive     | `human`     | Người dùng chọn task; mỗi task một session AI mới; người dùng serve.          |
-| Drive     | `ai`        | Người dùng xếp ưu tiên và ký bằng `verid order`; một session đi hết hàng đợi. |
-| Resources | `installed` | Dùng skills và agents đã cài.                                                 |
-| Resources | `repo`      | Pin skills, agents, templates và runtime trong project; giữ tùy chỉnh đã có.  |
-
-`remix` giữ luồng baseline; board báo không có task.
-
-### Board: chọn task và xếp ưu tiên
-
-```sh
-verid cook --mode prep --provider codex --yes
-verid board
-# Nếu dùng tài nguyên repo: node .verid/verid.mjs board
-```
-
-Lệnh mở Kanban trên trình duyệt; giữ terminal đó chạy. Dùng `--no-open` để tự mở
-URL được in ra, hoặc `--port 4318` để chọn cổng.
-
-1. Viết yêu cầu trong `.verid/spec.md` dạng `- REQ-1: hành vi kiểm thử được`
-   (cũng hỗ trợ `NFR-1`, `SEC-1`). Có thể sửa spec/plan ngay trên bảng.
-   Hoàn thiện research và design trước khi chọn task.
-2. Nhấn **Tách task từ spec** để tạo bản nháp một task cho mỗi yêu cầu và task
-   kiểm thử sản phẩm cuối cùng. Giữ nguyên plan đã tồn tại. Chỉnh scope, tiêu chí
-   và phụ thuộc trong **Kế hoạch task**, hoặc để AI lập plan chi tiết.
-   Mỗi `## Module: <tên>` là một card; `Title:` đặt tên dễ đọc.
-3. Với drive human, chọn task muốn làm trước. Verid duyệt bằng `order`, chỉ mở một task mỗi lần.
-   Gửi nội dung session (đã điền sẵn) từ **khung chat** của task: bảng chạy CLI của
-   provider ở chế độ headless (`claude -p`, `codex exec`, `agy -p`) trong project, tin
-   sau nối tiếp đúng session đó. Hoặc sao chép sang session AI mới trong terminal/IDE.
-4. AI làm TDD và review độc lập. Nhấn **Duyệt & lên món** để chạy `serve` với
-   đầy đủ kiểm tra bằng chứng. Dừng session cũ, chọn task tiếp theo rồi mở session mới.
-
-Hook lưu ràng buộc task/session qua các lần chạy. Session lập kế hoạch, session
-khác đang mở và session từng làm task trước không được nhận task này. Resume/compact
-giữ task hiện tại; clear context không cho session cũ nhận task tiếp theo. Sửa spec,
-scope trong plan hoặc design phải duyệt lại và mở session mới. AI không tự chọn task kế tiếp.
-
-Dùng ↑/↓ hoặc Alt+↑/↓ trên card để xếp task chưa bắt đầu. Thứ tự lưu cục bộ qua lần khởi động lại; `verid menu` dùng cùng thứ tự. Task đang làm được giữ nguyên, `product` luôn cuối. Drive human đánh dấu task tiếp theo nhưng vẫn cho chọn task khác. Drive ai ẩn nút chọn/chat; ký từ terminal để AI đi theo hàng đợi. Phụ thuộc vẫn là cảnh báo.
-
-### Hồ sơ module
-
-`verid module <tên>` lấy mẫu từ `.verid/templates/module/` của project. Lệnh tạo
-bản nháp và giữ file đã tồn tại.
-
-| Thư mục     | Nội dung cần ghi                                                              |
-| ----------- | ----------------------------------------------------------------------------- |
-| `ba/`       | Vấn đề, người dùng, phạm vi, yêu cầu EARS, nguồn và ví dụ.                    |
-| `ui/`       | Journey, màn hình, trạng thái, tokens, accessibility hoặc lý do không có UI.  |
-| `spec/`     | Contracts, dữ liệu, invariants, lỗi, code tái sử dụng và ranh giới phụ thuộc. |
-| `tests/`    | Ánh xạ yêu cầu → AC → test, fixtures và điều kiện chạy runner.                |
-| `security/` | Phân loại dữ liệu, trust boundaries, STRIDE, abuse cases và biện pháp xử lý.  |
-| `review/`   | Báo cáo review độc lập thật và đường dẫn bằng chứng.                          |
-| `release/`  | Rollout, migration, rollback và bằng chứng bàn giao.                          |
-
-Mỗi section trong plan modular phải dẫn hồ sơ tương ứng:
-
-```markdown
-## Module: identity
-
-Artifacts: .verid/artifacts/03-modules/identity
-Review Focus: xử lý lỗi và ranh giới phân quyền.
-
-- AC-1: thông tin hợp lệ mở workspace của thành viên (REQ-1)
-- AC-2: thông tin không hợp lệ trả lỗi chung đã thống nhất (REQ-2, SEC-1)
-```
-
-ID yêu cầu và AC phải duy nhất toàn project. Giải quyết các câu hỏi trong bản nháp
-trước order. Chữ ký module gồm section plan và sáu tài liệu đầu vào thuộc
-BA/UI/spec/tests/security. Sửa đầu vào cần order lại; review và release là đầu ra
-nên không làm thay đổi chữ ký này.
-
-[Hướng dẫn modular cook](docs/modular-cook.md) có đầy đủ template và luồng thực hiện.
-
-Với thay đổi nhỏ, xem [thay đổi nhỏ](docs/small-changes.vi.md).
-
----
-
-## Bố cục repository
-
-### Một Git repository
-
-```text
-your-project/                  # .git/
-├── src/
-├── test/
-├── .verid/
-├── AGENTS.md
-├── CLAUDE.md                  # khi chọn Claude Code
-├── .claude/
-├── .agents/                   # entry skills Codex khi dùng tài nguyên repo
-└── .codex/
-```
-
-Commit tài liệu project và chỉ dẫn chung đã tạo cùng source code.
-
-### Nhiều repository trong một workspace
-
-```text
-workspace/                     # cấp này không có .git/
-├── api/                       # .git/
-├── web/                       # .git/
-├── .verid/                    # repo harness chung, có .git/ riêng
-├── AGENTS.md                  # tạo lại theo từng máy
-├── CLAUDE.md                  # tạo lại theo từng máy, khi chọn Claude
-├── .claude/
-├── .agents/
-└── .codex/
-```
-
-Mỗi repo trong manifest có path, globs và runner riêng. Workspace dùng chung một
-vòng TDD. Chạy cook và mở provider tại gốc workspace để thấy tất cả repo.
-
-`AGENTS.md` và `CLAUDE.md` ở gốc workspace được tạo cho mỗi máy; `verid cook` tạo lại chúng.
-
-### Những gì nằm trong .verid
-
-Cây dưới đây dùng `modular` với tài nguyên `repo`. File tích hợp provider được tạo
-theo provider đã chọn; hồ sơ module xuất hiện sau `verid module`.
-
-```text
-.verid/
-├── manifest.yaml
-├── verid.mjs                   # launcher CLI local; chạy bằng node
-├── workflow.md
-├── constitution.md
-├── architecture-profile.md
-├── ownership.yaml
-├── docs/                      # tài liệu nguồn; agent chỉ đọc
-├── research.md                # ghi sau research
-├── spec.md                    # yêu cầu đã thống nhất, ID duy nhất
-├── design.md                  # kiến trúc và interface đã thống nhất
-├── plan.md                    # AC kiểm thử được của từng module
-├── agents/                    # gồm reviewer TOML cho Codex
-├── skills/                    # có scripts, references và licenses
-├── templates/
-├── hooks/                     # CLI, hook và thư viện runtime được bundle
-├── i18n/
-├── policies/
-├── rules/
-├── approvals/                 # ghi nhận quyết định bằng văn bản
-├── artifacts/
-│   ├── 00-baseline/
-│   ├── 01-research/
-│   ├── 02-discovery/
-│   ├── 03-modules/<module>/
-│   │   ├── ba/
-│   │   ├── ui/
-│   │   ├── spec/
-│   │   ├── tests/
-│   │   ├── security/
-│   │   ├── review/
-│   │   └── release/
-│   ├── 04-plans/
-│   ├── 05-implementation/
-│   ├── 06-evaluation/
-│   ├── 07-release/
-│   └── adr/
-├── log/<module>.md            # main thêm một entry cho mỗi AC
-├── review/work.md             # snapshot review do CLI tạo
-└── .state/                    # approval, test evidence và audit runtime; được ignore
-```
-
-Commit templates, tài nguyên repo, tài liệu nguồn, hồ sơ module và các tài liệu
-project đã thống nhất. Với monorepo, commit thêm `AGENTS.md`, `CLAUDE.md` khi có và
-các entry agents/skills của provider. Cấu hình reviewer Codex theo repo nằm ở
-`.codex/config.toml`.
-
-Giữ `.verid/.state/` ngoài Git. `.codex/hooks.json` và
-`.claude/settings.local.json` là wiring theo từng máy. `approvals/` chứa bản ghi
-quyết định; approval thực của verid vẫn nằm trong trạng thái runtime riêng.
+Bảng này là bản tóm tắt. Các bước đầy đủ nằm ở `.verid/workflow.md`. Với thay đổi nhỏ, xem [thay đổi nhỏ](docs/small-changes.vi.md).
 
 ---
 
@@ -351,174 +132,45 @@ Cách viết gọn `verid` bên dưới dùng được khi chọn cài global.
 
 Cook, upgrade, stock, order, serve, garnish, halt và resume do developer chạy ở
 terminal của mình. Agent dùng taste, menu, peek và doctor. Với auto drive đã ký,
-harness tự quản lý việc mở và đóng module.
-
-### Flags của cook
-
-```sh
-verid cook --mode prep --resources repo --provider codex --lang vi --yes
-```
-
-| Flag                                         | Giá trị hoặc tác dụng                                                    |
-| -------------------------------------------- | ------------------------------------------------------------------------ |
-| `--mode`                                     | `prep`, `recipe` hoặc `remix`.                                           |
-| `--resources`                                | `installed` hoặc `repo`.                                                 |
-| `--provider`                                 | `claude-code`, `codex` hoặc `antigravity`; lặp flag để chọn nhiều.       |
-| `--drive`                                    | `human` hoặc `ai` cho prep/recipe (`auto` là tên cũ).                    |
-| `--architecture`                             | `ddd`, `clean`, `layered` hoặc `none`.                                   |
-| `--layout`                                   | `monorepo` hoặc `workspace`; bỏ trống để tự nhận diện.                   |
-| `--lang`                                     | `en` hoặc `vi`; ngôn ngữ CLI trên máy này.                               |
-| `--test-cmd`                                 | Lệnh riêng có `{junit}` hoặc `VERID_JUNIT`.                              |
-| `--src` / `--tests`                          | Globs source và test; có thể lặp flag.                                   |
-| `--iterations`                               | Bật lịch iteration; đi kèm duration, ngày bắt đầu và ngày demo bên dưới. |
-| `--duration` / `--start-date` / `--demo-day` | Ví dụ `"2 weeks"`, `2026-11-09`, `Sunday`.                               |
-| `--dry-run`                                  | Xem kế hoạch, không ghi file.                                            |
-| `--yes`                                      | Nhận defaults được gợi ý và bỏ qua xác nhận.                             |
-
-Lịch iteration trong màn hình tương tác dùng 14 ngày, demo vào ngày cuối.
-Metadata lịch không đổi thứ tự AC hay gate TDD.
-
-Nếu có manifest, cấu hình trong đó được ưu tiên hơn các flag setup. Developer
-chỉnh manifest để đổi lựa chọn rồi chạy cook lại. Khi chuyển sang tài nguyên repo,
-đổi các role Claude từ `verid:<name>` thành `verid-<name>`.
-Tên reviewer Codex vẫn là `verid_reviewer`.
-
-### Xem trước khi ghi
-
-```sh
-verid cook --mode prep --resources repo --provider codex --dry-run
-```
-
-Bản xem trước hiện cây file: `+` tạo mới, `~` cập nhật, `=` giữ lại, `!` là ghi chú.
-Xác nhận để áp dụng kế hoạch đã kiểm tra. Nội dung chỉ dẫn có sẵn nằm ngoài cặp
-`<!-- verid:begin -->` và `<!-- verid:end -->` được giữ nguyên.
+harness tự quản lý việc mở và đóng module. Các flag của cook nằm ở [tham chiếu cook](docs/cook-reference.vi.md).
 
 ---
 
-## Một module đi qua workflow như thế nào?
+## Bố cục repository
 
-| Bước          | Người thực hiện và kết quả                                                        |
-| ------------- | --------------------------------------------------------------------------------- |
-| Research      | Main với BA đọc `.verid/docs/`, ghi phạm vi và nguồn.                             |
-| Spec          | Main với BA ghi yêu cầu truy vết được trong `.verid/spec.md`.                     |
-| Design        | Architect hoặc Codex main thống nhất interface và reuse trong `.verid/design.md`. |
-| Plan          | Planner hoặc Codex main ghi AC theo thứ tự trong `.verid/plan.md`.                |
-| Order         | Developer duyệt module; auto drive làm theo plan đã ký.                           |
-| Build và test | Tester/QA rồi coder trên Claude; main trên Codex; mỗi vòng dùng `verid taste`.    |
-| Review        | Reviewer mới đọc AC, design, hồ sơ module, diff và review packet.                 |
-| Serve         | Bằng chứng, coverage AC và verdict phải đạt để đóng module.                       |
-| Bàn giao      | Main chuẩn bị commits và PR sau các kiểm tra sản phẩm đã thống nhất.              |
+Một Git repository:
 
-Bảng này là bản tóm tắt. Các bước đầy đủ nằm ở `.verid/workflow.md`.
-
-### Mode và drive
-
-| Mode     | Điểm bắt đầu  | Công việc đầu tiên                   |
-| -------- | ------------- | ------------------------------------ |
-| `prep`   | Ý tưởng       | Research, làm rõ, spec và design.    |
-| `recipe` | Đặc tả có sẵn | Kiểm tra đầu vào rồi design và plan. |
-| `remix`  | Code có sẵn   | Ghi baseline bằng `verid stock`.     |
-
-`human` để developer order và serve. `auto` bắt đầu khi developer ký research,
-spec và design bằng `verid order`. Harness review plan rồi làm từng module.
-Câu hỏi chặn tiến độ được ghi vào `.verid/blocked.md`; developer xử lý rồi tiếp tục
-bằng `verid order`.
-
-### TDD và bằng chứng
-
-| Trạng thái | Ghi test            | Ghi code production             | Bằng chứng tiếp theo                    |
-| ---------- | ------------------- | ------------------------------- | --------------------------------------- |
-| RAW        | Được                | Bị khóa                         | Assertion fail mới mở quyền triển khai. |
-| RAW · stub | Được                | Stub để test chạy đến assertion | Assertion fail chuyển sang COOKING.     |
-| COOKING    | Đóng băng           | Triển khai tối thiểu            | Test pass chuyển sang PLATED.           |
-| PLATED     | Sửa test mở lại RAW | Refactor                        | Chạy taste lại sau thay đổi.            |
-
-Tên test có mã `AC-n`. Chỉ `verid taste` cung cấp bằng chứng cho gate; lệnh test
-khác giúp chẩn đoán. Kết quả pass cần còn khớp với các file hiện tại. Main thêm
-kết quả và AC tiếp theo vào log của module.
-
-Stop hook giữ công việc chưa xong khi vòng còn fail, stub còn mở hoặc thay đổi chưa
-được kiểm chứng. Reviewer chỉ đọc. File báo cáo hoặc template không thay thế lần
-chạy test thật, verdict reviewer hay approval.
-
----
-
-## Agents, skills và tích hợp provider
-
-`AGENTS.md` là nguồn chỉ dẫn chung. `CLAUDE.md` import qua `@AGENTS.md`.
-Hook kiểm tra lệnh gọi tool độc lập với phần chỉ dẫn bằng văn bản.
-
-| Công việc         | Skill                       | Người ghi/review                     |
-| ----------------- | --------------------------- | ------------------------------------ |
-| Làm quen project  | `onboard`                   | Main; đọc và báo cáo.                |
-| Research và spec  | `ba`                        | Main.                                |
-| Hồ sơ module      | `modules`                   | Main, dùng template repo.            |
-| Kiến trúc         | `design`                    | Architect đã ánh xạ hoặc Codex main. |
-| Kế hoạch module   | `plan`                      | Planner đã ánh xạ hoặc Codex main.   |
-| TDD và triển khai | `build`, `tdd`, `debugging` | Tester/QA và coder hoặc Codex main.  |
-| Đánh giá          | `review`, `security`        | Reviewer độc lập chỉ đọc.            |
-
-Với tài nguyên Claude đã cài, tên dùng dạng `verid:<name>`. Ví dụ:
-
-```sh
-claude plugin marketplace add anhtranhai835/verid
-claude plugin install verid@verid
+```text
+your-project/                  # .git/
+├── src/
+├── test/
+├── .verid/
+├── AGENTS.md
+├── CLAUDE.md                  # khi chọn Claude Code
+├── .claude/
+├── .agents/                   # entry skills Codex khi dùng tài nguyên repo
+└── .codex/
 ```
 
-Tài nguyên repo dùng entry `verid-<name>` trong `.claude/skills/` và
-`.claude/agents/`, dẫn về `.verid/skills/` và `.verid/agents/`.
-Codex nhận diện entry skill local từ `.agents/skills/`.
+Nhiều repository trong một workspace:
 
-Skill onboard kiểm kê repo và runner, báo tình trạng và bước tiếp theo.
-Nó đề xuất các thay đổi manifest để developer áp dụng.
+```text
+workspace/                     # cấp này không có .git/
+├── api/                       # .git/
+├── web/                       # .git/
+├── .verid/                    # repo harness chung, có .git/ riêng
+├── AGENTS.md                  # tạo lại theo từng máy
+├── CLAUDE.md                  # tạo lại theo từng máy, khi chọn Claude
+├── .claude/
+├── .agents/
+└── .codex/
+```
 
-### Thiết lập Codex
-
-Với project dùng tài nguyên repo:
-
-1. Chạy cook với `--provider codex --resources repo`.
-2. Mở Codex ở gốc project hoặc workspace.
-3. Trust project và từng hook verid đã tạo qua `/hooks`.
-4. Chạy `verid doctor` và xử lý các vấn đề setup.
-5. Để main ghi test/code; gọi `verid_reviewer` với `fork_turns: "none"` khi review.
-
-Cook thêm `.codex/config.toml` theo project, trỏ reviewer đến
-`../.verid/agents/verid-reviewer.toml`. Overlay này đọc skills trong repo và dùng
-sandbox read-only. Chế độ repo không sửa config Codex của user.
-
-Với `resources: installed`, cook thiết lập user reviewer và dùng đường dẫn skills
-đã cài. Cả hai cách đều cần người dùng trust trong Codex.
-
-Hook trong repo có test tích hợp cho order, RED/GREEN, review chỉ đọc và hết hiệu
-lực approval sau khi sửa spec module. Kiểm tra offline với Codex CLI `0.166.0`
-cũng xác nhận input mà model nhìn thấy có chỉ dẫn project và skills repo.
-Xem [ghi chú kiểm chứng](docs/modular-cook.md#dùng-với-codex).
-
-### Thiết lập Antigravity
-
-1. Chạy `verid setup-antigravity` một lần trên mỗi máy, và chạy lại sau mỗi lần cập nhật
-   verid. Lệnh cài plugin vào `~/.gemini/config/plugins/verid/`. Khởi động lại Antigravity.
-2. Chạy cook với `--provider antigravity` (thêm `--provider claude-code` nếu dùng cả hai).
-3. Chạy `verid doctor` và xử lý các phát hiện.
-4. Để main viết test/code; gọi `verid-reviewer` (và `verid-security`) bằng
-   `invoke_subagent` để review. Gõ `/verid peek`, `/verid tip`, `/verid confirm` trong chat.
-
-Lõi verid tự đọc payload hook của Antigravity, nên cùng một bộ luật, cổng TDD và ràng buộc
-review áp dụng như trên Claude Code và Codex. Định dạng payload chưa được đối chiếu với
-fixture ghi lại từ Antigravity thật. Xem [ghi chú tích hợp](docs/antigravity-integration.vi.md).
-
-### Bảo vệ và audit
-
-Hook bảo vệ runtime state, bí mật, định nghĩa provider, bundle hook và block chỉ dẫn.
-Nó kiểm tra approval module, vòng TDD và vai trò ghi. Các lệnh Codex được hỗ trợ
-gồm `apply_patch`, shell và gọi reviewer.
-
-Coverage spec, thứ tự phụ thuộc, quy ước kiến trúc và danh sách dispatch đã biết
-còn tạo cảnh báo tham khảo. Quy ước `.verid/rules/architecture.md` và kết quả
-`architecture_check` là chỉ dẫn không chặn; doctor và menu hiển thị các cảnh báo này.
-Xem [bảng rule hook đầy đủ](docs/hook-reference.vi.md)
-để biết mã rule và cách override. Ngoại lệ một lần gọi cần developer trực tiếp
-trong Claude Code.
+Commit tài liệu project và chỉ dẫn chung đã tạo cùng source code.
+Với workspace, chạy cook và mở provider tại gốc workspace; mỗi repo trong manifest có
+path, globs và runner riêng, và workspace dùng chung một vòng TDD.
+`AGENTS.md` và `CLAUDE.md` ở gốc workspace là của mỗi máy; `verid cook` tạo lại chúng.
+Cây `.verid/` đầy đủ nằm ở [provider và bảo vệ](docs/providers-and-protection.vi.md).
 
 ---
 
@@ -556,37 +208,22 @@ quyền ghi. `roles.researcher` đã bỏ; dùng `verid:ba` ở luồng chính
 
 ---
 
-## Làm việc cùng thành viên mới
+## Bảo vệ
 
-Sau khi clone project dùng tài nguyên repo, chạy `node .verid/verid.mjs cook --yes`
-tại gốc project hoặc workspace. CLI đã được commit sẵn, chạy bằng Node.js.
-Với tài nguyên installed, cài CLI và chạy `verid cook`.
-Lựa chọn trong manifest và tài nguyên repo đã có được giữ lại; cook thêm file setup
-còn thiếu và nối lại hook cho máy hiện tại.
+Hook bảo vệ runtime state, bí mật, định nghĩa provider, bundle hook và block chỉ dẫn,
+và kiểm tra approval module, vòng TDD và vai trò ghi.
+Quy ước `.verid/rules/architecture.md` và kết quả `architecture_check` là chỉ dẫn
+không chặn: doctor và menu hiển thị chúng. Mã rule và cách override nằm ở
+[bảng rule hook](docs/hook-reference.vi.md).
 
-Với workspace nhiều repo, chia sẻ repository `.verid`. Cook có thể clone repo
-còn thiếu từ remote đã cấu hình trong manifest. Với monorepo, commit entry provider
-và chỉ dẫn cùng source repo; với workspace, tạo lại các entry ở gốc theo từng máy.
+## Tài liệu
 
-## Nâng cấp
-
-Với tài nguyên repo, `node .verid/verid.mjs cook --yes` nối lại phiên bản đã commit
-cho máy hiện tại. Khi đổi phiên bản được pin, xem diff và cập nhật runtime cùng các
-bản tài nguyên trong repo. Nếu chọn cài global, có thể nâng cấp bằng:
-
-```sh
-npm install -g @anhtranhai835/verid
-verid upgrade --dry-run
-verid upgrade --yes
-verid doctor
-```
-
-Nếu cài từ source, cập nhật checkout, build rồi cài lại trước.
-Upgrade cập nhật wiring và chỉ dẫn provider, thêm defaults còn thiếu đã được chấp
-nhận. Tài nguyên repo và hồ sơ module đã có được giữ lại. Để làm mới tài nguyên
-được pin, xem diff rồi thay các bản cần cập nhật.
-
----
+- [Cài đặt và thiết lập](docs/installation.vi.md): các cách cài, thiết lập Codex và Antigravity, nâng cấp, chuyển từ 1.x.
+- [Tham chiếu cook](docs/cook-reference.vi.md): flags, xem trước, mode và drive.
+- [Module và board](docs/modules-and-board.vi.md): hồ sơ module, board trên trình duyệt, các trạng thái TDD.
+- [Provider và bảo vệ](docs/providers-and-protection.vi.md): agents và skills, cây `.verid/`, làm việc cùng thành viên mới.
+- [Xử lý sự cố](docs/troubleshooting.vi.md): các lần từ chối gặp đầu tiên.
+- [Thay đổi nhỏ](docs/small-changes.vi.md) · [Kanban workflow](docs/kanban-workflow.md) · [Hướng dẫn modular cook](docs/modular-cook.md)
 
 ## Phát triển
 
@@ -611,11 +248,3 @@ Nguồn ghi nhận chi tiết nằm trong license của từng skill.
 ## Giấy phép
 
 MIT. Xem [LICENSE](LICENSE).
-
-## Nâng cấp từ 1.x
-
-Đây là bản 2.0.0. Manifest cũ với `workflow: classic`, `workflow: modular`, `workflow: kanban` hoặc thiếu trường này vẫn nạp được; `--workflow` chỉ còn là flag tương thích. `auto` vẫn là tên cũ của drive `ai`.
-
-Chạy `verid upgrade --dry-run` rồi `verid upgrade --yes`. Upgrade bỏ workflow cũ, thêm templates/cây artifacts, tạo hồ sơ nháp và dòng Artifacts cho module chưa serve. Điền hồ sơ rồi order lại; task đang mở cần session mới ở human drive. Section, approval và bằng chứng module đã serve được giữ nguyên. Chạy `verid doctor` để xem phần còn thiếu.
-
-Với resources repo, cập nhật runtime pin trong `.verid/hooks/` và tài nguyên cần thiết sau khi nâng gói; upgrade giữ tùy chỉnh đã có. Trước khi hạ về 1.x, bỏ trường `kanban.queue` trong state bằng terminal của người dùng.

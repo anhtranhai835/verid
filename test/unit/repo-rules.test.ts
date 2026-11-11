@@ -222,6 +222,51 @@ describe("repo rules", () => {
     expect(missing).toEqual([]);
   });
 
+  describe("first-run docs", () => {
+    const readmes = ["README.md", "README.vi.md"];
+    const text = (file: string) => readFileSync(join(root, file), "utf8");
+
+    it("keeps each README at 250 lines or fewer", () => {
+      const long = readmes.filter((file) => text(file).trimEnd().split(/\r?\n/).length > 250);
+      expect(long).toEqual([]);
+    });
+
+    it("links only to docs files that exist", () => {
+      const missing = readmes.flatMap((file) =>
+        [...text(file).matchAll(/\]\((docs\/[^)#\s]+)/g)]
+          .map((m) => m[1] ?? "")
+          .filter((path) => !existsSync(join(root, path)))
+          .map((path) => `${file}: ${path}`),
+      );
+      expect(missing).toEqual([]);
+    });
+
+    it("gives both READMEs the same number of level-two headings", () => {
+      const count = (file: string) =>
+        text(file)
+          .replace(/^```[\s\S]*?^```[ \t]*$/gm, "")
+          .split(/\r?\n/)
+          .filter((line) => line.startsWith("## ")).length;
+      expect(count("README.vi.md")).toBe(count("README.md"));
+    });
+
+    it("troubleshooting lists at least 12 real codes in both languages", () => {
+      for (const file of ["docs/troubleshooting.md", "docs/troubleshooting.vi.md"]) {
+        const codes = new Set([...text(file).matchAll(/VERID_BURNT_[A-Z_]+/g)].map((m) => m[0]));
+        expect(codes.size, file).toBeGreaterThanOrEqual(12);
+        expect(
+          [...codes].filter((code) => !(ERROR_CODES as readonly string[]).includes(code)),
+          file,
+        ).toEqual([]);
+      }
+    });
+
+    it("the docs moved out of the READMEs ship in the package", () => {
+      const pkg = JSON.parse(text("package.json")) as { files: string[] };
+      expect(pkg.files).toEqual(expect.arrayContaining(["docs", "README.vi.md"]));
+    });
+  });
+
   it("both READMEs describe architecture checks as advisory rather than closure gates", () => {
     for (const file of ["README.md", "README.vi.md"]) {
       const text = readFileSync(join(root, file), "utf8");
