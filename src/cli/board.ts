@@ -7,10 +7,12 @@ import { systemLanguage, t } from "../adapters/i18n.js";
 import { languageOf } from "../adapters/state-store.js";
 import { boardChat, type Spawner } from "../adapters/board-chat.js";
 import { boardSnapshot, moveTask, saveBoardDocument, taskPrompt } from "../adapters/kanban.js";
+import { loadManifest } from "../adapters/manifest.js";
 import { boardHtml } from "./board-page.js";
 import type { CliResult } from "./test.js";
 
-type Command = (command: "order" | "serve", task: string) => Promise<CliResult>;
+/** The developer commands the board runs: `order` without a task signs no-brain drive's documents. */
+type Command = (command: "order" | "serve", task?: string) => Promise<CliResult>;
 
 /** A board message in the project's language, else the machine's. */
 const say = (project: string, key: string, params: Record<string, string> = {}) =>
@@ -24,7 +26,12 @@ const cookieOf = (header: string | undefined) =>
     .find((part) => part.startsWith(`${COOKIE}=`))
     ?.slice(COOKIE.length + 1);
 
-/** A loopback-only developer UI. All mutations use the same approval/evidence gates as the CLI. */
+/**
+ * A loopback-only UI. Every mutation goes through the same approval and evidence gates as the CLI.
+ * No-brain drive: chat with the drive's one session and sign research and design here.
+ * Big-brain drive: select and serve tasks; chat and signing stay in the developer's terminal.
+ * Spec and plan are read-only on the board in both drives.
+ */
 export async function startBoard(project: string, command: Command, port = 0, spawner?: Spawner) {
   if (inAgentShell()) throw new Error(say(project, "err_agent_shell"));
   await boardSnapshot(project);
@@ -77,7 +84,9 @@ export async function startBoard(project: string, command: Command, port = 0, sp
     if (req.method === "GET" && url.pathname === "/api/board")
       return send(res, 200, await boardSnapshot(project));
     if (req.method === "GET" && url.pathname === "/api/chat")
-      return send(res, 200, await chat.status());
+      return (await loadManifest(project, { readOnly: true }))?.drive === "auto"
+        ? send(res, 200, await chat.status())
+        : send(res, 409, { error: say(project, "err_no_chat") });
     if (req.method !== "POST" || url.pathname !== "/api/action")
       return send(res, 404, { error: "Not found" });
     if (req.headers.origin !== origin || req.headers["content-type"] !== "application/json")
@@ -100,18 +109,17 @@ export async function startBoard(project: string, command: Command, port = 0, sp
     }
     const snapshot = await boardSnapshot(project);
     if (snapshot.notice) return send(res, 409, { error: snapshot.notice });
-    if (
-      snapshot.drive === "auto" &&
-      ["select", "serve", "prompt", "chat"].includes(String(input.action))
-    )
+    if (input.action === "spec" || input.action === "plan")
+      return send(res, 400, { error: say(project, "err_read_only") });
+    if (snapshot.drive === "auto" && ["select", "serve", "prompt"].includes(String(input.action)))
       return send(res, 409, { error: say(project, "err_auto_queue") });
+    if (snapshot.drive !== "auto" && (input.action === "chat" || input.action === "sign"))
+      return send(res, 409, {
+        error: say(project, input.action === "chat" ? "err_no_chat" : "err_sign_terminal"),
+      });
     if (input.action === "chat") {
-      const task = snapshot.tasks.find((item) => item.id === input.task);
-      if (!task?.selected) return send(res, 409, { error: say(project, "err_chat_select") });
-      if (task.needsReapproval)
-        return send(res, 409, { error: say(project, "err_chat_reapprove") });
       await chat.send({
-        task: task.id,
+        task: null,
         text: typeof input.text === "string" ? input.text : "",
         provider: typeof input.provider === "string" ? input.provider : "",
       });
@@ -119,15 +127,20 @@ export async function startBoard(project: string, command: Command, port = 0, sp
     }
     if (input.revision !== snapshot.revision)
       return send(res, 409, { error: say(project, "err_stale") });
-    if (input.action === "spec" || input.action === "plan" || input.action === "split") {
-      if (input.action !== "split" && typeof input.content !== "string")
-        return send(res, 400, { error: "Missing document" });
-      saveBoardDocument(
-        project,
-        input.action,
-        typeof input.content === "string" ? input.content : "",
-        snapshot.drive,
+    if (input.action === "split") saveBoardDocument(project, "split", "", snapshot.drive);
+    else if (input.action === "sign") {
+      // The same signature as verid order in the terminal, after the owner has read both files.
+      const missing = (["research", "design"] as const).filter(
+        (name) => !snapshot.documents?.[name].trim(),
       );
+      if (missing.length)
+        return send(res, 409, {
+          error: say(project, "err_sign_missing", {
+            files: missing.map((name) => ".verid/" + name + ".md").join(", "),
+          }),
+        });
+      const result = await command("order");
+      if (result.exit !== 0) return send(res, 409, { error: result.stderr });
     } else if (input.action === "move") {
       if (
         typeof input.task !== "string" ||
@@ -190,7 +203,7 @@ export async function boardCommand(
   const board = await startBoard(project, command, port);
   const snapshot = await boardSnapshot(project);
   process.stdout.write(
-    `Verid Kanban: ${board.url}\n${snapshot.notice ?? say(project, snapshot.drive === "auto" ? "terminal_auto" : "terminal_human")} ${say(project, "terminal_keep")}\n`,
+    `Verid board: ${board.url}\n${snapshot.notice ?? say(project, snapshot.drive === "auto" ? "terminal_auto" : "terminal_human")} ${say(project, "terminal_keep")}\n`,
   );
   if (!values["no-open"]) {
     // No shell interpolation. Windows URL is a generated loopback address with a hex fragment.

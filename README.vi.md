@@ -213,7 +213,7 @@ không chặn: doctor và menu hiển thị chúng. Mã rule và cách override 
 - [Module và board](docs/modules-and-board.vi.md): hồ sơ module, board trên trình duyệt, các trạng thái TDD.
 - [Provider và bảo vệ](docs/providers-and-protection.vi.md): agents và skills, cây `.verid/`, làm việc cùng thành viên mới.
 - [Xử lý sự cố](docs/troubleshooting.vi.md): các lần từ chối gặp đầu tiên.
-- [Thay đổi nhỏ](docs/small-changes.vi.md) · [Kanban workflow](docs/kanban-workflow.md) · [Hướng dẫn modular cook](docs/modular-cook.md)
+- [Thay đổi nhỏ](docs/small-changes.vi.md) · [Board workflow](docs/kanban-workflow.md) · [Hướng dẫn modular cook](docs/modular-cook.md)
 
 ## Phát triển
 

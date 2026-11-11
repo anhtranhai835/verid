@@ -226,7 +226,7 @@ it.each(["human", "ai"])(
 
 async function launch() {
   server = await startBoard(project, async (command, task) => {
-    const result = await cli(command, task);
+    const result = await cli(command, ...(task ? [task] : []));
     return { exit: result.code, stdout: result.stdout, stderr: result.stderr };
   });
   return {

@@ -174,6 +174,20 @@ function snapshotOf(project: string, manifest: Manifest, state: State) {
   return {
     project: basename(project),
     drive: manifest.drive,
+    // What the no-brain owner reads before signing; the summary is the agent's plain-language page.
+    documents:
+      manifest.drive === "auto"
+        ? {
+            research: textOf(join(project, ".verid/research.md")),
+            design: textOf(join(project, ".verid/design.md")),
+            summary: textOf(join(project, ".verid/summary.md")),
+          }
+        : null,
+    signed:
+      state.auto.signed !== null &&
+      state.auto.signed.research_sha256 === readFileHash(join(project, ".verid/research.md")) &&
+      state.auto.signed.design_sha256 === readFileHash(join(project, ".verid/design.md")) &&
+      state.auto.signed.spec_sha256 === readFileHash(specFile(project)),
     notice: planned(manifest) ? null : say("notice_remix"),
     spec,
     plan: planText,

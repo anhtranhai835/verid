@@ -4,12 +4,12 @@
 
 `prep` and `recipe` always include module dossiers and a browser board, in a monorepo (one Git repository) or a workspace (multiple child repositories). Cook asks for the layout, defaulting to detection. A workspace must be outside a Git repository and contain child repositories. Existing manifests retain their layout.
 
-| Setting   | Value       | Behaviour                                                                                   |
-| --------- | ----------- | ------------------------------------------------------------------------------------------- |
-| Drive     | `big-brain` | Developer selects each task; one fresh AI session per task; developer serves.               |
-| Drive     | `no-brain`  | Developer arranges priorities and signs with `verid order`; one session follows the queue.  |
-| Resources | `installed` | Use installed skills and agents.                                                            |
-| Resources | `repo`      | Pin skills, agents, templates and runtime in the project; existing customizations are kept. |
+| Setting   | Value       | Behaviour                                                                                           |
+| --------- | ----------- | --------------------------------------------------------------------------------------------------- |
+| Drive     | `big-brain` | Developer selects each task; one fresh AI session per task; developer serves.                       |
+| Drive     | `no-brain`  | Owner chats on the board, reads and signs research and design there; one session follows the queue. |
+| Resources | `installed` | Use installed skills and agents.                                                                    |
+| Resources | `repo`      | Pin skills, agents, templates and runtime in the project; existing customizations are kept.         |
 
 `remix` keeps its baseline workflow; the board reports that it has no tasks.
 
@@ -25,17 +25,15 @@ The command opens a local browser board. Keep its terminal running. Use `--no-op
 to open the printed URL yourself, or `--port 4318` to choose a port.
 
 1. Write requirements in `.verid/spec.md` as `- REQ-1: testable behaviour` (also
-   `NFR-1` and `SEC-1`). The board can edit spec and plan. Complete research and
-   design before selecting a task.
+   `NFR-1` and `SEC-1`). The board shows spec and plan read-only; edit them in your
+   editor or ask the agent. Complete research and design before selecting a task.
 2. Use **Split tasks from the spec** to seed a draft task for each live requirement and a
    final product task. Existing plans are kept. Refine task scope, ACs and
-   dependencies in **Task plan**, or let the planning agent write the plan.
+   dependencies in `.verid/plan.md`, or let the planning agent write the plan.
    Each `## Module: <name>` becomes a card; `Title:` supplies its display title.
 3. In big-brain drive, select the task you want first. Selection uses `verid order` and keeps one task
-   open. Send the prefilled session prompt from the task's **chat box**: the board
-   runs the provider's CLI headless (`claude -p`, `codex exec`, `agy -p`) in the
-   project and later messages resume that same session. Or copy the prompt into a
-   new AI session in a terminal or IDE.
+   open. Copy the task's session prompt into a new AI session in a terminal or IDE.
+   Big-brain drive has no board chat.
 4. Follow TDD and independent review. **Approve & serve** calls `verid serve` and
    checks the same evidence as the CLI. Stop that session, select another task,
    and open another new session.
@@ -46,7 +44,7 @@ current task; clearing context does not let a used session take the next task.
 Changed spec, plan scope or design requires reapproval and a new task session.
 Nothing automatically selects or starts the next task.
 
-Use ↑/↓ or Alt+↑/↓ on a card to reorder pending tasks. The local queue survives board restarts; `verid menu` uses the same order. Current work stays in place and `product` stays last. Big-brain drive marks the next task while allowing another selection. No-brain drive hides manual selection/chat; sign from your terminal to follow the queue. Dependencies remain advisory.
+Use ↑/↓ or Alt+↑/↓ on a card to reorder pending tasks. The local queue survives board restarts; `verid menu` uses the same order. Current work stays in place and `product` stays last. Big-brain drive marks the next task while allowing another selection. No-brain drive hides manual selection. Its board has a chat with the drive's one AI session (the provider's CLI runs headless: `claude -p`, `codex exec`, `agy -p`) and a **Sign research & design** button. Before the button the board shows `.verid/summary.md` (the agent's plain-language page, when present), `research.md` and `design.md`. Signing there records the same signature as `verid order` in the terminal and is refused while either file is missing. Dependencies remain advisory.
 
 ### Module dossiers
 

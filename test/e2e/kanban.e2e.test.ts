@@ -1,10 +1,10 @@
 import { tempProject, kanbanManifest } from "../support/project.js";
 import { readyModulePlan } from "./helpers.js";
 import { spawn } from "node:child_process";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 
 import { join } from "node:path";
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 
 import type { Launch } from "../../src/adapters/board-chat.js";
 import { boardSnapshot, saveBoardDocument } from "../../src/adapters/kanban.js";
@@ -260,7 +260,7 @@ it("ignores review reports from a session that does not own the selected task", 
 it("serves a protected local board with real selection and rejects CSRF, stale revisions and premature completion", async () => {
   split();
   server = await startBoard(project, async (command, task) => {
-    const result = await cli(command, task);
+    const result = await cli(command, ...(task ? [task] : []));
     return { exit: result.code, stdout: result.stdout, stderr: result.stderr };
   });
   const headers = {
@@ -341,66 +341,160 @@ it("serves the board and its task reasons in the project's language", async () =
   expect((await denied.json()).error).not.toMatch(/[À-ỹ]/);
 });
 
-it("chats with the selected task's AI from the board: new session first, then the bound one", async () => {
+// What the board runs for order and serve: the real CLI. Signing passes no task.
+const runCli = async (command: "order" | "serve", task?: string) => {
+  const result = await cli(command, ...(task ? [task] : []));
+  return { exit: result.code, stdout: result.stdout, stderr: result.stderr };
+};
+const noBrain = () =>
+  t.put(".verid/manifest.yaml", `${t.read(".verid/manifest.yaml")}drive: no-brain\n`);
+const api = (board: NonNullable<typeof server>) => {
+  const headers = {
+    Authorization: `Bearer ${board.token}`,
+    "Content-Type": "application/json",
+    Origin: board.origin,
+  };
+  return {
+    post: (input: unknown) =>
+      fetch(`${board.origin}/api/action`, { method: "POST", headers, body: JSON.stringify(input) }),
+    get: (path: string) => fetch(`${board.origin}${path}`, { headers }),
+  };
+};
+// Stands in for the provider CLI: names its thread, echoes the prompt it read on stdin.
+const fakeChat = (launches: Launch[]) => (launch: Launch, cwd: string) => {
+  launches.push(launch);
+  const script = `let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{console.log(JSON.stringify({type:"thread.started",thread_id:"t-1"}));console.log(JSON.stringify({type:"item.completed",item:{type:"agent_message",text:"got "+s}}))})`;
+  return spawn(process.execPath, ["-e", script], { cwd, stdio: ["pipe", "pipe", "pipe"] });
+};
+
+it("gives big-brain drive no board chat and no sign button: the developer signs in a terminal", async () => {
   split();
   const launches: Launch[] = [];
-  // Stands in for the provider CLI: names its thread, echoes the prompt it read on stdin.
-  const fake = `let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{console.log(JSON.stringify({type:"thread.started",thread_id:"t-1"}));console.log(JSON.stringify({type:"item.completed",item:{type:"agent_message",text:"got "+s}}))})`;
-  server = await startBoard(
-    project,
-    async (command, task) => {
-      const result = await cli(command, task);
-      return { exit: result.code, stdout: result.stdout, stderr: result.stderr };
-    },
-    0,
-    (launch, cwd) => {
-      launches.push(launch);
-      return spawn(process.execPath, ["-e", fake], { cwd, stdio: ["pipe", "pipe", "pipe"] });
-    },
+  server = await startBoard(project, runCli, 0, fakeChat(launches));
+  const { post, get } = api(server);
+  const board = await (await get("/api/board")).json();
+  expect((await post({ action: "select", task: "req-1", revision: board.revision })).status).toBe(
+    200,
   );
-  const headers = {
-    Authorization: `Bearer ${server.token}`,
-    "Content-Type": "application/json",
-    Origin: server.origin,
-  };
-  const post = (input: unknown) =>
-    fetch(`${server!.origin}/api/action`, { method: "POST", headers, body: JSON.stringify(input) });
-  const status = async () => (await fetch(`${server!.origin}/api/chat`, { headers })).json();
+  expect((await get("/api/chat")).status).toBe(409);
+  const chat = await post({ action: "chat", task: "req-1", text: "build", provider: "codex" });
+  expect(chat.status).toBe(409);
+  expect(launches).toEqual([]);
+  const now = await boardSnapshot(project);
+  expect((await post({ action: "sign", revision: now.revision })).status).toBe(409);
+  expect(state().auto.signed).toBeNull();
+  expect(state().kanban.active?.module).toBe("req-1");
+});
+
+it("shows spec and plan read-only: the board refuses to write them", async () => {
+  split();
+  server = await startBoard(project, runCli);
+  const { post } = api(server);
+  const before = ["spec", "plan"].map((file) => t.read(`.verid/${file}.md`));
+  const { revision } = await boardSnapshot(project);
+  for (const action of ["spec", "plan"]) {
+    const refused = await post({ action, content: "- REQ-1: changed\n", revision });
+    expect(refused.status).toBe(400);
+    expect((await refused.json()).error).toContain("read-only");
+  }
+  expect(["spec", "plan"].map((file) => t.read(`.verid/${file}.md`))).toEqual(before);
+  const page = await (await fetch(server.origin)).text();
+  expect(page).not.toContain('id="save-doc"');
+  expect(page).toMatch(/<textarea[^>]*id="editor"[^>]*readonly/);
+});
+
+it("signs research and design from the no-brain board as verid order does, and refuses without them", async () => {
+  noBrain();
+  split();
+  rmSync(join(project, ".verid/research.md"));
+  server = await startBoard(project, runCli);
+  const { post } = api(server);
+  let board = await boardSnapshot(project);
+  expect(board.drive).toBe("auto");
+  expect(board.documents).toMatchObject({ research: "", design: expect.stringContaining("Pure") });
+  const missing = await post({ action: "sign", revision: board.revision });
+  expect(missing.status).toBe(409);
+  expect((await missing.json()).error).toContain("research.md");
+  expect(state().auto.signed).toBeNull();
+
+  t.put(".verid/research.md", "# Research\nAgreed scope\n");
+  t.put(".verid/summary.md", "# What you sign\nPlain words for the owner\n");
+  board = await boardSnapshot(project);
+  expect(board.documents?.summary).toContain("Plain words for the owner");
+  expect(board.signed).toBe(false);
+  const signed = await post({ action: "sign", revision: board.revision });
+  expect(signed.status, await signed.clone().text()).toBe(200);
+  expect((await signed.json()).signed).toBe(true);
+  const fromBoard = state().auto.signed;
+  expect(fromBoard).toMatchObject({
+    research_sha256: expect.any(String),
+    design_sha256: expect.any(String),
+  });
+  // The terminal's verid order records the same signature for the same documents.
+  expect((await cli("order")).code).toBe(0);
+  expect({ ...state().auto.signed, at: fromBoard!.at }).toEqual(fromBoard);
+});
+
+it("chats on the no-brain board in one queue session: new session first, then the same one", async () => {
+  noBrain();
+  split();
+  const launches: Launch[] = [];
+  server = await startBoard(project, runCli, 0, fakeChat(launches));
+  const { post, get } = api(server);
+  const status = async () => (await get("/api/chat")).json();
   const idle = async () => {
     for (let i = 0; i < 100 && (await status()).running; i++)
       await new Promise((resolve) => setTimeout(resolve, 50));
     return status();
   };
-  const chat = (text: string) => post({ action: "chat", task: "req-1", text, provider: "codex" });
+  const chat = (text: string) => post({ action: "chat", text, provider: "codex" });
+  expect((await post({ action: "chat", text: "x", provider: "claude-code" })).status).toBe(400);
 
-  const early = await chat("start");
-  expect(early.status).toBe(409);
-  expect((await early.json()).error).toContain("Select this task");
-  const board = await (await fetch(`${server.origin}/api/board`, { headers })).json();
-  expect((await post({ action: "select", task: "req-1", revision: board.revision })).status).toBe(
-    200,
-  );
-  expect(
-    (await post({ action: "chat", task: "req-1", text: "x", provider: "claude-code" })).status,
-  ).toBe(400);
-
-  expect((await chat("build req-1")).status).toBe(200);
+  expect((await chat("build a calculator")).status).toBe(200);
   const first = await idle();
   expect(launches[0]!.args).not.toContain("resume");
-  expect(launches[0]!.stdin).toBe("build req-1");
+  expect(launches[0]!.stdin).toBe("build a calculator");
   expect(first.lines).toEqual(
     expect.arrayContaining([
-      { role: "you", text: "build req-1" },
-      { role: "ai", text: "got build req-1" },
+      { role: "you", text: "build a calculator" },
+      { role: "ai", text: "got build a calculator" },
     ]),
   );
-  // verid's own SessionStart hook binds the new thread to the task, as the real CLI's would.
-  await hook("SessionStart", "t-1", { source: "startup" });
-  expect(state().kanban.active?.session).toBe("codex:t-1");
-  expect((await status()).locked).toBe("codex");
+  expect(first.task).toBeNull();
 
   expect((await chat("continue")).status).toBe(200);
   await idle();
   expect(launches[1]!.args.slice(0, 2)).toEqual(["exec", "resume"]);
   expect(launches[1]!.args).toContain("t-1");
+});
+
+it("refuses sign to a caller without the board's credential, including one holding the launch link", async () => {
+  noBrain();
+  split();
+  server = await startBoard(project, runCli);
+  const code = new URL(server.url).searchParams.get("open");
+  const body = JSON.stringify({
+    action: "sign",
+    revision: (await boardSnapshot(project)).revision,
+  });
+  const sign = (auth: Record<string, string>) =>
+    fetch(`${server!.origin}/api/action`, {
+      method: "POST",
+      headers: { ...auth, "Content-Type": "application/json", Origin: server!.origin },
+      body,
+    });
+  for (const auth of [{}, { Authorization: `Bearer ${code}` }, { Cookie: `verid_board=${code}` }])
+    expect((await sign(auth)).status).toBe(401);
+  // The browser took the link first; whoever reads it from a process list later gets nothing.
+  expect((await fetch(server.url, { redirect: "manual" })).status).toBe(303);
+  const late = await fetch(server.url, { redirect: "manual" });
+  expect(late.headers.get("set-cookie")).toBeNull();
+  expect(state().auto.signed).toBeNull();
+  // An agent's own shell cannot start a board of its own.
+  vi.stubEnv("CLAUDECODE", "1");
+  try {
+    await expect(startBoard(project, runCli)).rejects.toThrow("verid board");
+  } finally {
+    vi.unstubAllEnvs();
+  }
 });

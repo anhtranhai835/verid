@@ -213,7 +213,7 @@ are in the [hook rule reference](docs/hook-reference.md).
 - [Modules and board](docs/modules-and-board.md): dossiers, the browser board, TDD states.
 - [Providers and protection](docs/providers-and-protection.md): agents and skills, the `.verid/` tree, working with a teammate.
 - [Troubleshooting](docs/troubleshooting.md): the refusals you meet first.
-- [Small changes](docs/small-changes.md) · [Kanban workflow](docs/kanban-workflow.md) · [Modular cook guide](docs/modular-cook.md)
+- [Small changes](docs/small-changes.md) · [Board workflow](docs/kanban-workflow.md) · [Modular cook guide](docs/modular-cook.md)
 
 ## Development
 

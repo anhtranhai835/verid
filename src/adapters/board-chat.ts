@@ -3,14 +3,16 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Provider } from "../core/manifest.js";
 import { loadManifest } from "./manifest.js";
-import { readState, statePaths, withLock } from "./state-store.js";
+import { languageOf, readState, statePaths, withLock } from "./state-store.js";
+import { systemLanguage, t } from "./i18n.js";
 import { appendAudit } from "./audit-log.js";
 import { isCount, type TokenUsage } from "../core/usage.js";
 
 /**
- * The board's chat: it runs the provider's own CLI headless in the project, one run at a time,
- * for the selected task only. The first message starts a new session, which verid's SessionStart
- * hook binds to the task; later messages resume that bound session. Every tool call still passes
+ * The board's chat: it runs the provider's own CLI headless in the project, one run at a time.
+ * In no-brain drive it is the drive's one session: the first message starts it and later messages
+ * resume it while the board runs. With a selected task (big-brain), the first message starts a
+ * session that verid's SessionStart hook binds to the task; later messages resume that session. Every tool call still passes
  * verid's hook, and permissions stay narrow: edits are accepted, shell is sandboxed or limited to
  * verid and read-only git.
  */
@@ -250,6 +252,8 @@ export interface ChatStatus {
 }
 
 export function boardChat(project: string, spawner: Spawner = spawnLaunch) {
+  const say = (key: string, params: Record<string, string> = {}) =>
+    t(languageOf(project) ?? systemLanguage(), `board.${key}`, params);
   let child: ChildProcess | null = null;
   let task: string | null = null;
   let provider: Provider | null = null;
@@ -269,8 +273,9 @@ export function boardChat(project: string, spawner: Spawner = spawnLaunch) {
 
   async function status(): Promise<ChatStatus> {
     const manifest = await loadManifest(project, { readOnly: true });
+    const queue = manifest?.drive === "auto";
     const active = readState(statePaths(project)).kanban.active;
-    if (active?.module !== task && child === null) {
+    if (!queue && active?.module !== task && child === null) {
       // Another task, or none: its conversation is not this one's.
       task = active?.module ?? null;
       lines = [];
@@ -280,33 +285,44 @@ export function boardChat(project: string, spawner: Spawner = spawnLaunch) {
       task,
       provider,
       providers: manifest?.providers ?? [],
-      locked: bound()?.provider ?? null,
+      locked: bound()?.provider ?? (queue && captured ? provider : null),
       running: child !== null,
       lines,
     };
   }
 
-  async function send(input: { task: string; text: string; provider: string }): Promise<void> {
-    if (child) throw new Error("AI đang chạy. Chờ xong hoặc bấm Dừng.");
+  /** `task` is null for no-brain drive's queue session; usage then goes to the module it works on. */
+  async function send(input: {
+    task: string | null;
+    text: string;
+    provider: string;
+  }): Promise<void> {
+    if (child) throw new Error(say("chat_busy"));
     const state = readState(statePaths(project));
-    if (state.halted) throw new Error(`Workflow đang dừng: ${state.halted.reason}`);
-    if (state.kanban.active?.module !== input.task)
-      throw new Error("Chỉ chat được với task đang được chọn.");
+    if (state.halted) throw new Error(say("halted", { reason: state.halted.reason }));
+    if (input.task !== null && state.kanban.active?.module !== input.task)
+      throw new Error(say("err_chat_select"));
     const text = input.text.trim();
-    if (!text) throw new Error("Nhập nội dung trước khi gửi.");
-    if (text.length > MAX_PROMPT) throw new Error("Nội dung quá dài (tối đa 24.000 ký tự).");
+    if (!text) throw new Error(say("chat_type_first"));
+    if (text.length > MAX_PROMPT) throw new Error(say("chat_too_long"));
     const manifest = await loadManifest(project, { readOnly: true });
     const session = bound();
     const chosen = (session?.provider ?? input.provider) as Provider;
     if (!manifest?.providers.includes(chosen))
-      throw new Error(`Provider ${chosen} chưa được bật trong manifest.`);
+      throw new Error(say("chat_provider_off", { provider: chosen }));
     const resume = session?.id ?? (provider === chosen && task === input.task ? captured : null);
     const launch = launchFor(chosen, text, resume, project);
     if (task !== input.task) lines = [];
     task = input.task;
     provider = chosen;
     add({ role: "you", text: clip(text) });
-    if (!resume) add({ role: "info", text: `Mở session ${chosen} mới cho task ${task}.` });
+    if (!resume)
+      add({
+        role: "info",
+        text: task
+          ? say("chat_new_task_session", { provider: chosen, task })
+          : say("chat_new_session", { provider: chosen }),
+      });
 
     const run = spawner(launch, project);
     child = run;
@@ -322,12 +338,12 @@ export function boardChat(project: string, spawner: Spawner = spawnLaunch) {
           withLock(paths, () =>
             appendAudit(paths.audit, {
               event: "usage_recorded",
-              module: input.task,
+              module: input.task ?? readState(paths).auto.work?.module ?? "",
               ...event.usage!,
             }),
           );
         } catch {
-          add({ role: "error", text: "Không ghi được usage vào audit log." });
+          add({ role: "error", text: say("chat_usage_failed") });
         }
       }
     };
@@ -347,7 +363,7 @@ export function boardChat(project: string, spawner: Spawner = spawnLaunch) {
     run.on("error", (error) => {
       add({
         role: "error",
-        text: `Không chạy được ${launch.command}: ${error.message}. Cài CLI và kiểm tra PATH.`,
+        text: say("chat_launch_failed", { command: launch.command, error: error.message }),
       });
     });
     run.on("close", (code) => {
@@ -355,8 +371,11 @@ export function boardChat(project: string, spawner: Spawner = spawnLaunch) {
       if (buffer) accept(buffer);
       if (code !== 0) {
         if (errors.length) add({ role: "error", text: clip(errors.join("\n")) });
-        add({ role: "error", text: `${launch.command} kết thúc với mã ${code ?? "?"}.` });
-      } else add({ role: "info", text: "Xong lượt này." });
+        add({
+          role: "error",
+          text: say("chat_exit", { command: launch.command, code: String(code ?? "?") }),
+        });
+      } else add({ role: "info", text: say("chat_done") });
       if (child === run) child = null;
     });
     if (launch.stdin !== null) run.stdin?.end(launch.stdin);
@@ -365,7 +384,7 @@ export function boardChat(project: string, spawner: Spawner = spawnLaunch) {
   function stop(): void {
     const run = child;
     if (!run?.pid) return;
-    add({ role: "info", text: "Đã dừng theo yêu cầu." });
+    add({ role: "info", text: say("chat_stopped") });
     if (process.platform === "win32")
       spawn("taskkill", ["/pid", String(run.pid), "/T", "/F"], { windowsHide: true });
     else run.kill("SIGTERM");

@@ -17,12 +17,12 @@ After upgrading, run `verid upgrade --yes` and `verid doctor` to register this h
 on Codex, trust the new handler through `/hooks`. Pinned repo resources require
 their runtime and definitions to be updated explicitly as described in the README.
 
-`VERID_BURNT_TASK_SESSION` is a non-overridable Kanban rule. The developer selects
+`VERID_BURNT_TASK_SESSION` is a non-overridable board rule. The developer selects
 a task, then a fresh AI session owns it. Planning sessions, other sessions and
 sessions used for earlier tasks cannot act on it. Changed spec, plan or design
 requires reapproval and a new session. Resume and compaction keep the current
 task. After serving, stop; the developer chooses the next task in `verid board`.
-See [the Kanban workflow](kanban-workflow.md).
+See [the board workflow](kanban-workflow.md).
 
 Repo resource definitions in `.verid/agents/`, `.verid/skills/`, `.verid/templates/`,
 `.verid/hooks/`, `.verid/i18n/` and `.verid/policies/` are also protected by

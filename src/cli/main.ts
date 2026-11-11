@@ -105,7 +105,7 @@ export async function runCli(args: readonly string[]): Promise<CliResult> {
     else if (cmd === "module" && rest.length === 1) r = await moduleCommand(project, rest[0]!);
     else if (cmd === "board")
       r = await boardCommand(project, rest, (action, task) =>
-        action === "order" ? approve(project, task) : serve(project, task),
+        action === "order" ? approve(project, task) : serve(project, task ?? ""),
       );
     else if (cmd === "peek" && rest.length === 0) r = await status(project);
     else if (cmd === "usage") r = usageCommand(project, rest);

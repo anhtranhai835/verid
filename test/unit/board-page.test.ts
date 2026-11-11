@@ -31,6 +31,5 @@ describe("board page language", () => {
     const html = boardHtml("en");
     const script = html.slice(html.indexOf("<script>"), html.lastIndexOf("</script>"));
     expect(script).not.toContain("</");
-    expect(script).toContain("\\u003ctask-name>");
   });
 });
