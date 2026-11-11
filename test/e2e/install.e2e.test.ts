@@ -1,24 +1,13 @@
+import { tempDirs, TEST_ROOT as root } from "../support/project.js";
+const tempDir = tempDirs("verid-installed-", "suite");
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+
 import { delimiter, join } from "node:path";
-import { afterAll, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { developerEnv } from "./helpers.js";
 
-// Installs verid with npm and bun, each into a throwaway prefix so this machine's own
-// setup is untouched, then uses the `verid` command a developer gets on their PATH.
-const root = join(import.meta.dirname, "..", "..");
 const SESSION = "11111111-2222-3333-4444-555555555555";
-
-const dirs: string[] = [];
-const tempDir = (prefix: string) => {
-  const dir = mkdtempSync(join(tmpdir(), prefix));
-  dirs.push(dir);
-  return dir;
-};
-afterAll(() => {
-  for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
-});
 
 // A developer's terminal: no CLAUDE_* variables at all.
 const cleanEnv = (extra: Record<string, string> = {}): NodeJS.ProcessEnv => ({
