@@ -60,7 +60,7 @@ describe("Antigravity provider", () => {
     const all = instructionBlocks(manifest(["antigravity", "codex", "claude-code"]));
     expect(all.map((b) => b.file)).toEqual(["AGENTS.md", "CLAUDE.md"]);
     const block = all[0]!.block;
-    expect(block).toContain("- (Antigravity) Antigravity hooks from verid's plugin");
+    expect(block).toContain("- (Antigravity) Antigravity hooks enforce TDD");
     expect(block).toContain("- (Codex) Codex hooks enforce TDD");
     expect(block).toContain("- (Claude Code) Claude Code hooks enforce TDD");
     // Shared by the two single-writer hosts, labelled with both.

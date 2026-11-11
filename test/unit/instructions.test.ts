@@ -72,7 +72,7 @@ describe("provider instruction blocks", () => {
   });
 
   it("keeps workflow references short with the effective allowlists", () => {
-    const CAPS = { "claude-code": 2850, codex: 3399 } as const;
+    const CAPS = { "claude-code": 2850, codex: 3399, antigravity: 3400 } as const;
     const parsed = parseManifest({
       schemaVersion: 1,
       mode: "prep",
@@ -91,6 +91,7 @@ describe("provider instruction blocks", () => {
     const rows = [
       { provider: "claude-code", notice: "Claude Code hooks enforce" },
       { provider: "codex", notice: "Codex hooks enforce" },
+      { provider: "antigravity", notice: "Antigravity hooks enforce" },
     ] as const;
     for (const { provider, notice } of rows) {
       const text = renderInstructions(parsed.manifest, provider, "C:/install/plugin/skills");
@@ -111,8 +112,9 @@ describe("provider instruction blocks", () => {
       expect(text).toContain(".verid/.state/");
       expect(text).toContain("verid taste");
       expect(text).toContain("Only the developer");
-      if (provider === "codex") {
+      if (provider !== "claude-code")
         expect(text).toContain("C:/install/plugin/skills/build/SKILL.md");
+      if (provider === "codex") {
         expect(text).toContain("main agent writes tests and code");
         expect(text).toContain("exceptions require Claude Code");
         expect(text).toContain("Advisory");
