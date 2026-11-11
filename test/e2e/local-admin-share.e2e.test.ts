@@ -1,25 +1,18 @@
+import { tempProject } from "../support/project.js";
 import { spawnSync } from "node:child_process";
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  realpathSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
-import { homedir, hostname, tmpdir } from "node:os";
+import { existsSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { homedir, hostname } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { runHook } from "./in-process.js";
 
 let project: string;
-beforeEach(() => {
-  project = mkdtempSync(join(tmpdir(), "verid-admin-share-"));
-  mkdirSync(join(project, ".verid/.state"), { recursive: true });
-  writeFileSync(join(project, ".verid/.state/state.json"), '{"schemaVersion":1}');
+tempProject("verid-admin-share-", {
+  state: '{"schemaVersion":1}',
+  bind: (p) => {
+    project = p.root;
+  },
 });
-afterEach(() => rmSync(project, { recursive: true, force: true }));
 
 function share(path: string, prefix = "\\\\localhost\\", separator = "\\"): string {
   return `${prefix}${path[0]}$${path.slice(2).replace(/[\\/]/g, separator)}`;
