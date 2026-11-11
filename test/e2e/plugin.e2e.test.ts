@@ -38,6 +38,14 @@ const sample = resolve("examples/plugins/sample");
 const registry = () => JSON.parse(t.read(".verid/plugins.json"));
 const installed = () => join(t.dir, ".verid/.plugins/sample");
 const add = (source = `file:${sample}`) => t.cli("plugin", "add", source, "--yes");
+// Codex tool-call envelope fields the hook's payload schema requires.
+const codexTool = {
+  transcript_path: null,
+  model: "test",
+  permission_mode: "default",
+  turn_id: "turn-1",
+  tool_use_id: "call-1",
+};
 const custom = (changes: Record<string, unknown> = {}) => {
   const source = t.newDir("verid-plugin-source-");
   cpSync(sample, source, { recursive: true });
@@ -62,7 +70,7 @@ it.each([
     { tool_name: "Bash", tool_input: { command: `echo evil > ${path}` } },
   ];
   for (const call of calls) {
-    const result = await t.sessionEvent("PreToolUse", "planning", call);
+    const result = await t.sessionEvent("PreToolUse", "planning", { ...codexTool, ...call });
     expect(result.stderr + result.stdout).toContain("VERID_BURNT_PLUGIN_PROTECTED");
   }
 });
@@ -74,6 +82,7 @@ it.each(["add file:sample", "remove sample", "list", "doctor"])(
       "VERID_BURNT_PLUGIN_IN_AGENT",
     );
     const result = await t.sessionEvent("PreToolUse", "planning", {
+      ...codexTool,
       tool_name: "Bash",
       tool_input: { command: `node .verid/verid.mjs plugin ${args}` },
     });
@@ -219,7 +228,9 @@ it("copies namespaced resources without granting writer roles and removes only o
     }),
   );
   expect(dispatch.code).toBe(0);
-  expect(t.auditText()).not.toContain("VERID_BURNT_AGENT_NOT_ALLOWED");
+  expect(existsSync(t.auditFile) ? t.auditText() : "").not.toContain(
+    "VERID_BURNT_AGENT_NOT_ALLOWED",
+  );
   const disabled = registry();
   disabled.plugins[0].enabled = false;
   t.put(".verid/plugins.json", JSON.stringify(disabled));
