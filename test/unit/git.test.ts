@@ -1,31 +1,14 @@
-import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { tempProject } from "../support/project.js";
+
+import { writeFileSync } from "node:fs";
+
+import { join } from "node:path";
+import { describe, expect, it } from "vitest";
 import { gitView } from "../../src/adapters/git.js";
 
 const GIT_ENV = ["GIT_CONFIG_GLOBAL", "GIT_CONFIG_NOSYSTEM", "XDG_CONFIG_HOME"] as const;
 let saved: Record<string, string | undefined>;
-let dirs: string[];
 
-// A name with a space and `$$`, as a project folder may have.
-const tmp = (): string => {
-  const dir = mkdtempSync(join(tmpdir(), "verid git $$-"));
-  dirs.push(dir);
-  return dir;
-};
-const git = (cwd: string, ...args: string[]) => {
-  const r = spawnSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], {
-    cwd,
-    encoding: "utf8",
-  });
-  if (r.status !== 0) throw new Error(`git ${args.join(" ")}: ${r.stderr}`);
-};
-const write = (root: string, rel: string, text = "x") => {
-  mkdirSync(dirname(join(root, rel)), { recursive: true });
-  writeFileSync(join(root, rel), text);
-};
 const repo = (): string => {
   const dir = tmp();
   git(dir, "init", "-q");
@@ -39,24 +22,24 @@ const committed = (): string => {
   return dir;
 };
 
-beforeEach(() => {
-  dirs = [];
-  saved = Object.fromEntries(GIT_ENV.map((k) => [k, process.env[k]]));
-  // No global or system config, and no default global ignore file: the machine's own ignore
-  // rules must not decide what the test asserts.
-  const empty = tmp();
-  writeFileSync(join(empty, "config"), "");
-  process.env.GIT_CONFIG_GLOBAL = join(empty, "config");
-  process.env.GIT_CONFIG_NOSYSTEM = "1";
-  process.env.XDG_CONFIG_HOME = empty;
+const t = tempProject("verid git $$-", {
+  defaultText: "x",
+  setup: () => {
+    saved = Object.fromEntries(GIT_ENV.map((k) => [k, process.env[k]]));
+    const empty = tmp();
+    writeFileSync(join(empty, "config"), "");
+    process.env.GIT_CONFIG_GLOBAL = join(empty, "config");
+    process.env.GIT_CONFIG_NOSYSTEM = "1";
+    process.env.XDG_CONFIG_HOME = empty;
+  },
+  teardown: () => {
+    for (const k of GIT_ENV) {
+      if (saved[k] === undefined) delete process.env[k];
+      else process.env[k] = saved[k];
+    }
+  },
 });
-afterEach(() => {
-  for (const k of GIT_ENV) {
-    if (saved[k] === undefined) delete process.env[k];
-    else process.env[k] = saved[k];
-  }
-  for (const dir of dirs) rmSync(dir, { recursive: true, force: true });
-});
+const { newDir: tmp, gitAt: git, putAt: write } = t;
 
 describe("gitView", () => {
   it("reads whether the project's tree is clean, outside git null", () => {
