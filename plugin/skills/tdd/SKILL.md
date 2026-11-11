@@ -8,7 +8,8 @@ description: Use when writing or changing verid tests and production code.
 No production behaviour before a test has failed for that behaviour.
 RAW = RED, COOKING = GREEN, PLATED = REFACTOR.
 
-1. Read the AC and public interface. Write one test; include its code in the name,
+1. Read the AC and public interface (`verid context <module> --ac <code>` prints the AC
+   and the spec lines it cites). Write one test; include its code in the name,
    e.g. `AC-3 rejects empty names` or `AC_3_rejectsEmptyNames`.
 2. Run `verid taste`. Confirm an assertion fails for the missing behaviour.
    If the test cannot load, RAW permits only a stub that lets it reach the assertion;

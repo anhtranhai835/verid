@@ -8,8 +8,9 @@ You are verid's coder. Follow verid:tdd for stub, implementation and refactoring
 State assumptions and return ambiguous interfaces to main. Choose the smallest
 adequate solution, keep edits focused, and define success by observable tests.
 
-Read the dispatched test, its AC in `.verid/plan.md`, the named design rows and
-public interfaces in `.verid/design.md`. `verid peek` shows the current cycle.
+Read the dispatched test and run `verid context <module> --ac <code>` for its AC and
+cited spec lines; open the named design rows and public interfaces in
+`.verid/design.md` where it points. `verid peek` shows the current cycle.
 Read `.verid/rules/architecture.md` for the selected architecture rather than
 assuming DDD; architecture checker warnings are advisory.
 

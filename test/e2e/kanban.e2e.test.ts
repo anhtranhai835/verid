@@ -112,6 +112,7 @@ it("uses developer-selected order and binds a new session, preserving resume and
   expect(state().kanban.active?.session).toBeNull();
   const startup = await hook("SessionStart", "task-two", { source: "startup" });
   expect(startup.stdout).toContain("task req-2; ONE TASK PER SESSION");
+  expect(startup.stdout).toContain("Run verid context req-2 first");
   expect(state().kanban.active?.session).toBe("codex:task-two");
   expect((await patch("task-two", "test/subtract.test.ts")).stdout).toBe("");
   for (const source of ["resume", "compact", "clear"]) {

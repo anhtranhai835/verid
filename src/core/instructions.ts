@@ -170,7 +170,7 @@ export function renderInstructions(
     ...(planned(manifest)
       ? [
           `- Modules: read .verid/workflow.md and ${skill("modules")}. Run verid module <name>; fill BA/UI/spec/tests/security before order. Every plan module needs Artifacts: .verid/artifacts/03-modules/<name>.`,
-          "- Templates: .verid/templates/; main records evidence; reviewers only read.",
+          "- Templates: .verid/templates/; main records evidence; reviewers read only.",
           ...(manifest.drive === "auto"
             ? [
                 "- AI: developer sets priorities in verid board and signs with verid order. One session follows that queue through TDD/review/serve; current work stays first.",
@@ -208,6 +208,7 @@ export function renderInstructions(
     "",
     "### Commands",
     "- Agent: verid taste (evidence), verid peek, verid menu, verid doctor.",
+    "- Task start: verid context [module]",
     "- Developer terminal only: verid cook, upgrade, stock, order [module], serve <module>, garnish, halt, resume.",
     ...(planned(manifest)
       ? ["- Developer only: verid board; agents never select or reorder tasks."]
@@ -217,7 +218,7 @@ export function renderInstructions(
     "- .verid/docs/: developer inputs, read-only.",
     "- Session log .verid/log/<module>.md: read at startup; main appends after each AC.",
     "- Inputs: .verid/{manifest.yaml,research.md,spec.md,design.md,plan.md}; evidence/audit: .verid/.state/.",
-    "- Advisory rules: .verid/rules/{git,architecture,workflow}.md. Small feature commits; no unrelated changes.",
+    "- Advisory rules: .verid/rules/{git,architecture,workflow}.md; small commits.",
     "",
     // The defaults (verid:* and the roles above) need no list; only additions are worth the tokens.
     ...(extras

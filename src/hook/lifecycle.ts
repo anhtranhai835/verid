@@ -148,7 +148,7 @@ export async function lifecycle(
     taskContext.push(
       problem
         ? `verid: ${problem}`
-        : `verid: task ${kanban.active!.module}; ONE TASK PER SESSION. Read its plan section and log; TDD → review → developer serve → STOP. Never start another task in this session.`,
+        : `verid: task ${kanban.active!.module}; ONE TASK PER SESSION. Run verid context ${kanban.active!.module} first; TDD → review → developer serve → STOP. Never start another task in this session.`,
     );
     if (p.hook_event_name === "Stop" && problem) return { exit: 0 };
   }

@@ -178,6 +178,7 @@
   "usage.taste": "run the tests, record the result as evidence",
   "usage.peek": "where the TDD cycle stands",
   "usage.menu": "the plan, its modules and the next step",
+  "usage.context": "a short packet to start a task from",
   "usage.order": "approve a module of the plan",
   "usage.serve": "close the module once every AC passes",
   "usage.stock": "record the failing tests as the baseline",

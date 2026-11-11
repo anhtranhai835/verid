@@ -178,6 +178,7 @@
   "usage.taste": "chạy test, ghi kết quả làm bằng chứng",
   "usage.peek": "vòng TDD đang ở đâu",
   "usage.menu": "plan, các module và bước tiếp theo",
+  "usage.context": "gói ngắn để bắt đầu một task",
   "usage.order": "duyệt một module của plan",
   "usage.serve": "đóng module khi mọi AC đã pass",
   "usage.stock": "ghi các test đang đỏ làm baseline",

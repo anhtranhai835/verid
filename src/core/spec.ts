@@ -11,20 +11,34 @@ export interface SpecTrace {
   unknown: string[];
 }
 
-/** How the plan's ACs trace to the spec. A requirement followed by a `Dropped` line is retired. */
-export function specTrace(spec: string, plan: string): SpecTrace {
-  const live: string[] = [];
+/** The requirement IDs a text cites, once each, in order. */
+export const citedIds = (text: string): string[] => [
+  ...new Set([...text.matchAll(CITED)].map((m) => m[1]!)),
+];
+
+/** The spec's live requirements as `[id, line]`, in order. One followed by a `Dropped` line is retired. */
+export function liveRequirements(spec: string): [string, string][] {
+  const live: [string, string][] = [];
   let last: string | undefined;
   for (const line of spec.split(/\r?\n/)) {
     const id = REQUIREMENT.exec(line)?.[1];
     if (id !== undefined) {
-      live.push(id);
+      live.push([id, line.trim()]);
       last = id;
     } else if (last !== undefined && /^[ \t]*Dropped\b/.test(line)) {
-      live.splice(live.lastIndexOf(last), 1);
+      live.splice(
+        live.findLastIndex(([live]) => live === last),
+        1,
+      );
       last = undefined;
     }
   }
+  return live;
+}
+
+/** How the plan's ACs trace to the spec. A requirement followed by a `Dropped` line is retired. */
+export function specTrace(spec: string, plan: string): SpecTrace {
+  const live = liveRequirements(spec).map(([id]) => id);
   const cited = [
     ...new Set(
       plan

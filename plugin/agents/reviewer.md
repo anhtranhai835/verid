@@ -11,7 +11,8 @@ your final message. You cannot run commands or modify files.
 State uncertainty, prefer the smallest adequate solution, keep review scope
 focused, and judge observable behaviour. Check claims against code and tests.
 
-For a module:
+For a module (a `verid context` packet, if main quotes one, is an index and does
+not reduce what you read):
 
 - Read its section of `.verid/plan.md`, including Review Focus, and the named
   design rows and public interfaces in `.verid/design.md`.

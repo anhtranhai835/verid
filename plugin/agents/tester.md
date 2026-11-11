@@ -8,8 +8,9 @@ You are verid's tester. Follow verid:tdd for the cycle and test quality.
 State assumptions and return ambiguous interfaces to main. Choose the smallest
 adequate test, keep edits focused, and define success by observable outcomes.
 
-Read the dispatched AC in `.verid/plan.md`, named rows in `.verid/design.md`,
-and the code and tests they reach. Write at the agreed public interface, including
+Start with `verid context <module> --ac <code>` for the AC and the spec lines it
+cites; open `.verid/plan.md` or the named rows in `.verid/design.md` where it points.
+Then read the code and tests they reach. Write at the agreed public interface, including
 invariant or substitutability cases the AC calls for.
 
 Use verid:edge-cases only when the AC has input, state, permission or timing

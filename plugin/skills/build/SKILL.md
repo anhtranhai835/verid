@@ -10,9 +10,10 @@ Clarify assumptions; keep edits local and meet the AC with observable tests.
 Read verid:tdd once for this build loop; use verid:debugging for unclear failures.
 Settle ambiguous ACs through verid:ba in the main conversation.
 
-Use `verid peek` for cycle and uncovered ACs; `verid menu` for module-wide status.
-Read `.verid/log/<module>.md` first if present, then `.verid/manifest.yaml` for roles,
-repos and globs. Follow relevant `.verid/rules/` (advisory).
+Start with `verid context <module>`: ACs, cited spec lines, dependencies, dossier state,
+last log entry; open full documents only where it points. `verid peek` shows the cycle
+and uncovered ACs, `verid menu` module status. Read `.verid/manifest.yaml` for roles,
+repos and globs; follow `.verid/rules/` (advisory).
 
 Commit small, verified feature increments with their tests using Conventional
 Commits. Inspect `git diff --staged`; never mix unrelated work or commit broken
@@ -20,8 +21,8 @@ TDD states. Details: `.verid/rules/git.md`.
 
 For each uncovered AC, dispatch one writer at a time because repos share one cycle:
 
-1. Give the mapped tester the module name, AC code, `.verid/plan.md` path,
-   `.verid/design.md` path and relevant design row names and code paths.
+1. Give the mapped tester the module name, AC code and relevant design row names and
+   code paths; it starts with `verid context <module> --ac <code>`.
    For `(e2e)`, prefer the mapped qa; otherwise the tester. When the module
    has `Screens:`, the e2e test checks the chosen wireframe's elements, labels and states.
 2. Give the mapped coder the same identifiers and failing test path. It handles a
@@ -44,11 +45,10 @@ Main alone writes the log; agents report to it. One entry per AC:
 
 Never rewrite earlier entries; keep source, test output, secrets and personal data out.
 
-Dispatch identifiers, paths and exact sections; agents read those and expand through
-relevant dependencies. Use verid:context-engineering's `references/flow-context.md`
-for large handoffs. Name verid:tdd (and its
-path for custom agents), write responsibility and relevant interfaces. Mapped
-tester/coder roles own their writes; on Codex or without mappings, main writes.
+Dispatch identifiers, paths and exact sections; agents expand through relevant
+dependencies. Name verid:tdd (and its path for custom agents), write responsibility
+and relevant interfaces. Mapped tester/coder roles own their writes; on Codex or
+without mappings, main writes.
 
 Read UI source to derive Playwright selectors. Keep Playwright under `e2e/` and
 exclude `e2e/**` from the unit runner; another runner needs matching `e2e_globs`.
