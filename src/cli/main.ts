@@ -101,7 +101,8 @@ export async function runCli(args: readonly string[]): Promise<CliResult> {
     else if (cmd === "setup-codex" && rest.length === 0) r = setupCodexCommand();
     else if (cmd === "setup-antigravity" && rest.length === 0) r = setupAntigravityCommand();
     else if (cmd === "taste" && rest.length === 0) r = await testCommand(project);
-    else if (cmd === "doctor" && rest.length === 0) r = await doctorCommand(project);
+    else if (cmd === "doctor" && (rest.length === 0 || (rest.length === 1 && rest[0] === "--ci")))
+      r = await doctorCommand(project, rest[0] === "--ci");
     else if (cmd === "module" && rest.length === 1) r = await moduleCommand(project, rest[0]!);
     else if (cmd === "board")
       r = await boardCommand(project, rest, (action, task) =>
@@ -423,7 +424,7 @@ function usage(project: string, wrong: Misuse | null, next?: string): CliResult 
   const rows: UsageRow[] = [
     // The three everyday commands first, then the gate commands as a second group.
     { emoji: "🔪", command: cook, what: say("usage.cook"), who: dev },
-    { emoji: "🩺", command: `${v} doctor`, what: say("usage.doctor") },
+    { emoji: "🩺", command: `${v} doctor [--ci]`, what: say("usage.doctor") },
     { emoji: "📋", command: `${v} menu [--commits [--file [--compact]]]`, what: say("usage.menu") },
     {
       emoji: "⬆️",

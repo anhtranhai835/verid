@@ -110,6 +110,7 @@ project root. The `verid` shorthand below also works with an optional global ins
 | `verid upgrade [--dry-run] [--yes]`    | Refresh provider wiring and instructions and offer missing manifest defaults. |
 | `verid module <name>`                  | Create a modular dossier from project templates.                              |
 | `verid doctor`                         | Check setup, providers, resources and audit findings.                         |
+| `verid doctor --ci`                    | Check, in CI, what the repo holds: spec-to-AC trace, plan order, setup files. |
 | `verid menu`                           | Show module progress and the next step.                                       |
 | `verid peek`                           | Show the current TDD state.                                                   |
 | `verid stock`                          | Record pre-existing failures for remix.                                       |
@@ -215,7 +216,7 @@ are in the [hook rule reference](docs/hook-reference.md).
 - [Modules and board](docs/modules-and-board.md): dossiers, the browser board, TDD states.
 - [Providers and protection](docs/providers-and-protection.md): agents and skills, the `.verid/` tree, working with a teammate.
 - [Troubleshooting](docs/troubleshooting.md): the refusals you meet first.
-- [Small changes](docs/small-changes.md) · [Board workflow](docs/kanban-workflow.md) · [Modular cook guide](docs/modular-cook.md)
+- [Small changes](docs/small-changes.md) · [Board workflow](docs/kanban-workflow.md) · [Modular cook guide](docs/modular-cook.md) · [CI gate](docs/ci-gate.md)
 
 ## Development
 

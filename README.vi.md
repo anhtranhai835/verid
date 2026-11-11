@@ -104,23 +104,24 @@ Bảng này là bản tóm tắt. Các bước đầy đủ nằm ở `.verid/wo
 Với chế độ repo, chạy từng lệnh bằng `node .verid/verid.mjs <lệnh>` từ gốc project.
 Cách viết gọn `verid` bên dưới dùng được khi chọn cài global.
 
-| Lệnh                                  | Công dụng                                                                 |
-| ------------------------------------- | ------------------------------------------------------------------------- |
-| `verid cook`                          | Xem trước và thiết lập project, hoặc nối hook cho project vừa clone.      |
-| `verid upgrade [--dry-run] [--yes]`   | Cập nhật wiring, chỉ dẫn provider và bổ sung defaults manifest còn thiếu. |
-| `verid module <tên>`                  | Tạo hồ sơ modular từ template của project.                                |
-| `verid doctor`                        | Kiểm tra cài đặt, provider, tài nguyên và audit.                          |
-| `verid menu`                          | Xem tiến độ module và bước tiếp theo.                                     |
-| `verid peek`                          | Xem trạng thái TDD hiện tại.                                              |
-| `verid stock`                         | Ghi các lỗi có trước trong remix.                                         |
-| `verid taste`                         | Chạy test và ghi bằng chứng.                                              |
-| `verid order [module]`                | Duyệt module trong big-brain drive; ký hoặc tiếp tục no-brain drive.      |
-| `verid serve <module>`                | Đóng module khi coverage, bằng chứng mới và review đều đạt.               |
-| `verid menu --commits --file`         | Tạo gói review.                                                           |
-| `verid garnish`                       | Bắt đầu phiên chỉ refactor.                                               |
-| `verid halt [lý-do]` / `verid resume` | Dừng lệnh gọi tool của agent hoặc tiếp tục.                               |
-| `verid setup-codex`                   | Thiết lập reviewer đã cài trong config Codex của user.                    |
-| `verid setup-antigravity`             | Cài hoặc cập nhật plugin Antigravity của verid cho user này.              |
+| Lệnh                                  | Công dụng                                                                      |
+| ------------------------------------- | ------------------------------------------------------------------------------ |
+| `verid cook`                          | Xem trước và thiết lập project, hoặc nối hook cho project vừa clone.           |
+| `verid upgrade [--dry-run] [--yes]`   | Cập nhật wiring, chỉ dẫn provider và bổ sung defaults manifest còn thiếu.      |
+| `verid module <tên>`                  | Tạo hồ sơ modular từ template của project.                                     |
+| `verid doctor`                        | Kiểm tra cài đặt, provider, tài nguyên và audit.                               |
+| `verid doctor --ci`                   | Kiểm trong CI những gì repo chứa: truy vết spec tới AC, thứ tự plan, file cài. |
+| `verid menu`                          | Xem tiến độ module và bước tiếp theo.                                          |
+| `verid peek`                          | Xem trạng thái TDD hiện tại.                                                   |
+| `verid stock`                         | Ghi các lỗi có trước trong remix.                                              |
+| `verid taste`                         | Chạy test và ghi bằng chứng.                                                   |
+| `verid order [module]`                | Duyệt module trong big-brain drive; ký hoặc tiếp tục no-brain drive.           |
+| `verid serve <module>`                | Đóng module khi coverage, bằng chứng mới và review đều đạt.                    |
+| `verid menu --commits --file`         | Tạo gói review.                                                                |
+| `verid garnish`                       | Bắt đầu phiên chỉ refactor.                                                    |
+| `verid halt [lý-do]` / `verid resume` | Dừng lệnh gọi tool của agent hoặc tiếp tục.                                    |
+| `verid setup-codex`                   | Thiết lập reviewer đã cài trong config Codex của user.                         |
+| `verid setup-antigravity`             | Cài hoặc cập nhật plugin Antigravity của verid cho user này.                   |
 
 Cook, upgrade, stock, order, serve, garnish, halt và resume do developer chạy ở
 terminal của mình. Agent dùng taste, menu, peek và doctor. Với no-brain drive đã ký,
@@ -215,7 +216,7 @@ không chặn: doctor và menu hiển thị chúng. Mã rule và cách override 
 - [Module và board](docs/modules-and-board.vi.md): hồ sơ module, board trên trình duyệt, các trạng thái TDD.
 - [Provider và bảo vệ](docs/providers-and-protection.vi.md): agents và skills, cây `.verid/`, làm việc cùng thành viên mới.
 - [Xử lý sự cố](docs/troubleshooting.vi.md): các lần từ chối gặp đầu tiên.
-- [Thay đổi nhỏ](docs/small-changes.vi.md) · [Board workflow](docs/kanban-workflow.md) · [Hướng dẫn modular cook](docs/modular-cook.md)
+- [Thay đổi nhỏ](docs/small-changes.vi.md) · [Board workflow](docs/kanban-workflow.md) · [Hướng dẫn modular cook](docs/modular-cook.md) · [Kiểm trong CI](docs/ci-gate.vi.md)
 
 ## Phát triển
 

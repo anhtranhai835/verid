@@ -96,19 +96,8 @@ export function auditWarnings(project: string, manifest: Manifest, state: State)
         warn("DESIGN_CHANGED", ".verid/design.md changed since approval");
     }
     // Traceability between the spec and the plan's ACs only warns; ordering never waits on it.
+    for (const [code, detail] of traceFindings(project, manifest)) warn(code, detail);
     const spec = join(project, ".verid/spec.md");
-    const plan = join(project, ".verid/plan.md");
-    if (manifest.mode !== "remix" && existsSync(plan)) {
-      const parsed = parsePlan(readFileSync(plan, "utf8"), manifest.iterations !== undefined);
-      if (parsed.ok) for (const line of dependencyProblems(parsed.modules)) warn("DEPENDS", line);
-    }
-    if (manifest.mode !== "remix" && existsSync(spec) && existsSync(plan)) {
-      const trace = specTrace(readFileSync(spec, "utf8"), readFileSync(plan, "utf8"));
-      for (const id of trace.uncovered)
-        warn("SPEC_UNCOVERED", `${id}: no AC or Review Focus line in .verid/plan.md cites it`);
-      for (const id of trace.unknown)
-        warn("SPEC_UNKNOWN", `${id}: cited in .verid/plan.md but not in .verid/spec.md`);
-    }
     const signedSpec = state.auto.signed?.spec_sha256;
     if (manifest.drive === "auto" && signedSpec && signedSpec !== readFileHash(spec))
       warn("SPEC_CHANGED", ".verid/spec.md changed since approval");
@@ -120,6 +109,32 @@ export function auditWarnings(project: string, manifest: Manifest, state: State)
     warn("AUDIT_UNAVAILABLE", err instanceof Error ? err.message : String(err));
   }
   return [...new Set(warnings)];
+}
+
+/**
+ * What the committed spec and plan alone show: dependency order and spec-to-AC traceability.
+ * It needs no verid state, so `doctor --ci` can check it on a fresh clone.
+ */
+export function traceFindings(project: string, manifest: Manifest): [string, string][] {
+  const found: [string, string][] = [];
+  const spec = join(project, ".verid/spec.md");
+  const plan = join(project, ".verid/plan.md");
+  if (manifest.mode === "remix" || !existsSync(plan)) return found;
+  const planText = readFileSync(plan, "utf8");
+  const parsed = parsePlan(planText, manifest.iterations !== undefined);
+  if (parsed.ok)
+    for (const line of dependencyProblems(parsed.modules)) found.push(["DEPENDS", line]);
+  if (existsSync(spec)) {
+    const trace = specTrace(readFileSync(spec, "utf8"), planText);
+    for (const id of trace.uncovered)
+      found.push([
+        "SPEC_UNCOVERED",
+        `${id}: no AC or Review Focus line in .verid/plan.md cites it`,
+      ]);
+    for (const id of trace.unknown)
+      found.push(["SPEC_UNKNOWN", `${id}: cited in .verid/plan.md but not in .verid/spec.md`]);
+  }
+  return found;
 }
 
 /** Current diagnostics plus bounded historical observations, including closed auto modules. */

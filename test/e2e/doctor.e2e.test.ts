@@ -620,6 +620,49 @@ describe("verid doctor", () => {
     }
   });
 
+  // A fresh clone as CI sees it: committed files only, no verid state and no machine wiring.
+  const ciClone = () => {
+    healthy();
+    put(join(project, ".verid/spec.md"), "# Spec\n- REQ-1: When x, the system shall y.\n");
+    put(join(project, ".verid/plan.md"), "## Module: calc\n- AC-1: adds (REQ-1)\n");
+    commit();
+    const clone = join(dir, `clone-${sequence++}`);
+    git("clone", "-q", project, clone);
+    project = clone;
+    rmSync(join(project, ".claude/settings.local.json"), { force: true });
+    rmSync(join(project, ".codex"), { recursive: true, force: true });
+    rmSync(join(config, "plugins"), { recursive: true, force: true });
+  };
+
+  it("checks only what the repository holds with --ci: machine wiring and state are not CI's", async () => {
+    ciClone();
+    expect(existsSync(join(project, ".verid/.state"))).toBe(false);
+    const plain = await cli(["doctor"]);
+    expect(plain.code, plain.out).toBe(1);
+    expect(plain.out).toContain("! hooks");
+    const before = snapshot();
+    const r = await cli(["doctor", "--ci"]);
+    expect(r.code, r.err + r.out).toBe(0);
+    expect(r.out).toContain("does not replace the local hooks");
+    expect(r.out).not.toContain("! hooks");
+    expect(r.out).not.toContain("! plugin.");
+    expect(r.out).not.toMatch(/\x1b\[/);
+    expect(snapshot()).toEqual(before);
+  });
+
+  it("fails --ci when a spec requirement has no AC, naming SPEC_UNCOVERED", async () => {
+    ciClone();
+    put(
+      join(project, ".verid/spec.md"),
+      "# Spec\n- REQ-1: When x, the system shall y.\n- REQ-9: The system shall z.\n",
+    );
+    const r = await cli(["doctor", "--ci"]);
+    expect(r.code, r.err + r.out).toBe(1);
+    expect(r.out).toMatch(/^(en: )?! SPEC_UNCOVERED: REQ-9/m);
+    put(join(project, ".verid/plan.md"), "## Module: calc\n- AC-1: adds (REQ-1, REQ-9)\n");
+    expect((await cli(["doctor", "--ci"])).code).toBe(0);
+  });
+
   it("reports a missing or invalid manifest as a fixable problem with exit one", async () => {
     const rows = [{ text: null }, { text: "schemaVersion: 99\n" }];
     for (const row of rows) {

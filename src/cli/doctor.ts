@@ -20,7 +20,7 @@ import {
 import { bilingual, inLanguage, t } from "../adapters/i18n.js";
 import { gitView } from "../adapters/git.js";
 import { verifyAuditChain } from "../adapters/audit-log.js";
-import { auditLines } from "../adapters/rule-audit.js";
+import { auditLines, traceFindings } from "../adapters/rule-audit.js";
 import { isDirectory, loadManifest } from "../adapters/manifest.js";
 import { checkedRepos } from "../adapters/architecture.js";
 import { errno, readState, statePaths, VeridError } from "../adapters/state-store.js";
@@ -32,10 +32,14 @@ import { dossierStatus, readPlan, servedModules } from "../adapters/plan-file.js
 import type { ErrorCode, MessageKey } from "../core/errors.js";
 import type { CliResult } from "./test.js";
 
-/** Read-only checks: never run a test, repair settings, or write the manifest cache. */
-export async function doctorCommand(project: string): Promise<CliResult> {
+/**
+ * Read-only checks: never run a test, repair settings, or write the manifest cache. With `ci`,
+ * only what a fresh clone holds: no hook wiring, provider install or trust of this machine, and
+ * nothing that needs verid state; spec and plan traceability warnings count as problems.
+ */
+export async function doctorCommand(project: string, ci = false): Promise<CliResult> {
   const say = (key: MessageKey, params: Record<string, string> = {}) => bilingual(key, params);
-  const lines = [say("doctor.header", { project })];
+  const lines = [say("doctor.header", { project }), ...(ci ? [say("doctor.ci.scope")] : [])];
   let problems = 0;
   const problem = (
     key: string,
@@ -72,7 +76,7 @@ export async function doctorCommand(project: string): Promise<CliResult> {
     );
   }
 
-  if (!manifest || manifest.providers.includes("claude-code")) {
+  if (!ci && (!manifest || manifest.providers.includes("claude-code"))) {
     const settingsFile = join(project, ".claude/settings.local.json");
     const hook =
       manifest?.resources === "repo"
@@ -220,7 +224,7 @@ export async function doctorCommand(project: string): Promise<CliResult> {
       });
     else lines.push(say("doctor.instructions.ok", { file }));
   }
-  for (const provider of manifest?.providers ?? []) {
+  for (const provider of ci ? [] : (manifest?.providers ?? [])) {
     if (provider === "antigravity") {
       if (antigravityPluginInstalled()) lines.push(say("doctor.antigravity.plugin_ok"));
       else
@@ -370,42 +374,48 @@ export async function doctorCommand(project: string): Promise<CliResult> {
       lines.push(
         say("doctor.architecture.configured", { repo: repo.path, command: check.command }),
       );
-    try {
-      const state = readState(statePaths(project));
-      lines.push(...auditLines(project, manifest, state));
-      if (planned(manifest)) {
-        const plan = readPlan(
-          project,
-          manifest.iterations !== undefined,
-          false,
-          servedModules(state),
-          true,
-        );
-        if (plan?.ok)
-          for (const module of plan.modules) {
-            if (
-              servedModules(state).has(module.name) &&
-              state.modules[module.name]?.sha256 === plan.hashes[module.name]
-            )
-              continue;
-            const dossier = dossierStatus(project, module);
-            if (dossier.problem)
-              problem(`module.${module.name}`, "doctor.module_dossier", "doctor.module_fix", {
-                module: module.name,
-                detail: dossier.problem,
-              });
-          }
+    if (ci)
+      for (const [code, detail] of traceFindings(project, manifest))
+        problem(code, "doctor.manifest.invalid", "doctor.ci.trace_fix", { detail });
+    else
+      try {
+        const state = readState(statePaths(project));
+        lines.push(...auditLines(project, manifest, state));
+        if (planned(manifest)) {
+          const plan = readPlan(
+            project,
+            manifest.iterations !== undefined,
+            false,
+            servedModules(state),
+            true,
+          );
+          if (plan?.ok)
+            for (const module of plan.modules) {
+              if (
+                servedModules(state).has(module.name) &&
+                state.modules[module.name]?.sha256 === plan.hashes[module.name]
+              )
+                continue;
+              const dossier = dossierStatus(project, module);
+              if (dossier.problem)
+                problem(`module.${module.name}`, "doctor.module_dossier", "doctor.module_fix", {
+                  module: module.name,
+                  detail: dossier.problem,
+                });
+            }
+        }
+      } catch (err) {
+        if (err instanceof VeridError && err.code !== "VERID_BURNT_STATE_MISSING")
+          problem("state", err.code, "doctor.architecture.fix", err.params);
+        else
+          lines.push(
+            `verid: audit unavailable: ${err instanceof Error ? err.message : String(err)}`,
+          );
       }
-    } catch (err) {
-      if (err instanceof VeridError && err.code !== "VERID_BURNT_STATE_MISSING")
-        problem("state", err.code, "doctor.architecture.fix", err.params);
-      else
-        lines.push(`verid: audit unavailable: ${err instanceof Error ? err.message : String(err)}`);
-    }
   }
   // The hash chain detects an edited or removed entry; nothing else ever checks it.
   const audit = statePaths(project).audit;
-  if (existsSync(audit)) {
+  if (!ci && existsSync(audit)) {
     const chain = verifyAuditChain(audit);
     if (!chain.ok)
       problem("audit", "doctor.audit.broken", "doctor.audit.fix", {
