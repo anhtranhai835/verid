@@ -648,5 +648,18 @@
   "board.mockup_selected": "Selected option",
   "board.mockup_saved": "Mockup choice saved. Record it in the UI brief before ordering.",
   "board.mockup_preview": "Preview: {choice}",
-  "board.err_mockup_choice": "Choose an existing HTML option and a single-line note of at most 1000 characters."
+  "board.err_mockup_choice": "Choose an existing HTML option and a single-line note of at most 1000 characters.",
+  "board.mockup_views": "Task views",
+  "board.mockup_intro": "Compare the previews, then choose an option. You can add a note to your choice.",
+  "board.mockup_empty": "No mockups are available for this task. Return to Details or wait for new options.",
+  "board.mockup_loading": "Loading preview…",
+  "board.mockup_load_error": "The preview could not be loaded. Try loading it again.",
+  "board.mockup_retry": "Reload preview",
+  "board.mockup_retry_aria": "Reload preview: {choice}",
+  "board.mockup_note_aria": "Note for {choice} (optional)",
+  "board.mockup_choose_aria": "Choose {choice}",
+  "board.mockup_save_note": "Save note",
+  "board.mockup_save_note_aria": "Save note for {choice}",
+  "board.mockup_saving": "Saving choice…",
+  "board.mockup_save_error": "Your choice could not be saved. Your note is still here. Try saving again."
 }
