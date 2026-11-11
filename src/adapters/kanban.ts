@@ -20,7 +20,8 @@ import {
   specFile,
 } from "./plan-file.js";
 import { scaffoldModule, moduleDrafts } from "./module-scaffold.js";
-import { appendAudit } from "./audit-log.js";
+import { appendAudit, readAudit } from "./audit-log.js";
+import { usageReport } from "../core/usage.js";
 import { readFileHash, readState, statePaths, withLock, writeState } from "./state-store.js";
 import { checkSetupPath } from "./workspace.js";
 
@@ -34,6 +35,9 @@ export async function boardSnapshot(project: string) {
 }
 
 function snapshotOf(project: string, manifest: Manifest, state: State) {
+  const usage = new Map(
+    usageReport(readAudit(statePaths(project).audit)).map((row) => [row.module, row]),
+  );
   const plan = planned(manifest)
     ? readPlan(project, manifest.iterations !== undefined, false, servedSections(state), true)
     : null;
@@ -116,6 +120,7 @@ function snapshotOf(project: string, manifest: Manifest, state: State) {
         if (isNext) next = true;
         return {
           id: module.name,
+          usage: usage.get(module.name) ?? null,
           title: /^Title:\s*(.+)$/m.exec(module.text)?.[1] ?? module.name,
           text: module.text,
           acs: module.text

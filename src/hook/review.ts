@@ -92,14 +92,17 @@ export async function subagentStop(p: z.infer<typeof lifecycleSchema>): Promise<
         ? subagentHold(writer, shared.splitFor(manifest.roles), state.tdd)
         : null;
     if (why) {
+      const line = statusLine(manifest.mode, state.tdd, state.tdd.last_run);
+      const stderr = `${line}\n${bilingual(why, {})}\n`;
       appendAudit(paths.audit, {
         event: "subagent_stop_blocked",
         session: p.session_id,
         agent_id: agentId,
         agent_type: p.agent_type,
+        module: shared.usageModule(project, state, manifest),
+        chars: stderr.length,
       });
-      const line = statusLine(manifest.mode, state.tdd, state.tdd.last_run);
-      return { exit: 2, stderr: `${line}\n${bilingual(why, {})}\n` };
+      return { exit: 2, stderr };
     }
     const rounds =
       auto && writer === "coder"

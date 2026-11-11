@@ -48,6 +48,7 @@ export async function preToolUse(p: z.infer<typeof preToolUseSchema>): Promise<R
   // The developer's kill switch comes before every rule, and no /verid tip lifts it.
   const halted = shared.haltedBy(paths);
   if (halted) {
+    const result = shared.deny("VERID_BURNT_HALTED", { target: halted.reason });
     withLock(paths, () =>
       appendAudit(paths.audit, {
         event: "denied",
@@ -55,9 +56,11 @@ export async function preToolUse(p: z.infer<typeof preToolUseSchema>): Promise<R
         tool: p.tool_name,
         rule: "VERID_BURNT_HALTED",
         target: halted.reason,
+        module: shared.usageModule(project, readState(paths)),
+        chars: shared.resultChars(result),
       }),
     );
-    return shared.deny("VERID_BURNT_HALTED", { target: halted.reason });
+    return result;
   }
   const adapted = shared.host().action(p);
   const action = adapted?.action ?? toAction(p);
@@ -264,13 +267,20 @@ export async function preToolUse(p: z.infer<typeof preToolUseSchema>): Promise<R
       const key = { ...call, rule: denied.code };
       const used = shared.host().overrides ? consumeOverride(state, key, now) : null;
       if (!used) {
-        appendAudit(paths.audit, { event: "denied", ...key, target: denied.target });
-        writeState(paths, recordDenial(state, { ...key, target: denied.target, at: now }));
         const target =
           isAbsolute(denied.target) && isUnder(normalizePath(denied.target), normalizePath(project))
             ? relative(project, denied.target).replaceAll("\\", "/")
             : denied.target;
-        return shared.deny(denied.code, { ...gate.names, target });
+        const result = shared.deny(denied.code, { ...gate.names, target });
+        appendAudit(paths.audit, {
+          event: "denied",
+          ...key,
+          target: denied.target,
+          module: shared.usageModule(project, state, taskManifest ?? undefined),
+          chars: shared.resultChars(result),
+        });
+        writeState(paths, recordDenial(state, { ...key, target: denied.target, at: now }));
+        return result;
       }
       lifted.add(denied.code);
       // Before anything is written: a call verid cannot judge stays denied and keeps its override.

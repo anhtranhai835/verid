@@ -26,7 +26,7 @@ import { appendAudit } from "../adapters/audit-log.js";
 import { ERROR_CODES } from "../core/errors.js";
 import { planned, taskSessions, type Roles, type Manifest } from "../core/manifest.js";
 import { claimTaskSession, taskSessionProblem } from "../core/kanban.js";
-import { type Cycle, cycleLabel } from "../core/tdd.js";
+import { type Cycle } from "../core/tdd.js";
 import { openModule } from "../core/plan.js";
 import { type State } from "../core/state.js";
 import { join } from "node:path";
@@ -110,8 +110,19 @@ export async function lifecycle(
 ): Promise<Result> {
   const { tdd } = readState(paths);
   const event = p.hook_event_name === "Stop" ? "stop" : "session_start";
-  withLock(paths, () => appendAudit(paths.audit, { event, session: p.session_id }));
   const manifest = await loadManifest(project);
+  withLock(paths, () =>
+    appendAudit(paths.audit, {
+      event,
+      session: p.session_id,
+      ...(event === "session_start"
+        ? {
+            provider: shared.host().id,
+            module: shared.usageModule(project, readState(paths), manifest ?? undefined),
+          }
+        : {}),
+    }),
+  );
   if (!manifest) return { exit: 0 };
   let taskContext: string[] = [];
   if (planned(manifest))
@@ -142,7 +153,7 @@ export async function lifecycle(
     if (p.hook_event_name === "Stop" && problem) return { exit: 0 };
   }
   const { mode } = manifest;
-  const line = (cycle: Cycle) => statusLine(mode, cycle, tdd.last_run);
+  const line = (cycle: Cycle) => shared.statusLine(mode, cycle, tdd.last_run);
   if (event === "stop") {
     const held = manifest.drive === "auto" ? autoStop(p, project, paths, manifest) : null;
     if (held) return held;
@@ -150,12 +161,18 @@ export async function lifecycle(
     if (p.stop_hook_active) return { exit: 0 };
     // Failed, unloadable or unverified changes still need passing evidence.
     if (tdd.state === "COOKING" || tdd.stub || tdd.dirty) {
-      withLock(paths, () =>
-        appendAudit(paths.audit, { event: "stop_blocked", session: p.session_id }),
-      );
       const why =
         tdd.state === "COOKING" ? "stop.green" : tdd.stub ? "stop.stub" : "stop.unverified";
-      return { exit: 2, stderr: `${line(tdd)}\n${bilingual(why, {})}\n` };
+      const stderr = `${line(tdd)}\n${bilingual(why, {})}\n`;
+      withLock(paths, () =>
+        appendAudit(paths.audit, {
+          event: "stop_blocked",
+          session: p.session_id,
+          module: shared.usageModule(project, readState(paths), manifest),
+          chars: stderr.length,
+        }),
+      );
+      return { exit: 2, stderr };
     }
     if (mode === "remix") return { exit: 0 };
     // Hold once per conversation for uncovered ACs or a missing evaluation.
@@ -172,18 +189,20 @@ export async function lifecycle(
       const open = openModule(views);
       if (!open || state.ac_stop_session === p.session_id) return { exit: 0 };
       const cooking = open.phase === "cooking";
+      const why = cooking
+        ? bilingual("stop.uncovered", { acs: open.uncovered.join(", ") })
+        : bilingual("stop.evaluate", { module: open.name, ...shared.mappedNames(manifest.roles) });
+      const stderr = `${line(tdd)}\n${why}\n`;
       // Audit first: if it fails, state is untouched and the hold is not remembered.
       appendAudit(paths.audit, {
         event: "stop_blocked",
         session: p.session_id,
         reason: cooking ? "uncovered" : "evaluate",
         module: open.name,
+        chars: stderr.length,
       });
       writeState(paths, { ...state, ac_stop_session: p.session_id });
-      const why = cooking
-        ? bilingual("stop.uncovered", { acs: open.uncovered.join(", ") })
-        : bilingual("stop.evaluate", { module: open.name, ...shared.mappedNames(manifest.roles) });
-      return { exit: 2, stderr: `${line(tdd)}\n${why}\n` };
+      return { exit: 2, stderr };
     });
   }
   if (manifest.drive === "auto") observe(project, paths, manifest);
@@ -269,8 +288,7 @@ export async function lifecycle(
   };
 }
 
-export const statusLine = (mode: string, cycle: Cycle, lastRun: string | null) =>
-  `verid: TDD ${cycleLabel(cycle)} · mode ${mode} · last run ${lastRun ?? "none"}`;
+export { statusLine } from "./shared.js";
 
 export function kanbanSessionProblem(
   project: string,
@@ -362,7 +380,7 @@ function autoStop(
       facts.specHash !== null,
     );
     const lines = [
-      statusLine(manifest.mode, state.tdd, state.tdd.last_run),
+      shared.statusLine(manifest.mode, state.tdd, state.tdd.last_run),
       ...auditLines(project, manifest, state, false, warnings),
       ...(closed === null ? [] : [bilingual("auto.closed", { module: closed })]),
       bilingual(step.key, { ...shared.mappedNames(manifest.roles), ...step.params }),
@@ -372,7 +390,14 @@ function autoStop(
       writeState(paths, state);
       return { exit: 0, stdout: JSON.stringify({ systemMessage: lines }) };
     }
-    appendAudit(paths.audit, { event: "stop_blocked", session, reason: "auto", step: step.key });
+    appendAudit(paths.audit, {
+      event: "stop_blocked",
+      session,
+      reason: "auto",
+      step: step.key,
+      module: shared.usageModule(project, state, manifest),
+      chars: lines.length + 1,
+    });
     writeState(paths, state);
     return { exit: 2, stderr: `${lines}\n` };
   });

@@ -1,4 +1,8 @@
 {
+  "usage.ledger": "xem số đo usage theo module",
+  "ledger.columns": "Module | Session | Taste | Bị chặn | Stop bị giữ | Ký tự | Input/cached/output (tổng)",
+  "ledger.unavailable": "không có",
+  "ledger.scope": "Token: chỉ usage do khung chat board báo; cached đã nằm trong input. Ký tự: văn bản của lần chặn, stop bị giữ và taste (không gồm context lúc bắt đầu session); event cũ có thể thiếu số đếm.",
   "init.module_reapproval": "Đã thêm đầu vào cho {modules}. Điền bản nháp rồi chạy verid order lại; giữ nguyên section và bằng chứng module đã serve.",
   "doctor.workflow_legacy": "workflow: {workflow} là cấu hình cũ; project có plan luôn dùng hồ sơ module và board",
   "doctor.workflow_fix": "Chạy verid upgrade --dry-run, rồi verid upgrade --yes.",
