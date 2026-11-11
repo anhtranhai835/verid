@@ -229,6 +229,8 @@ records are outputs and do not change that signature.
 
 The [modular cook guide](docs/modular-cook.md) has the complete template and execution flow.
 
+For a small change, see [small changes](docs/small-changes.md).
+
 ---
 
 ## Repository layouts

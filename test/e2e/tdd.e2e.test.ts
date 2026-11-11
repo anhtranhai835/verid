@@ -1331,6 +1331,15 @@ describe("prep and recipe plan", () => {
   const gate = async () =>
     /verid \[(VERID_BURNT_\w+)\]/.exec((await hook(write("src/a.ts"))).stderr)?.[1];
 
+  it("will not let /verid tip lift the task session: a change without a selected task has no shortcut", async () => {
+    writePlan(MODULES_PLAN);
+    expect(await gate()).toBe("VERID_BURNT_TASK_SESSION");
+    const attended = { CLAUDE_CODE_SESSION_ATTENDED: "1" };
+    const tipped = await hook(prompt("/verid tip one-line fix"), attended);
+    expect(tipped.stderr).toContain("VERID_BURNT_OVERRIDE_FORBIDDEN");
+    expect(await gate()).toBe("VERID_BURNT_TASK_SESSION");
+  });
+
   it("approves one module of a plan with modules, and opens production code", async () => {
     writePlan(MODULES_PLAN);
     const which = await cli("order");

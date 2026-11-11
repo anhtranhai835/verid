@@ -226,6 +226,8 @@ nên không làm thay đổi chữ ký này.
 
 [Hướng dẫn modular cook](docs/modular-cook.md) có đầy đủ template và luồng thực hiện.
 
+Với thay đổi nhỏ, xem [thay đổi nhỏ](docs/small-changes.vi.md).
+
 ---
 
 ## Bố cục repository
