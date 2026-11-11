@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { basename, dirname, join, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { setupPreview, type Action, type PlannedFile } from "../core/setup-plan.js";
 import { ask, type Io } from "../adapters/terminal.js";
 import { inAgentShell } from "../adapters/agent-environment.js";
@@ -84,6 +84,30 @@ import { ARCHITECTURES, DOCS_NOTE, projectRules } from "../core/rules.js";
 const LANGS = ["vi", "en"] as const;
 /** Where cook puts the new system in a reheat project; the developer may edit the manifest. */
 const NEW_SYSTEM = "app";
+
+/** The new system's folder: inside the project, and apart from the legacy folder it rewrites. */
+function newSystemFolder(target: string, legacy: string): string {
+  const clean = (path: string) =>
+    path.replaceAll("\\", "/").replace(/\/+$/, "").replace(/^\.\//, "");
+  const folder = clean(target);
+  // Compared case-blind: Windows and macOS folders are.
+  const [low, old] = [folder.toLowerCase(), clean(legacy).toLowerCase()];
+  if (
+    !folder ||
+    folder === "." ||
+    isAbsolute(target) ||
+    /^[a-zA-Z]:/.test(folder) ||
+    folder.split("/").includes("..") ||
+    low === old ||
+    low.startsWith(`${old}/`) ||
+    old.startsWith(`${low}/`)
+  )
+    throw invalid(
+      "--target",
+      `${target} must be a new folder inside the project, apart from ${legacy}`,
+    );
+  return folder;
+}
 
 export type { Action } from "../core/setup-plan.js";
 
@@ -370,6 +394,7 @@ export async function planCook(
     flags.architecture !== undefined ||
     flags.layout !== undefined ||
     flags.legacy !== undefined ||
+    flags.target !== undefined ||
     flags.providers !== undefined ||
     flags.iterations !== undefined ||
     flags.duration !== undefined ||
@@ -430,6 +455,8 @@ export async function planCook(
     )
       throw invalid("--architecture", "must be ddd, clean, layered or none");
     const suggested = suggestManifest(flags);
+    if (flags.target !== undefined && mode !== "reheat")
+      throw invalid("--target", "only with --mode reheat: the folder for the new system");
     // Reheat: the new system goes in a folder of its own, beside the legacy one, which is only read.
     if (mode === "reheat") {
       if (layout === "workspace") throw invalid("--mode", "reheat needs the monorepo layout");
@@ -437,8 +464,9 @@ export async function planCook(
         throw invalid("--legacy", "needed with --mode reheat: the folder of the legacy system");
       if (!isDirectory(resolve(project, ...flags.legacy.split(/[/\\]/))))
         throw invalid("--legacy", `${flags.legacy} is not a folder of this project`);
+      const target = newSystemFolder(flags.target ?? NEW_SYSTEM, flags.legacy);
       reheatRepos = [
-        { ...suggested, path: NEW_SYSTEM },
+        { ...suggested, path: target },
         {
           path: flags.legacy,
           role: "legacy",
@@ -514,7 +542,10 @@ export async function planCook(
     if (layout === "monorepo") repo = reheatRepos?.[0] ?? suggested;
     if (reheatRepos?.[1])
       notes.push(
-        bilingual("cook.legacy_note", { legacy: reheatRepos[1].path, target: NEW_SYSTEM }),
+        bilingual("cook.legacy_note", {
+          legacy: reheatRepos[1].path,
+          target: reheatRepos[0]!.path,
+        }),
       );
     step("created", ".verid/manifest.yaml", {
       content: text,

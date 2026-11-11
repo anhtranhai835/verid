@@ -15,7 +15,8 @@ verid cook --mode reheat --legacy legacy
 ```
 
 `--legacy` names the old system's folder, relative to the project. In a terminal, cook asks for it when
-the flag is missing. The new system goes in `app/`; edit the repos in the manifest to move it. Cook
+the flag is missing. The new system goes in `app/`, or in the folder `--target <folder>` names; it must sit inside the
+project and apart from the legacy folder. Cook
 writes:
 
 ```yaml

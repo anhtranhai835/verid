@@ -508,6 +508,7 @@ export interface InitFlags {
   layout?: string | undefined;
   /** mode reheat: the folder of the legacy system, relative to the project. */
   legacy?: string | undefined;
+  target?: string | undefined;
   /** Repeatable --provider; an existing manifest keeps its developer's selection. */
   providers?: readonly string[] | undefined;
   /** Optional calendar planning for prep and recipe; never changes module order or gates. */

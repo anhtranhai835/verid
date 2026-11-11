@@ -14,7 +14,8 @@ verid cook --mode reheat --legacy legacy
 ```
 
 `--legacy` là thư mục hệ cũ, tính từ gốc dự án. Trong terminal, cook sẽ hỏi nếu thiếu cờ này. Hệ mới nằm
-ở `app/`; sửa repos trong manifest để đổi chỗ. Cook ghi:
+ở `app/`, hoặc ở thư mục do `--target <thư mục>` chỉ định; thư mục này phải nằm trong dự án và tách
+khỏi thư mục hệ cũ. Cook ghi:
 
 ```yaml
 mode: "reheat"

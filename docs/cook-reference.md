@@ -6,22 +6,23 @@
 verid cook --mode prep --resources repo --provider codex --lang en --yes
 ```
 
-| Flag                                         | Values or effect                                                                     |
-| -------------------------------------------- | ------------------------------------------------------------------------------------ |
-| `--mode`                                     | `prep`, `recipe`, `remix` or `reheat`.                                               |
-| `--resources`                                | `installed` or `repo`.                                                               |
-| `--provider`                                 | `claude-code`, `codex` or `antigravity`; repeat for several.                         |
-| `--drive`                                    | `big-brain` or `no-brain` for prep/recipe (`human`, `ai` and `auto` remain aliases). |
-| `--architecture`                             | `ddd`, `clean`, `layered` or `none`.                                                 |
-| `--layout`                                   | `monorepo` or `workspace`; otherwise detected.                                       |
-| `--legacy`                                   | For `--mode reheat`: the legacy system's folder, which stays read-only.              |
-| `--lang`                                     | `en` or `vi`; this machine's CLI language.                                           |
-| `--test-cmd`                                 | Custom command containing `{junit}` or `VERID_JUNIT`.                                |
-| `--src` / `--tests`                          | Repeatable source and test globs.                                                    |
-| `--iterations`                               | Enable calendar planning; supply duration, start date and demo day below.            |
-| `--duration` / `--start-date` / `--demo-day` | For example `"2 weeks"`, `2026-11-09`, `Sunday`.                                     |
-| `--dry-run`                                  | Show the plan without writing.                                                       |
-| `--yes`                                      | Accept suggested defaults and skip confirmation.                                     |
+| Flag                                         | Values or effect                                                                                                 |
+| -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `--mode`                                     | `prep`, `recipe`, `remix` or `reheat`.                                                                           |
+| `--resources`                                | `installed` or `repo`.                                                                                           |
+| `--provider`                                 | `claude-code`, `codex` or `antigravity`; repeat for several.                                                     |
+| `--drive`                                    | `big-brain` or `no-brain` for prep/recipe (`human`, `ai` and `auto` remain aliases).                             |
+| `--architecture`                             | `ddd`, `clean`, `layered` or `none`.                                                                             |
+| `--layout`                                   | `monorepo` or `workspace`; otherwise detected.                                                                   |
+| `--legacy`                                   | For `--mode reheat`: the legacy system's folder, which stays read-only.                                          |
+| `--target`                                   | For `--mode reheat`: the folder for the new system, inside the project and apart from `--legacy`; default `app`. |
+| `--lang`                                     | `en` or `vi`; this machine's CLI language.                                                                       |
+| `--test-cmd`                                 | Custom command containing `{junit}` or `VERID_JUNIT`.                                                            |
+| `--src` / `--tests`                          | Repeatable source and test globs.                                                                                |
+| `--iterations`                               | Enable calendar planning; supply duration, start date and demo day below.                                        |
+| `--duration` / `--start-date` / `--demo-day` | For example `"2 weeks"`, `2026-11-09`, `Sunday`.                                                                 |
+| `--dry-run`                                  | Show the plan without writing.                                                                                   |
+| `--yes`                                      | Accept suggested defaults and skip confirmation.                                                                 |
 
 Interactive iteration planning uses 14 days and puts the demo on the last day.
 Iteration metadata does not change AC order or TDD gates.

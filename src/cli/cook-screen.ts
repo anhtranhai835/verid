@@ -215,7 +215,7 @@ export async function interactiveCook(
       schemaVersion: 1,
       mode: "reheat",
       repos: [
-        { path: "app", ...probe },
+        { path: flags.target ?? "app", ...probe },
         { path: answer, role: "legacy", read_only: true, ...probe },
       ],
     });

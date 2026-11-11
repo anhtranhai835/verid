@@ -37,6 +37,29 @@ describe("cook in mode reheat", () => {
     expect(existsSync(join(project, "legacy", "readme.txt"))).toBe(true);
   });
 
+  it("puts the new system in the folder --target names", async () => {
+    put("legacy/readme.txt", "old system");
+    const result = await initCommand(project, { ...flags, legacy: "legacy", target: "web/next" });
+    expect(result.exit).toBe(0);
+    const written = parse(manifest());
+    expect(written.repos[0]).toMatchObject({ path: "web/next" });
+    expect(written.repos[1]).toMatchObject({ path: "legacy", role: "legacy" });
+    expect(existsSync(join(project, "web", "next"))).toBe(true);
+    expect(existsSync(join(project, "app"))).toBe(false);
+  });
+
+  it("refuses a --target outside the project, inside or around the legacy folder, or outside reheat", async () => {
+    put("legacy/readme.txt", "old system");
+    for (const target of ["../elsewhere", "legacy", "legacy/new", ".", "/abs"])
+      await expect(
+        initCommand(project, { ...flags, legacy: "legacy", target }),
+      ).rejects.toMatchObject({ code: "VERID_BURNT_INIT_INVALID", params: { path: "--target" } });
+    await expect(
+      initCommand(project, { ...flags, mode: "prep", target: "app" }),
+    ).rejects.toMatchObject({ code: "VERID_BURNT_INIT_INVALID", params: { path: "--target" } });
+    expect(existsSync(join(project, ".verid"))).toBe(false);
+  });
+
   it("refuses a reheat manifest with no legacy folder, or one that is not a folder, before writing", async () => {
     put("legacy/readme.txt", "old system");
     await expect(initCommand(project, flags)).rejects.toMatchObject({
