@@ -304,6 +304,29 @@ it("serves a protected local board with real selection and rejects CSRF, stale r
   expect((await duplicate.json()).error).toContain("Tiếp tục session hiện tại");
 });
 
+it("opens the browser with a one-time link, never the API token another process could read", async () => {
+  split();
+  server = await startBoard(project, async () => ({ exit: 0, stdout: "", stderr: "" }));
+  // The link goes on the browser's command line and in the terminal, where a local process sees it.
+  expect(server.url).not.toContain(server.token);
+  const code = new URL(server.url).searchParams.get("open");
+  expect(code).toMatch(/^[0-9a-f]{32,}$/);
+  const read = (headers: Record<string, string>) =>
+    fetch(`${server!.origin}/api/board`, { headers });
+  expect((await read({ Authorization: `Bearer ${code}` })).status).toBe(401);
+  const opened = await fetch(server.url, { redirect: "manual" });
+  expect(opened.status).toBe(303);
+  const cookie = opened.headers.get("set-cookie") ?? "";
+  expect(cookie).toMatch(/HttpOnly/i);
+  expect(cookie).toMatch(/SameSite=Strict/i);
+  expect((await read({ Cookie: cookie.split(";")[0]! })).status).toBe(200);
+  // A second reader of the same link gets no credential.
+  const again = await fetch(server.url, { redirect: "manual" });
+  expect(again.status).toBe(403);
+  expect(again.headers.get("set-cookie")).toBeNull();
+  expect((await read({ Cookie: "verid_board=wrong" })).status).toBe(401);
+});
+
 it("serves the board and its task reasons in the project's language", async () => {
   split();
   expect((await cli("order", "req-1")).code).toBe(0);

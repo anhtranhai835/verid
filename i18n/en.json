@@ -568,5 +568,6 @@
   "board.notice_remix": "No tasks in remix mode; use verid stock and the baseline flow.",
   "board.err_no_manifest": "No manifest yet. Run verid cook before opening the board.",
   "board.err_remix": "No tasks in remix mode.",
-  "board.err_cannot_move": "Only tasks not yet started can move; product stays last."
+  "board.err_cannot_move": "Only tasks not yet started can move; product stays last.",
+  "board.err_link_used": "The board link works once. Use the board tab already open, or run verid board again."
 }

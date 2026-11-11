@@ -568,5 +568,6 @@
   "board.notice_remix": "Mode remix không có task; dùng verid stock và luồng baseline.",
   "board.err_no_manifest": "Chưa có manifest. Chạy verid cook trước khi mở board.",
   "board.err_remix": "Mode remix không có task.",
-  "board.err_cannot_move": "Chỉ đổi ưu tiên task chưa bắt đầu; product luôn cuối."
+  "board.err_cannot_move": "Chỉ đổi ưu tiên task chưa bắt đầu; product luôn cuối.",
+  "board.err_link_used": "Link mở board chỉ dùng được một lần. Dùng tab board đã mở, hoặc chạy lại verid board."
 }

@@ -100,8 +100,10 @@ tests. Separate unrelated features, broad refactoring and formatting. For exampl
 one task are valid; their count alone is not an audit warning. The generated
 `.verid/rules/git.md` and AI instructions carry this convention across workflows.
 
-`verid board --no-open --port 4318` serves on `127.0.0.1`. The printed URL contains
-a per-launch credential in its fragment. API calls require that credential;
+`verid board --no-open --port 4318` serves on `127.0.0.1`. The printed URL holds
+a one-time code: the first browser to open it gets an HttpOnly cookie, and the link
+then stops working, so a process that reads the URL later cannot use the board.
+API calls require that cookie;
 mutations also require the same browser origin, JSON content and a current board
 revision. There is no remote hosting or project upload. Stop the foreground
 process with Ctrl+C. Server errors and evidence failures are shown in the UI.

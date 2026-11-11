@@ -16,12 +16,24 @@ type Command = (command: "order" | "serve", task: string) => Promise<CliResult>;
 const say = (project: string, key: string, params: Record<string, string> = {}) =>
   t(languageOf(project) ?? systemLanguage(), `board.${key}`, params);
 
+const COOKIE = "verid_board";
+const cookieOf = (header: string | undefined) =>
+  header
+    ?.split(";")
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(`${COOKIE}=`))
+    ?.slice(COOKIE.length + 1);
+
 /** A loopback-only developer UI. All mutations use the same approval/evidence gates as the CLI. */
 export async function startBoard(project: string, command: Command, port = 0, spawner?: Spawner) {
   if (inAgentShell()) throw new Error(say(project, "err_agent_shell"));
   await boardSnapshot(project);
   const chat = boardChat(project, spawner);
   const token = randomBytes(32).toString("hex");
+  // The browser is opened with a one-time code, not the token: a URL lands on the browser's command
+  // line and in the terminal, where any local process (an agent's shell too) can read it. The code
+  // buys one HttpOnly cookie; a second use of the same link gets nothing.
+  let launch: string | null = randomBytes(32).toString("hex");
   let origin = "";
   let queue = Promise.resolve();
   const send = (res: ServerResponse, status: number, value: unknown) => {
@@ -40,6 +52,18 @@ export async function startBoard(project: string, command: Command, port = 0, sp
     );
     if (req.headers.host !== new URL(origin).host) return send(res, 403, { error: "Invalid host" });
     const url = new URL(req.url ?? "/", origin);
+    if (req.method === "GET" && url.pathname === "/" && url.searchParams.has("open")) {
+      if (launch === null || url.searchParams.get("open") !== launch)
+        return send(res, 403, { error: say(project, "err_link_used") });
+      launch = null;
+      res.writeHead(303, {
+        Location: "/",
+        "Set-Cookie": `${COOKIE}=${token}; HttpOnly; SameSite=Strict; Path=/`,
+        "Cache-Control": "no-store",
+      });
+      res.end();
+      return;
+    }
     if (req.method === "GET" && url.pathname === "/") {
       res.writeHead(200, {
         "Content-Type": "text/html; charset=utf-8",
@@ -48,7 +72,7 @@ export async function startBoard(project: string, command: Command, port = 0, sp
       res.end(boardHtml(languageOf(project) ?? systemLanguage()));
       return;
     }
-    if (req.headers.authorization !== `Bearer ${token}`)
+    if (req.headers.authorization !== `Bearer ${token}` && cookieOf(req.headers.cookie) !== token)
       return send(res, 401, { error: say(project, "err_auth") });
     if (req.method === "GET" && url.pathname === "/api/board")
       return send(res, 200, await boardSnapshot(project));
@@ -146,7 +170,7 @@ export async function startBoard(project: string, command: Command, port = 0, sp
   const address = server.address();
   if (!address || typeof address === "string") throw new Error("Cannot start board");
   origin = `http://127.0.0.1:${address.port}`;
-  return { server, url: `${origin}/#${token}`, origin, token };
+  return { server, url: `${origin}/?open=${launch}`, origin, token };
 }
 
 export async function boardCommand(
