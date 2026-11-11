@@ -6,6 +6,18 @@
 `.verid/.plugin-data/` và gọi mọi lệnh `verid plugin`. Rule này không mở ngoại lệ.
 Xem [plugin quy trình](plugins.vi.md).
 
+Ở mode reheat, `VERID_BURNT_LEGACY_READ_ONLY` chặn mọi lần ghi vào repo có `role: legacy`: công cụ
+file, `apply_patch`, công cụ MCP, redirect của shell, `sed -i`, `rm`, và lệnh `git` làm thay đổi repo,
+nhận ra qua thư mục làm việc, `cd` và `git -C`. Rule này không mở ngoại lệ. Kiểm tra shell chỉ đọc
+văn bản, nên một script hoặc alias có thể giấu việc ghi: hãy cho thư mục hệ cũ một checkout chỉ đọc
+hoặc bản clone không có quyền push. Xem [mode reheat](reheat-mode.vi.md).
+
+Ba lần từ chối của reheat là lỗi lệnh chứ không phải rule của hook, nên không override được:
+`VERID_BURNT_ADAPTER` (lệnh adapter lỗi, quá hạn hoặc in sai dạng; không có gì bị thay đổi),
+`VERID_BURNT_REHEAT_GATE` (`verid order` hoặc `verid serve` một unit hệ cũ khi gate chưa đạt trên
+file hiện tại) và `VERID_BURNT_PARITY` (`verid serve` một unit mà `release/parity.md` chưa đủ hoặc
+developer chưa ký).
+
 Trong station, `VERID_BURNT_STATION_WRITE` chặn ghi ra ngoài `Boundary:` của module, và ở
 worktree chính chặn ghi vào file thuộc một station đang mở. `VERID_BURNT_STATION_SESSION`
 chặn session của provider đã thuộc station khác. `VERID_BURNT_STATION_COMMAND` chặn lệnh
@@ -65,6 +77,7 @@ này; developer duy trì bản trong repo.
 | `VERID_BURNT_TDD_NO_FAILING_TEST`    | có                  | code production khi vòng đang ở RAW                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | `VERID_BURNT_TDD_TEST_FROZEN`        | có                  | test khi vòng đang ở COOKING                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `VERID_BURNT_GIT_INTERNALS`          | không               | mọi thao tác ghi bên trong thư mục `.git` của repository: ref, cấu hình, hook                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `VERID_BURNT_LEGACY_READ_ONLY`       | không               | mọi lần ghi vào repo có `role: legacy` (mode reheat), kể cả lệnh `git` làm thay đổi repo                                                                                                                                                                                                                                                                                                                                                                                                                      |
 
 Các rule áp dụng cho tool file, Bash (đích ghi rõ ràng được xét như Write), tool MCP, `Skill`, `Agent`, `Task` của Claude Code, cùng `apply_patch` và `collaborationspawn_agent` của Codex. Codex còn bảo vệ `.codex/` trong project/home, `.agents/skills/` trong project/home và thư mục `plugin/` của verid, coi `~/.codex/sessions/`, `history.jsonl` và các database trạng thái của nó là transcript và `~/.codex/auth.json` là bí mật, kể cả khi chuyển `CODEX_HOME`. Lỗi bất ngờ bên trong verid chặn lần gọi đó.
 

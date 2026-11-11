@@ -17,6 +17,9 @@ tags `1.0.0` and `1.2.0` keep their names.
 - Skills and agents can be opted into per project.
 - The no-brain board shows the run as a pixel-art restaurant crew, with a waiter that explains
   what needs you and suggests one next step.
+- Mode `reheat` rewrites a read-only legacy system unit by unit through an adapter plugin
+  (`verid reheat inventory|extract|gate`), refuses every write into the legacy repo, and closes a
+  unit only on a parity record the developer signed. See [docs/reheat-mode.md](docs/reheat-mode.md).
 
 ### Changed
 

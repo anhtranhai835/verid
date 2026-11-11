@@ -48,7 +48,7 @@ Muốn thử verid trên một project nhỏ trước, làm theo [examples/slugi
 npm install -g @anhtranhai835/verid
 ```
 
-**2. Thiết lập project.** Nhấn Enter ở mỗi câu hỏi: ngôn ngữ, mode (`prep` cho ý tưởng, `recipe` cho đặc tả có sẵn, `remix` cho code có sẵn) và, với prep và recipe, drive (`big-brain`: bạn chọn và duyệt từng task; `no-brain`: bạn gõ ý tưởng, agent lo phần còn lại). Cook hiện provider, layout, test runner tìm được và các file sẽ ghi; "Đổi thiết lập" để đổi phần còn lại.
+**2. Thiết lập project.** Nhấn Enter ở mỗi câu hỏi: ngôn ngữ, mode (`prep` cho ý tưởng, `recipe` cho đặc tả có sẵn, `remix` cho code có sẵn, `reheat` để viết lại hệ cũ chỉ đọc) và, với prep và recipe, drive (`big-brain`: bạn chọn và duyệt từng task; `no-brain`: bạn gõ ý tưởng, agent lo phần còn lại). Cook hiện provider, layout, test runner tìm được và các file sẽ ghi; "Đổi thiết lập" để đổi phần còn lại.
 
 ```sh
 cd your-project
@@ -111,6 +111,7 @@ Cách viết gọn `verid` bên dưới dùng được khi chọn cài global.
 | `verid module <tên>`                  | Tạo hồ sơ modular từ template của project.                                     |
 | `verid doctor`                        | Kiểm tra cài đặt, provider, tài nguyên và audit.                               |
 | `verid plugin`                        | Cài, gỡ, liệt kê hoặc kiểm tra [plugin quy trình](docs/plugins.vi.md).         |
+| `verid reheat`                        | Đọc hệ cũ theo từng unit: [mode reheat](docs/reheat-mode.vi.md).               |
 | `verid doctor --ci`                   | Kiểm trong CI những gì repo chứa: truy vết spec tới AC, thứ tự plan, file cài. |
 | `verid menu`                          | Xem tiến độ module và bước tiếp theo.                                          |
 | `verid peek`                          | Xem trạng thái TDD hiện tại.                                                   |

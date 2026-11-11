@@ -8,12 +8,13 @@ verid cook --mode prep --resources repo --provider codex --lang vi --yes
 
 | Flag                                         | Giá trị hoặc tác dụng                                                          |
 | -------------------------------------------- | ------------------------------------------------------------------------------ |
-| `--mode`                                     | `prep`, `recipe` hoặc `remix`.                                                 |
+| `--mode`                                     | `prep`, `recipe`, `remix` hoặc `reheat`.                                       |
 | `--resources`                                | `installed` hoặc `repo`.                                                       |
 | `--provider`                                 | `claude-code`, `codex` hoặc `antigravity`; lặp flag để chọn nhiều.             |
 | `--drive`                                    | `big-brain` hoặc `no-brain` cho prep/recipe (`human`, `ai`, `auto` là tên cũ). |
 | `--architecture`                             | `ddd`, `clean`, `layered` hoặc `none`.                                         |
 | `--layout`                                   | `monorepo` hoặc `workspace`; bỏ trống để tự nhận diện.                         |
+| `--legacy`                                   | Cho `--mode reheat`: thư mục hệ cũ, luôn chỉ đọc.                              |
 | `--lang`                                     | `en` hoặc `vi`; ngôn ngữ CLI trên máy này.                                     |
 | `--test-cmd`                                 | Lệnh riêng có `{junit}` hoặc `VERID_JUNIT`.                                    |
 | `--src` / `--tests`                          | Globs source và test; có thể lặp flag.                                         |
@@ -42,11 +43,12 @@ Xác nhận để áp dụng kế hoạch đã kiểm tra. Nội dung chỉ dẫ
 
 ## Mode và drive
 
-| Mode     | Điểm bắt đầu  | Công việc đầu tiên                   |
-| -------- | ------------- | ------------------------------------ |
-| `prep`   | Ý tưởng       | Research, làm rõ, spec và design.    |
-| `recipe` | Đặc tả có sẵn | Kiểm tra đầu vào rồi design và plan. |
-| `remix`  | Code có sẵn   | Ghi baseline bằng `verid stock`.     |
+| Mode     | Điểm bắt đầu  | Công việc đầu tiên                                                               |
+| -------- | ------------- | -------------------------------------------------------------------------------- |
+| `prep`   | Ý tưởng       | Research, làm rõ, spec và design.                                                |
+| `recipe` | Đặc tả có sẵn | Kiểm tra đầu vào rồi design và plan.                                             |
+| `remix`  | Code có sẵn   | Ghi baseline bằng `verid stock`.                                                 |
+| `reheat` | Hệ cũ         | Cài adapter, rồi `verid reheat inventory`. Xem [mode reheat](reheat-mode.vi.md). |
 
 `big-brain` để developer order và serve. `no-brain` bắt đầu khi developer ký research,
 spec và design bằng `verid order`. Harness review plan rồi làm từng module.

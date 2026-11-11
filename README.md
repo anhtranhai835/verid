@@ -48,7 +48,7 @@ To try verid on a small project first, follow [examples/slugify](examples/slugif
 npm install -g @anhtranhai835/verid
 ```
 
-**2. Set the project up.** Press Enter at each question: the language, the mode (`prep` for an idea, `recipe` for existing specs, `remix` for existing code) and, for prep and recipe, the drive (`big-brain`: you pick and approve each task; `no-brain`: you type the idea and the agent does the rest). Cook shows the provider, layout and test runner it found and the files it will write; "Change settings" changes the rest.
+**2. Set the project up.** Press Enter at each question: the language, the mode (`prep` for an idea, `recipe` for existing specs, `remix` for existing code, `reheat` to rewrite a read-only legacy system) and, for prep and recipe, the drive (`big-brain`: you pick and approve each task; `no-brain`: you type the idea and the agent does the rest). Cook shows the provider, layout and test runner it found and the files it will write; "Change settings" changes the rest.
 
 ```sh
 cd your-project
@@ -111,6 +111,7 @@ project root. The `verid` shorthand below also works with an optional global ins
 | `verid module <name>`                  | Create a modular dossier from project templates.                              |
 | `verid doctor`                         | Check setup, providers, resources and audit findings.                         |
 | `verid plugin`                         | Add, remove, list or diagnose [workflow plugins](docs/plugins.md).            |
+| `verid reheat`                         | Read a legacy system unit by unit: [reheat mode](docs/reheat-mode.md).        |
 | `verid doctor --ci`                    | Check, in CI, what the repo holds: spec-to-AC trace, plan order, setup files. |
 | `verid menu`                           | Show module progress and the next step.                                       |
 | `verid peek`                           | Show the current TDD state.                                                   |

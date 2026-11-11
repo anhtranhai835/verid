@@ -33,6 +33,18 @@ read them; the developer maintains these copies.
 `.verid/.plugins/` and `.verid/.plugin-data/`, and all `verid plugin` commands.
 It cannot be overridden. See [workflow plugins](plugins.md).
 
+In mode reheat, `VERID_BURNT_LEGACY_READ_ONLY` refuses every write into a repo with `role: legacy`:
+file tools, `apply_patch`, MCP tools, shell redirects, `sed -i`, `rm`, and `git` commands that change
+a repository, found through the working directory, `cd` and `git -C`. It cannot be overridden. Shell
+checks read text, so a script or an alias can hide a write: give the legacy folder a read-only
+checkout or a clone without push rights. See [reheat mode](reheat-mode.md).
+
+Three reheat refusals are command errors, not hook rules, so no override lifts them:
+`VERID_BURNT_ADAPTER` (an adapter command failed, timed out or printed the wrong shape; nothing was
+changed), `VERID_BURNT_REHEAT_GATE` (`verid order` or `verid serve` of a legacy unit whose gate has
+not passed on its current files) and `VERID_BURNT_PARITY` (`verid serve` of a unit whose
+`release/parity.md` is incomplete or not signed by the developer).
+
 Inside a station, `VERID_BURNT_STATION_WRITE` refuses writes outside the module's `Boundary:`
 and, in the primary worktree, writes to files an open station owns.
 `VERID_BURNT_STATION_SESSION` refuses a provider session that already belongs to another
@@ -66,6 +78,7 @@ to the station. See [parallel stations](stations.md).
 | `VERID_BURNT_TDD_NO_FAILING_TEST`    | yes                | production code while the cycle is RAW                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | `VERID_BURNT_TDD_TEST_FROZEN`        | yes                | a test while the cycle is COOKING                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | `VERID_BURNT_GIT_INTERNALS`          | no                 | any write inside a repository's `.git` folder: refs, configuration, hooks                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `VERID_BURNT_LEGACY_READ_ONLY`       | no                 | any write into a repo with `role: legacy` (mode reheat), `git` commands that change it included                                                                                                                                                                                                                                                                                                                                                                                             |
 
 The rules cover file tools, Bash (its plain write targets are judged like a Write), MCP tools, Claude Code's `Skill`, `Agent` and `Task`, and Codex's `apply_patch` and `collaborationspawn_agent`. Codex also protects project/home `.codex/`, project/home `.agents/skills/` and verid's `plugin/` folder, treats `~/.codex/sessions/`, `history.jsonl` and its state databases as transcripts and `~/.codex/auth.json` as a secret, including a relocated `CODEX_HOME`. Unexpected errors inside verid block the call.
 
