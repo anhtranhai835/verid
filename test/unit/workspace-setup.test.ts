@@ -1,21 +1,22 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { developerProject } from "../support/cook.js";
+import { mkdirSync, writeFileSync } from "node:fs";
+
 import { join } from "node:path";
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { expect, it } from "vitest";
 import { planCook } from "../../src/cli/init.js";
 import { renderManifest } from "../../src/core/manifest.js";
 
 let project: string;
-let agent: string | undefined;
-beforeEach(() => {
-  project = mkdtempSync(join(tmpdir(), "verid-workspace-plan-"));
-  mkdirSync(join(project, ".verid"));
-  agent = process.env.CLAUDECODE;
-  delete process.env.CLAUDECODE;
-});
-afterEach(() => {
-  if (agent !== undefined) process.env.CLAUDECODE = agent;
-  rmSync(project, { recursive: true, force: true });
+
+developerProject("verid-workspace-plan-", {
+  codexHome: false,
+  claude: "unset",
+  bind: (p) => {
+    project = p.root;
+  },
+  setup: (p) => {
+    mkdirSync(p.path(".verid"));
+  },
 });
 
 it("changes the setup revision when a kept manifest changes clone inputs", async () => {
