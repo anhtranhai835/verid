@@ -1,3 +1,4 @@
+import { tempProject, TEST_ROOT as root } from "../support/project.js";
 import { spawnSync } from "node:child_process";
 import {
   chmodSync,
@@ -14,19 +15,21 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
-const root = join(import.meta.dirname, "../..");
 let dir: string;
 let bin: string;
 let calls: string;
-beforeEach(() => {
-  dir = mkdtempSync(join(tmpdir(), "verid-installers-"));
-  bin = join(dir, "bin");
-  mkdirSync(bin);
-  calls = join(dir, "calls.txt");
+tempProject("verid-installers-", {
+  bind: (p) => {
+    dir = p.root;
+    bin = join(dir, "bin");
+    calls = join(dir, "calls.txt");
+  },
+  setup: () => {
+    mkdirSync(bin);
+  },
 });
-afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
 /** Real scripts and real child processes, with regular files for stdio and fake commands on PATH. */
 function runFile(command: string, args: string[], env: NodeJS.ProcessEnv, cwd: string) {
