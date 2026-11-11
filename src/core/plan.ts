@@ -15,6 +15,8 @@ export interface PlanModule {
   iterationProblem?: string;
   /** Modules this one builds on, from a `Depends: a, b` line before its first AC. Advisory. */
   depends?: string[];
+  /** File ownership required when a module runs in a station. */
+  boundary?: string[];
 }
 export type PlanCheck = { ok: true; modules: PlanModule[] } | { ok: false; detail: string };
 
@@ -80,6 +82,15 @@ export function parsePlan(text: string, iterations = false): PlanCheck {
     }
     return {};
   };
+  const boundaryIn = (from: number, to: number): Pick<PlanModule, "boundary"> => {
+    const values: string[] = [];
+    for (const line of lines.slice(from, to)) {
+      if (AC_LINE.test(line.body)) break;
+      const match = /^[ \t]*Boundary:(.*)$/.exec(line.body);
+      if (match) values.push(...(match[1] ?? "").split(",").map((value) => value.trim()));
+    }
+    return values.length ? { boundary: values } : {};
+  };
   const iterationIn = (
     from: number,
     to: number,
@@ -138,6 +149,7 @@ export function parsePlan(text: string, iterations = false): PlanCheck {
       clarification: clarificationIn(h + 1, next),
       ...iterationIn(h + 1, next),
       ...dependsIn(h + 1, next),
+      ...boundaryIn(h + 1, next),
     });
   }
   return { ok: true, modules };

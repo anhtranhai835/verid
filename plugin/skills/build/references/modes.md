@@ -19,4 +19,6 @@ In no-brain drive, follow the next menu step; verid opens modules after plan rev
 Three failing coder rounds per named AC, failed reviews, or idle Stop holds leave
 the drive stuck. A blocker or a question needing the developer goes in
 `.verid/blocked.md`; the developer settles it and runs `verid order` to resume.
-The drive creates no branches and waits for no merge.
+With `stations: 1`, the drive creates no branches and waits for no merge.
+With parallel stations, read `../../plan/references/stations.md`; retry counters
+and blockers stay local, and the developer closes each served station.

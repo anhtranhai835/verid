@@ -113,6 +113,7 @@ export async function subagentStop(p: z.infer<typeof lifecycleSchema>): Promise<
             p,
             manifest.iterations !== undefined,
             planned(manifest),
+            manifest.stations,
           )
         : null;
     if (!wrote && rounds === null) return { exit: 0 };
@@ -133,8 +134,10 @@ function coderRounds(
   p: z.infer<typeof lifecycleSchema>,
   iterations: boolean,
   modular = false,
+  stations = 1,
 ): Record<string, number> | null {
-  if (autoPhase(autoFactsOf(project, state, iterations, modular)).kind !== "module") return null;
+  if (autoPhase(autoFactsOf(project, state, iterations, modular, stations)).kind !== "module")
+    return null;
   const { failing, crashed, passed_acs } = state.tdd;
   const before = state.auto.coder_rounds;
   const after = coderRoundsAfter(before, [...failing.map(keyId), ...crashed], passed_acs);
@@ -186,7 +189,13 @@ function recordReview(
     }
     const identity = started.identity;
     const known = auto
-      ? autoFactsOf(project, read, manifest.iterations !== undefined, planned(manifest))
+      ? autoFactsOf(
+          project,
+          read,
+          manifest.iterations !== undefined,
+          planned(manifest),
+          manifest.stations,
+        )
       : null;
     // Capture audit bases before recording a module review.
     const advanced =

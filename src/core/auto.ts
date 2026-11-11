@@ -3,6 +3,7 @@ import type { MessageKey } from "./errors.js";
 import {
   acsInName,
   moduleProblem,
+  modulePhases,
   openModule,
   PRODUCT,
   uncoveredAcs,
@@ -121,6 +122,9 @@ export type AutoPlanRead =
 
 /** Everything auto decides from, read by the caller: this file does no I/O. */
 export interface AutoFacts {
+  /** The coordinator delegates modules; a station evaluates only its own module. */
+  parallel?: boolean;
+  station?: string;
   auto: AutoState;
   researchHash: string | null;
   specHash: string | null;
@@ -135,6 +139,7 @@ export interface AutoFacts {
 }
 
 export type AutoPhase =
+  | { kind: "stations" }
   | { kind: "unsigned" }
   | { kind: "stuck"; reason: StuckReason; detail: string }
   | { kind: "plan"; missing: boolean; problem: string | null }
@@ -182,6 +187,16 @@ export function autoPhase(f: AutoFacts): AutoPhase {
   const problem = autoPlanProblem(plan.modules);
   if (problem !== null || auto.plan_sha256 === null || auto.plan_sha256 !== f.planHash)
     return { kind: "plan", missing: false, problem };
+  if (f.parallel) return { kind: "stations" };
+  if (f.station) {
+    const module = plan.modules.find((module) => module.name === f.station);
+    if (!module) return { kind: "stuck", reason: "blocked", detail: "station module is missing" };
+    const view = modulePhases([module], plan.hashes, f.approvals, {
+      ...f.evidence,
+      designHash: f.designHash,
+    })[0]!;
+    return view.phase === "done" ? { kind: "done" } : { kind: "module", view };
+  }
   const view = openModule(autoModules(plan.modules, plan.hashes, f.approvals, f.evidence));
   if (view === undefined) return { kind: "done" };
   return { kind: "module", view };
@@ -313,6 +328,8 @@ export function autoNextStep(
   failedReviews = 0,
 ): { key: MessageKey; params: Record<string, string> } {
   switch (phase.kind) {
+    case "stations":
+      return { key: "auto.stations", params: {} };
     case "unsigned":
       return {
         key: !hasResearch

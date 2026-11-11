@@ -7,6 +7,7 @@ import { userPrompt, lifecycle } from "./hook/lifecycle.js";
 import { VeridError, languageOf, statePaths } from "./adapters/state-store.js";
 import { type ErrorCode } from "./core/errors.js";
 import { subagentStart, subagentStop } from "./hook/review.js";
+import { stationSessionProblem } from "./adapters/project.js";
 
 /**
  * PreToolUse fails closed; prompt errors allow without overrides; lifecycle errors never block.
@@ -68,6 +69,8 @@ async function handle(payload: unknown): Promise<Result> {
         return p.hook_event_name === "SessionStart"
           ? { exit: 0, stdout: shared.haltedLines(halted) }
           : { exit: 0 };
+      const ownership = stationSessionProblem(project, shared.sessionKey(p.session_id));
+      if (ownership) return shared.deny("VERID_BURNT_STATION_SESSION", { target: ownership });
       if (p.hook_event_name === "SubagentStart") return subagentStart(p);
       if (p.hook_event_name === "SubagentStop") return subagentStop(p);
       const result = await lifecycle(p, project, paths);

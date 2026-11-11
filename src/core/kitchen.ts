@@ -17,7 +17,7 @@ export interface KitchenInput {
   design: boolean;
   halted: string | null;
   denied: { rule: RuleCode; at: string } | null;
-  tasks: readonly { id: string; title: string; column: string; selected: boolean }[];
+  tasks: readonly { id: string; title: string; column: string; selected: boolean; tdd?: string }[];
   now: number;
 }
 
@@ -97,7 +97,11 @@ export function kitchenOf(input: KitchenInput) {
     pass: input.tasks.map((task) => ({
       id: task.id,
       title: task.title,
-      station: (task.column === "done" ? "served" : task.selected ? input.tdd : "order") as Station,
+      station: (task.column === "done"
+        ? "served"
+        : task.selected
+          ? (task.tdd ?? input.tdd)
+          : "order") as Station,
     })),
   };
 }

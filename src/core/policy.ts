@@ -1,4 +1,5 @@
 import type { PolicyDecision, RuleCode } from "./errors.js";
+import { inBoundary } from "./station.js";
 
 export type Access = "read" | "write";
 
@@ -24,6 +25,15 @@ export type Action =
 
 /** Protected locations, normalized the same way as action paths. */
 export interface PolicyContext {
+  station?: {
+    root: string;
+    writtenRoot: string;
+    aliases: readonly string[];
+    module: string | null;
+    boundary: readonly string[];
+    frozen: boolean;
+    reserved: readonly { root: string; boundary: readonly string[] }[];
+  };
   stateDir: string;
   manifestPath: string;
   transcriptsDir: string;
@@ -64,6 +74,12 @@ export function decide(
 ): PolicyDecision {
   if (action.kind === "file") return decideFile(action, ctx, lifted);
   if (action.kind === "bash") return decideBash(action.command, ctx, lifted);
+  if (action.kind === "shell" && ctx.station)
+    return deny(
+      "VERID_BURNT_STATION_COMMAND",
+      action.tool,
+      "shell writes cannot be confined to a station",
+    );
   if (action.kind === "shell" && !lifted.has("VERID_BURNT_SHELL_UNSUPPORTED"))
     return deny("VERID_BURNT_SHELL_UNSUPPORTED", action.tool, "shell verid cannot read");
   return allow("no rule for this tool");
@@ -153,7 +169,55 @@ function decideFile(
     ],
   ];
   const hit = rules.find(([code, , matches]) => matches && !lifted.has(code));
-  return hit ? deny(hit[0], a.display, hit[1]) : allow("no protected path");
+  if (hit) return deny(hit[0], a.display, hit[1]);
+  if (write && ctx.station) {
+    const scope = ctx.station;
+    if (scope.frozen)
+      return deny("VERID_BURNT_STATION_WRITE", a.display, "station integration is in progress");
+    const paths = [
+      { path: a.path, root: scope.root },
+      ...(a.written
+        ? [
+            {
+              path: a.written,
+              root: scope.aliases.find((root) => isUnder(a.written!, root)) ?? scope.writtenRoot,
+            },
+          ]
+        : []),
+    ];
+    for (const { path, root } of paths) {
+      const rel = isUnder(path, root) ? path.slice(root.length + 1).replaceAll("\\", "/") : null;
+      if (scope.module !== null) {
+        if (
+          scope.frozen ||
+          rel === null ||
+          (!stationOutput(rel, scope.module) && !inBoundary(rel, scope.boundary))
+        )
+          return deny(
+            "VERID_BURNT_STATION_WRITE",
+            a.display,
+            "outside station ownership or station is integrating",
+          );
+      } else if (
+        scope.reserved.some(
+          (item) => isUnder(path, item.root) || (rel !== null && inBoundary(rel, item.boundary)),
+        )
+      )
+        return deny("VERID_BURNT_STATION_WRITE", a.display, "owned by an open station");
+    }
+  }
+  return allow("no protected path");
+}
+
+export function stationOutput(path: string, module: string): boolean {
+  return (
+    path === `.verid/log/${module}.md` ||
+    path === ".verid/blocked.md" ||
+    path.startsWith(`.verid/artifacts/03-modules/${module}/review/`) ||
+    path.startsWith(`.verid/artifacts/03-modules/${module}/release/`) ||
+    path.startsWith(`.verid/artifacts/05-implementation/${module}/`) ||
+    path.startsWith(`.verid/artifacts/06-evaluation/${module}/`)
+  );
 }
 
 // Matches `claude` as a program name: start of command or after a separator/path,
@@ -168,7 +232,7 @@ const NESTED_CODEX = /(^|[\s;&|(`'"\\/])codex(\.exe|\.cmd|\.ps1)?(?=$|[\s;&|)`'"
 // `/verid tip` can allow those commands.
 const CLAUDECODE_VAR = /\bclaudecode\b/;
 const DEVELOPER_COMMAND =
-  /(?:\bverid(?:@[^\s"'\\/]*)?(?:\.(?:cmd|ps1|exe|mjs))?|\bcli(?:\.js)?)["']?\s+(?:--\s+)?(?:cook|upgrade|setup-codex|setup-antigravity|garnish|stock|order|serve|halt|resume|board)\b/;
+  /(?:\bverid(?:@[^\s"'\\/]*)?(?:\.(?:cmd|ps1|exe|mjs))?|\bcli(?:\.js)?)["']?\s+(?:--\s+)?(?:cook|upgrade|setup-codex|setup-antigravity|garnish|stock|order|serve|halt|resume|board|station)\b/;
 // The agent's Bash inherits CLAUDE_CODE_SESSION_ATTENDED, so a `/verid tip` piped into the hook
 // would hand it the confirmation code. A copy or a path built at run time still gets through.
 const VERID_HOOK = /\bdist[\\/]+hook\b|\bhook\.js\b/;
@@ -289,6 +353,29 @@ function decideBash(
     if (!lifted.has(code) && forms.some((c) => matches(c, ctx))) return deny(code, target, reason);
   const danger = lifted.has("VERID_BURNT_BASH_DANGEROUS") ? null : dangerousCommand(command);
   if (danger) return deny("VERID_BURNT_BASH_DANGEROUS", target, danger);
+  if (ctx.station) {
+    // File tools carry normalized targets. Shell programs can hide writes in scripts or cwd changes.
+    // Keep only simple inspection, local commits and harness commands; taste owns runner writes.
+    const simple = !/[;&|<>`\r\n$]/.test(command);
+    const safe =
+      /^(?:git (?:status|diff|log|show|add|commit)\b|(?:node \.verid\/verid\.mjs|verid) (?:taste|peek|menu|context|usage)\b)/.test(
+        command.trim(),
+      );
+    if (
+      !simple ||
+      !safe ||
+      (ctx.station.frozen &&
+        /^(?:git (?:add|commit)\b|(?:node \.verid\/verid\.mjs|verid) taste\b)/.test(
+          command.trim(),
+        )) ||
+      /\s(?:-C|--git-dir|--work-tree|--exec-path|--output|-o|--ext-diff|--no-index)/.test(command)
+    )
+      return deny(
+        "VERID_BURNT_STATION_COMMAND",
+        target,
+        "use file tools within the station boundary and verid taste",
+      );
+  }
   return allow("no rule matched");
 }
 

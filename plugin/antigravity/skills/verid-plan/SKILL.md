@@ -6,6 +6,7 @@ description: Use when a verid design is agreed and needs delivery modules and te
 # verid-plan (Antigravity)
 
 Read `.verid/spec.md`, `.verid/design.md`, and `.verid/manifest.yaml`.
+For independent modules and `Boundary:`, read `<SKILLS_ROOT>/plan/references/stations.md`.
 
 ## Planning Rules
 

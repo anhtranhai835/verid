@@ -44,6 +44,8 @@ import {
 import { auditWarnings, auditLines } from "../adapters/rule-audit.js";
 import { captureWork } from "../adapters/git.js";
 import { randomInt } from "node:crypto";
+import { stationSessionProblem } from "../adapters/project.js";
+import { scheduleStations } from "../adapters/station.js";
 
 export async function userPrompt(p: z.infer<typeof userPromptSchema>): Promise<Result> {
   // A host with no attended-input signal (Codex) never opens an exception from a prompt, and
@@ -108,6 +110,12 @@ export async function lifecycle(
   project: string,
   paths: StatePaths,
 ): Promise<Result> {
+  const stationProblem = stationSessionProblem(
+    project,
+    shared.sessionKey(p.session_id),
+    p.hook_event_name === "SessionStart" && p.source === "startup",
+  );
+  if (stationProblem) return shared.deny("VERID_BURNT_STATION_SESSION", { target: stationProblem });
   const { tdd } = readState(paths);
   const event = p.hook_event_name === "Stop" ? "stop" : "session_start";
   const manifest = await loadManifest(project);
@@ -131,6 +139,11 @@ export async function lifecycle(
         writeState(paths, { ...state, last_denied: null });
     });
   if (!manifest) return { exit: 0 };
+  if (p.hook_event_name === "SessionStart" || p.hook_event_name === "Stop") {
+    scheduleStations(project, manifest);
+    const ownership = stationSessionProblem(project, shared.sessionKey(p.session_id), true);
+    if (ownership) return shared.deny("VERID_BURNT_STATION_SESSION", { target: ownership });
+  }
   let taskContext: string[] = [];
   if (planned(manifest))
     taskContext.push(
@@ -140,7 +153,7 @@ export async function lifecycle(
     taskContext.push(
       "verid: AI drive follows the developer's priority queue in one session. Finish the current task before moving to the next.",
     );
-  if (taskSessions(manifest)) {
+  if (taskSessions(manifest) || readState(paths).station !== null) {
     const key = shared.sessionKey(p.session_id);
     const kanban = withLock(paths, () => {
       const state = readState(paths);
@@ -341,7 +354,13 @@ function autoStop(
   return withLock(paths, () => {
     let state = readState(paths);
     if (state.auto.signed === null) return null;
-    let facts = autoFactsOf(project, state, manifest.iterations !== undefined, planned(manifest));
+    let facts = autoFactsOf(
+      project,
+      state,
+      manifest.iterations !== undefined,
+      planned(manifest),
+      manifest.stations,
+    );
     const session = p.session_id;
     state = latchBlocked(paths, state, facts.blockedFile, session);
     state = advance(project, paths, state, { ...facts, auto: state.auto }, manifest);
@@ -411,7 +430,7 @@ function autoStop(
   });
 }
 
-const over = (phase: AutoPhase): boolean => ["stuck", "done"].includes(phase.kind);
+const over = (phase: AutoPhase): boolean => ["stuck", "done", "stations"].includes(phase.kind);
 
 export const toLatch = (state: State, blocked: string | null): blocked is string =>
   blocked !== null && state.auto.signed !== null && state.auto.blocked === null;
@@ -457,7 +476,13 @@ export function observe(project: string, paths: StatePaths, manifest: Manifest):
   withLock(paths, () => {
     const state = readState(paths);
     if (state.auto.signed === null) return;
-    const facts = autoFactsOf(project, state, manifest.iterations !== undefined, planned(manifest));
+    const facts = autoFactsOf(
+      project,
+      state,
+      manifest.iterations !== undefined,
+      planned(manifest),
+      manifest.stations,
+    );
     const moved = advance(project, paths, state, facts, manifest);
     if (moved !== state) writeState(paths, moved);
   });
@@ -492,6 +517,7 @@ export function tryClose(
     modules: {
       ...state.modules,
       [view.name]: {
+        ...state.modules[view.name],
         sha256: facts.plan.hashes[view.name]!,
         acs: view.acs,
         at: now,
@@ -501,6 +527,7 @@ export function tryClose(
     },
     review: null,
     security: null,
+    ...(state.station ? { kanban: { ...state.kanban, active: null } } : {}),
     auto: {
       ...state.auto,
       module_reviews: 0,

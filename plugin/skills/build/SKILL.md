@@ -5,7 +5,7 @@ description: Use when an approved verid module is ready for implementation.
 
 # verid: build
 
-Clarify assumptions; keep edits local and meet the AC with observable tests.
+Keep edits local; prove ACs with tests.
 
 Read verid:tdd once for this build loop; use verid:debugging for unclear failures.
 Settle ambiguous ACs through verid:ba in the main conversation.
@@ -19,7 +19,8 @@ Commit small, verified feature increments with their tests using Conventional
 Commits. Inspect `git diff --staged`; never mix unrelated work or commit broken
 TDD states. Details: `.verid/rules/git.md`.
 
-For each uncovered AC, dispatch one writer at a time because repos share one cycle:
+In stations, read `../plan/references/stations.md`; stay in your worktree.
+For each uncovered AC, dispatch one writer at a time:
 
 1. Give the mapped tester the module name, AC code and relevant design row names and
    code paths; it starts with `verid context <module> --ac <code>`.
@@ -50,9 +51,8 @@ dependencies. Name verid:tdd (and its path for custom agents), write responsibil
 and relevant interfaces. Mapped tester/coder roles own their writes; on Codex or
 without mappings, main writes.
 
-Read UI source to derive Playwright selectors. Keep Playwright under `e2e/` and
-exclude `e2e/**` from the unit runner; another runner needs matching `e2e_globs`.
-Evidence requires a JUnit report.
+Derive Playwright selectors from UI source. Keep e2e outside the unit runner,
+with matching `e2e_globs`. Evidence requires JUnit.
 
 In a workspace, remix mode or no-brain drive, read `references/modes.md` first.
 

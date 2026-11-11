@@ -7,6 +7,9 @@ describe("parseState", () => {
       ok: true,
       state: {
         schemaVersion: 1,
+        stations: {},
+        station: null,
+        station_sessions: {},
         counters: { blocked_actions: 0 },
         last_denied: null,
         pending_override: null,

@@ -198,6 +198,36 @@ export const FRESH_AUTO = autoState.parse({});
  */
 const stateSchema = z.strictObject({
   schemaVersion: z.literal(1),
+  /** Developer-managed registry in the primary worktree; no TDD evidence is shared. */
+  stations: z._default(
+    z.record(
+      z.string(),
+      z.strictObject({
+        module: z.string(),
+        path: z.string(),
+        branch: z.string(),
+        main: z.string(),
+        base: z.string(),
+        common: z.string(),
+        boundary: z.array(z.string()),
+        sha256: z.string(),
+        design_sha256: z.string(),
+        spec_sha256: z.string(),
+        at: z.string(),
+        stage: z.enum(["opening", "open", "integrating", "cleanup"]),
+        closed: z.optional(z.string()),
+        integrated: z.optional(z.string()),
+      }),
+    ),
+    {},
+  ),
+  /** A station's parent is informational; the resolver validates it against Git and the registry. */
+  station: z._default(
+    z.nullable(z.strictObject({ project: z.string(), module: z.string() })),
+    null,
+  ),
+  /** A provider session may own exactly one root for the lifetime of this registry. */
+  station_sessions: z._default(z.record(z.string(), z.string()), {}),
   counters: z._default(z.strictObject({ blocked_actions: z.int().check(z.nonnegative()) }), {
     blocked_actions: 0,
   }),

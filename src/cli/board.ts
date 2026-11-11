@@ -6,7 +6,7 @@ import { parseArgs } from "node:util";
 import { inAgentShell } from "../adapters/agent-environment.js";
 import { systemLanguage, t } from "../adapters/i18n.js";
 import { languageOf } from "../adapters/state-store.js";
-import { boardChat, type Spawner } from "../adapters/board-chat.js";
+import { stationBoardChat, type Spawner } from "../adapters/board-chat.js";
 import { boardSnapshot, moveTask, saveBoardDocument, taskPrompt } from "../adapters/kanban.js";
 import { loadManifest } from "../adapters/manifest.js";
 import { boardHtml } from "./board-page.js";
@@ -37,7 +37,7 @@ const cookieOf = (header: string | undefined) =>
 export async function startBoard(project: string, command: Command, port = 0, spawner?: Spawner) {
   if (inAgentShell()) throw new Error(say(project, "err_agent_shell"));
   await boardSnapshot(project);
-  const chat = boardChat(project, spawner);
+  const chat = stationBoardChat(project, spawner);
   const token = randomBytes(32).toString("hex");
   // The browser is opened with a one-time code, not the token: a URL lands on the browser's command
   // line and in the terminal, where any local process (an agent's shell too) can read it. The code
@@ -112,7 +112,7 @@ export async function startBoard(project: string, command: Command, port = 0, sp
       return send(res, 200, await boardSnapshot(project));
     if (req.method === "GET" && url.pathname === "/api/chat")
       return (await loadManifest(project, { readOnly: true }))?.drive === "auto"
-        ? send(res, 200, await chat.status())
+        ? send(res, 200, await chat.status(url.searchParams.get("station")))
         : send(res, 409, { error: say(project, "err_no_chat") });
     if (req.method !== "POST" || url.pathname !== "/api/action")
       return send(res, 404, { error: "Not found" });
@@ -138,8 +138,10 @@ export async function startBoard(project: string, command: Command, port = 0, sp
       return send(res, 404, { error: "Not found" });
     // Chat goes on while its own run changes state, so it is not tied to the board revision.
     if (input.action === "chat-stop") {
-      chat.stop();
-      return send(res, 200, await chat.status());
+      const station =
+        typeof input.station === "string" && input.station !== "" ? input.station : null;
+      chat.stop(station);
+      return send(res, 200, await chat.status(station));
     }
     const snapshot = await boardSnapshot(project);
     if (snapshot.notice) return send(res, 409, { error: snapshot.notice });
@@ -152,12 +154,14 @@ export async function startBoard(project: string, command: Command, port = 0, sp
         error: say(project, input.action === "chat" ? "err_no_chat" : "err_sign_terminal"),
       });
     if (input.action === "chat") {
-      await chat.send({
+      const station =
+        typeof input.station === "string" && input.station !== "" ? input.station : null;
+      await chat.send(station, {
         task: null,
         text: typeof input.text === "string" ? input.text : "",
         provider: typeof input.provider === "string" ? input.provider : "",
       });
-      return send(res, 200, await chat.status());
+      return send(res, 200, await chat.status(station));
     }
     if (input.revision !== snapshot.revision)
       return send(res, 409, { error: say(project, "err_stale") });
@@ -221,6 +225,7 @@ export async function startBoard(project: string, command: Command, port = 0, sp
       }
     });
   });
+  server.on("close", () => chat.stopAll());
   server.requestTimeout = 15_000;
   server.headersTimeout = 10_000;
   await new Promise<void>((resolve, reject) => {

@@ -1,6 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 import { setupPreview, type Action, type PlannedFile } from "../core/setup-plan.js";
 import { ask, type Io } from "../adapters/terminal.js";
 import { inAgentShell } from "../adapters/agent-environment.js";
@@ -75,6 +74,7 @@ import { antigravityPluginDir, antigravityPluginFiles } from "../adapters/antigr
 import { moduleDrafts } from "../adapters/module-scaffold.js";
 import { upgradeModulePlan } from "../adapters/plan-upgrade.js";
 import { restorePlugins } from "../adapters/plugin-store.js";
+import { projectHook } from "../adapters/hook-wiring.js";
 
 import type { CliResult } from "./test.js";
 
@@ -241,10 +241,7 @@ export async function planCook(
   if (flags.resources !== undefined && !RESOURCE_MODES.some((value) => value === flags.resources))
     throw invalid("--resources", "must be installed or repo");
   const resources = existing ? existing.resources : flags.resources;
-  const hook =
-    resources === "repo"
-      ? join(project, ".verid/hooks/hook.js")
-      : fileURLToPath(new URL("./hook.js", import.meta.url));
+  const hook = projectHook(project, resources);
 
   // The language for this machine's messages, kept in its state.
   const language = flags.lang === undefined ? undefined : LANGS.find((l) => l === flags.lang);

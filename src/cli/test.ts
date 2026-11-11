@@ -82,6 +82,7 @@ export async function testCommand(project: string): Promise<CliResult> {
   const module =
     state.kanban.active?.module ??
     state.auto.work?.module ??
+    Object.values(state.stations).find((station) => station.stage === "integrating")?.module ??
     (plan?.ok ? openModule(planViews(project, plan, state))?.name : undefined);
   const run = await runOnce(project);
   const { id, cases, classified, junitSha256 } = run;

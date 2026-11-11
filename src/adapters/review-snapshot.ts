@@ -25,7 +25,15 @@ export function reviewSnapshot(
   );
   const phase =
     manifest.drive === "auto"
-      ? autoPhase(autoFactsOf(project, state, manifest.iterations !== undefined, planned(manifest)))
+      ? autoPhase(
+          autoFactsOf(
+            project,
+            state,
+            manifest.iterations !== undefined,
+            planned(manifest),
+            manifest.stations,
+          ),
+        )
       : null;
   const module =
     phase === null

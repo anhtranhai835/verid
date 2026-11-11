@@ -7,6 +7,9 @@ import { languageOf, readState, statePaths, withLock } from "./state-store.js";
 import { systemLanguage, t } from "./i18n.js";
 import { appendAudit } from "./audit-log.js";
 import { isCount, type TokenUsage } from "../core/usage.js";
+import { scheduleStations } from "./station.js";
+import { autoPhase } from "../core/auto.js";
+import { autoFactsOf } from "./plan-file.js";
 
 /**
  * The board's chat: it runs the provider's own CLI headless in the project, one run at a time.
@@ -251,7 +254,11 @@ export interface ChatStatus {
   lines: ChatLine[];
 }
 
-export function boardChat(project: string, spawner: Spawner = spawnLaunch) {
+export function boardChat(
+  project: string,
+  spawner: Spawner = spawnLaunch,
+  onIdle: () => void = () => {},
+) {
   const say = (key: string, params: Record<string, string> = {}) =>
     t(languageOf(project) ?? systemLanguage(), `board.${key}`, params);
   let child: ChildProcess | null = null;
@@ -338,7 +345,11 @@ export function boardChat(project: string, spawner: Spawner = spawnLaunch) {
           withLock(paths, () =>
             appendAudit(paths.audit, {
               event: "usage_recorded",
-              module: input.task ?? readState(paths).auto.work?.module ?? "",
+              module:
+                input.task ??
+                readState(paths).station?.module ??
+                readState(paths).auto.work?.module ??
+                "",
               ...event.usage!,
             }),
           );
@@ -377,6 +388,7 @@ export function boardChat(project: string, spawner: Spawner = spawnLaunch) {
         });
       } else add({ role: "info", text: say("chat_done") });
       if (child === run) child = null;
+      onIdle();
     });
     if (launch.stdin !== null) run.stdin?.end(launch.stdin);
   }
@@ -390,5 +402,117 @@ export function boardChat(project: string, spawner: Spawner = spawnLaunch) {
     else run.kill("SIGTERM");
   }
 
-  return { status, send, stop, running: () => child !== null };
+  return {
+    status,
+    send,
+    stop,
+    running: () => child !== null,
+    note: (text: string) => add({ role: "error", text }),
+  };
+}
+
+/** A bounded process pool; each worktree keeps its own provider ID, transcript and stop button. */
+export function stationBoardChat(project: string, spawner: Spawner = spawnLaunch) {
+  type Chat = ReturnType<typeof boardChat>;
+  const chats = new Map<string, { root: string; generation: string; chat: Chat }>();
+  const started = new Set<string>();
+  let selectedProvider: string | null = null;
+  let pumping = false;
+  let stopped = false;
+  const launching = new Set<string>();
+  const say = (key: string, params: Record<string, string> = {}) =>
+    t(languageOf(project) ?? systemLanguage(), `board.${key}`, params);
+  const keyOf = (name: string | null) => name ?? "";
+  const get = (name: string | null, forLaunch = false): Chat => {
+    const record = name === null ? null : readState(statePaths(project)).stations[name];
+    if (name !== null && (!record || (forLaunch && record.stage !== "open")))
+      throw new Error(say("err_station_open"));
+    const root = record?.path ?? project;
+    const key = keyOf(name);
+    const existing = chats.get(key);
+    const generation = record?.at ?? "";
+    if (existing && (existing.root !== root || existing.generation !== generation)) {
+      existing.chat.stop();
+      chats.delete(key);
+      started.delete(key);
+    }
+    if (!chats.has(key))
+      chats.set(key, {
+        root,
+        generation,
+        chat: boardChat(root, spawner, () => {
+          void pump().catch((error: unknown) => {
+            const coordinator = chats.get("");
+            coordinator?.chat.note(
+              say("station_launch_failed", {
+                detail: error instanceof Error ? error.message : String(error),
+              }),
+            );
+          });
+        }),
+      });
+    return chats.get(key)!.chat;
+  };
+  const running = () => [...chats.values()].filter(({ chat }) => chat.running()).length;
+  async function send(
+    name: string | null,
+    input: { task: string | null; text: string; provider: string },
+  ) {
+    const manifest = await loadManifest(project, { readOnly: true });
+    const chat = get(name, true);
+    const key = keyOf(name);
+    if (launching.has(key) || running() + launching.size >= (manifest?.stations ?? 1))
+      throw new Error(say("err_station_limit"));
+    launching.add(key);
+    selectedProvider = input.provider;
+    stopped = false;
+    try {
+      await chat.send(input);
+      if (name) started.add(name);
+    } finally {
+      launching.delete(key);
+    }
+  }
+  async function pump() {
+    if (pumping || stopped || !selectedProvider) return;
+    pumping = true;
+    try {
+      const manifest = await loadManifest(project, { readOnly: true });
+      if (!manifest || manifest.drive !== "auto" || manifest.stations === 1) return;
+      scheduleStations(project, manifest);
+      const state = readState(statePaths(project));
+      if (state.halted) return;
+      for (const record of Object.values(state.stations)) {
+        if (running() + launching.size >= manifest.stations) break;
+        if (record.stage !== "open" || started.has(record.module)) continue;
+        const local = readState(statePaths(record.path));
+        const phase = autoPhase(
+          autoFactsOf(
+            record.path,
+            local,
+            manifest.iterations !== undefined,
+            true,
+            manifest.stations,
+          ),
+        );
+        if (phase.kind === "stuck" || phase.kind === "done") continue;
+        await send(record.module, {
+          task: null,
+          provider: selectedProvider,
+          text: `Run verid context ${record.module}. Complete only this module using verid menu, TDD, taste and independent review. Stay inside Boundary. Stop after it is served; integration belongs to the developer.`,
+        });
+      }
+    } finally {
+      pumping = false;
+    }
+  }
+  function stop(name: string | null) {
+    if (name === null) stopped = true;
+    (chats.get(keyOf(name))?.chat ?? get(name)).stop();
+  }
+  function stopAll() {
+    stopped = true;
+    for (const { chat } of chats.values()) chat.stop();
+  }
+  return { status: (name: string | null) => get(name).status(), send, stop, stopAll };
 }

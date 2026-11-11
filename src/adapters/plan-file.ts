@@ -81,9 +81,11 @@ export const planViews = (
   approvals: State["modules"] = state.modules,
 ): ModuleView[] =>
   modulePhases(
-    orderedModules(plan.modules, state),
+    orderedModules(plan.modules, state).filter(
+      (module) => !state.station || module.name === state.station.module,
+    ),
     plan.hashes,
-    approvals,
+    Object.fromEntries(Object.entries(approvals).filter(([name]) => !state.stations[name])),
     evidenceOf(project, state),
   );
 
@@ -254,7 +256,15 @@ export function openWork(
 ): { module: string; work: Work | undefined; branch?: string } | null {
   const iterations = manifest.iterations !== undefined;
   if (manifest.drive === "auto") {
-    const phase = autoPhase(autoFactsOf(project, state, iterations, planned(manifest)));
+    const phase = autoPhase(
+      autoFactsOf(
+        project,
+        state,
+        iterations,
+        planned(manifest),
+        "stations" in manifest ? Number(manifest.stations) : 1,
+      ),
+    );
     if (phase.kind !== "module") return null;
     const { name } = phase.view;
     const work = state.auto.work?.module === name ? state.auto.work : undefined;
@@ -277,6 +287,7 @@ export function autoFactsOf(
   state: State,
   iterations = false,
   modular = false,
+  stations = 1,
 ): AutoFacts {
   let blocked: string;
   try {
@@ -302,6 +313,17 @@ export function autoFactsOf(
         ? { ...plan, modules: orderedModules(plan.modules, state) }
         : plan;
   return {
+    ...(state.station ? { station: state.station.module } : {}),
+    parallel:
+      !state.station &&
+      stations > 1 &&
+      (Object.keys(state.stations).length > 0 ||
+        !!(
+          plan?.ok &&
+          plan.modules.some(
+            (module) => module.name !== "product" && state.modules[module.name]?.served_at == null,
+          )
+        )),
     auto: state.auto,
     researchHash: readFileHash(researchFile(project)),
     specHash: readFileHash(specFile(project)),
@@ -461,6 +483,7 @@ function autoStanding(
     state,
     manifest?.iterations !== undefined,
     manifest ? planned(manifest) : false,
+    manifest?.stations ?? 1,
   );
   const phase = autoPhase(facts);
   const next = autoNextStep(

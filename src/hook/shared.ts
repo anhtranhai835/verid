@@ -24,6 +24,7 @@ import {
 } from "../core/errors.js";
 import type * as z from "zod/mini";
 import { type Cycle, cycleLabel } from "../core/tdd.js";
+import { resolveProject } from "../adapters/project.js";
 
 export const statusLine = (mode: string, cycle: Cycle, lastRun: string | null) =>
   `verid: TDD ${cycleLabel(cycle)} · mode ${mode} · last run ${lastRun ?? "none"}`;
@@ -35,7 +36,7 @@ export const setHost = (value: Host): void => {
   HOST = value;
 };
 export const host = (): Host => HOST;
-export const projectDir = (cwd: string) => HOST.projectDir(cwd);
+export const projectDir = (cwd: string) => resolveProject(cwd, HOST.projectDir(cwd));
 export const writerFor: typeof writerOf = (...args) =>
   (HOST.singleWriter ? singleWriterOf : writerOf)(...args);
 export const splitFor = (roles: Roles | undefined) => !HOST.singleWriter && splitOn(roles);
@@ -135,7 +136,13 @@ export function loggedModule(
   if (manifest.mode === "remix") return undefined;
   if (manifest.drive !== "auto") return openModuleName(project, state, manifest);
   const phase = autoPhase(
-    autoFactsOf(project, state, manifest.iterations !== undefined, planned(manifest)),
+    autoFactsOf(
+      project,
+      state,
+      manifest.iterations !== undefined,
+      planned(manifest),
+      manifest.stations,
+    ),
   );
   return phase.kind === "module" ? phase.view.name : undefined;
 }

@@ -42,6 +42,8 @@ import { roleAdvice, type Writer, ROLE_DOCUMENTS } from "../core/roles.js";
 import { consumeOverride, recordDenial } from "../core/override.js";
 import { autoPhase } from "../core/auto.js";
 import { withPluginDispatch } from "../adapters/plugin-store.js";
+import { stationPolicy } from "../adapters/station-policy.js";
+import { stationContext, stationSessionProblem } from "../adapters/project.js";
 
 export async function preToolUse(p: z.infer<typeof preToolUseSchema>): Promise<Result> {
   const project = shared.projectDir(p.cwd);
@@ -75,7 +77,7 @@ export async function preToolUse(p: z.infer<typeof preToolUseSchema>): Promise<R
   // A broken manifest must still allow reads; existing write gates report its error in order.
   const taskManifest = await loadManifest(project, { readOnly: true }).catch(() => null);
   let taskProblem: string | null = null;
-  if (taskManifest && taskSessions(taskManifest)) {
+  if (taskManifest && (taskSessions(taskManifest) || stationContext(project)?.station)) {
     const key = shared.sessionKey(p.session_id);
     const layouts = tddLayouts(project, taskManifest);
     const guardedWrite = writes.some(
@@ -100,7 +102,8 @@ export async function preToolUse(p: z.infer<typeof preToolUseSchema>): Promise<R
     });
     taskProblem = problem;
   }
-  const base = policyContext(project, p.cwd);
+  const base = { ...policyContext(project, p.cwd), ...stationPolicy(project, p.cwd, writes) };
+  const stationSession = stationSessionProblem(project, shared.sessionKey(p.session_id));
   // Any project write outside .verid/ invalidates security review, including linked paths.
   const roots = [normalizePath(project), writtenPath(project)];
   const verid = dirname(base.manifestPath);
@@ -164,6 +167,27 @@ export async function preToolUse(p: z.infer<typeof preToolUseSchema>): Promise<R
     const rules = [action, ...files].map((a) => decide(a, ctx, lifted));
     const policy = strictest(rules);
     if (policy.kind === "deny") return policy;
+    if (
+      ctx.station &&
+      p.tool_name.startsWith("mcp__") &&
+      /write|edit|create|move|rename|delete|remove|patch|replace|insert|append|save/i.test(
+        p.tool_name,
+      ) &&
+      files.length === 0
+    )
+      return {
+        kind: "deny",
+        code: "VERID_BURNT_STATION_WRITE",
+        target: p.tool_name,
+        reason: "write target is unknown",
+      };
+    if (stationSession)
+      return {
+        kind: "deny",
+        code: "VERID_BURNT_STATION_SESSION",
+        target: stationSession,
+        reason: "session belongs to another station",
+      };
     if (shared.host().knownTools) {
       const known = decideKnownTool(p.tool_name, shared.host().knownTools!);
       if (known.kind === "deny") return known;
@@ -338,7 +362,13 @@ async function tddGate(
   // plan order and gets stuck when it needs the developer.
   const facts =
     manifest.drive === "auto"
-      ? autoFactsOf(project, state, manifest.iterations !== undefined, planned(manifest))
+      ? autoFactsOf(
+          project,
+          state,
+          manifest.iterations !== undefined,
+          planned(manifest),
+          manifest.stations,
+        )
       : null;
   // A write is judged before it runs, so a Bash `rm .verid/blocked.md` latches the file first.
   if (facts !== null && toLatch(state, facts.blockedFile))

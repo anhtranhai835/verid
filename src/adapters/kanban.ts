@@ -34,6 +34,7 @@ import {
 import { checkSetupPath } from "./workspace.js";
 import { systemLanguage, t } from "./i18n.js";
 import { moduleMockups } from "./board-mockups.js";
+import { stationContext } from "./project.js";
 
 const boardMessage = (project: string, key: string) =>
   t(languageOf(project) ?? systemLanguage(), `board.${key}`, {});
@@ -57,7 +58,7 @@ function snapshotOf(project: string, manifest: Manifest, state: State) {
     : null;
   const facts =
     manifest.drive === "auto" && planned(manifest)
-      ? autoFactsOf(project, state, manifest.iterations !== undefined, true)
+      ? autoFactsOf(project, state, manifest.iterations !== undefined, true, manifest.stations)
       : null;
   const phase = facts ? autoPhase(facts) : null;
   const spec = textOf(specFile(project));
@@ -84,95 +85,147 @@ function snapshotOf(project: string, manifest: Manifest, state: State) {
       ? autoModules(facts.plan.modules, facts.plan.hashes, state.modules, facts.evidence)
       : planViews(project, plan, state)
     : [];
+  const stations = Object.fromEntries(
+    Object.entries(state.stations).map(([name, record]) => {
+      try {
+        stationContext(record.path);
+        const local = readState(statePaths(record.path));
+        return [
+          name,
+          {
+            path: record.path,
+            branch: record.branch,
+            tdd: local.tdd.state as string,
+            dirty: local.tdd.dirty,
+            lastRun: local.tdd.last_run,
+            served: !!local.modules[name]?.served_at,
+            blocked: local.auto.blocked,
+            unavailable: false,
+            stage: record.stage,
+          },
+        ];
+      } catch {
+        return [
+          name,
+          {
+            path: record.path,
+            branch: record.branch,
+            tdd: "?",
+            dirty: true,
+            lastRun: null,
+            served: false,
+            blocked: null,
+            unavailable: true,
+            stage: record.stage,
+          },
+        ];
+      }
+    }),
+  );
   let next = false;
   const tasks = plan?.ok
-    ? orderedModules(plan.modules, state).map((module) => {
-        const view = views.find((item) => item.name === module.name)!;
-        const selected = active?.module === module.name;
-        const dossier =
-          view.phase === "done" && !/^Artifacts:/m.test(module.text)
-            ? { missing: [], unresolved: 0, problem: null }
-            : dossierStatus(project, module);
-        const needsReapproval =
-          selected &&
-          (specChanged ||
-            (manifest.drive === "auto"
-              ? state.auto.plan_sha256 !== facts?.planHash
-              : state.modules[module.name]?.sha256 !== plan.hashes[module.name]) ||
-            (manifest.drive === "auto"
-              ? state.auto.signed?.design_sha256
-              : state.modules[module.name]?.design_sha256) !==
-              readFileHash(join(project, ".verid/design.md")));
-        const column =
-          view.phase === "done"
-            ? "done"
-            : selected && active.session === null
-              ? "selected"
-              : selected && view.phase === "evaluating"
-                ? "review"
-                : selected
-                  ? "progress"
-                  : "backlog";
-        const waiting = (module.depends ?? []).filter(
-          (id) => views.find((item) => item.name === id)?.phase !== "done",
-        );
-        const reason = state.halted
-          ? say("halted", { reason: state.halted.reason })
-          : view.phase === "done"
-            ? say("reason_done")
-            : active && !selected
-              ? say("reason_finish_active", { module: active.module })
-              : missing.length
-                ? say("reason_missing", {
-                    files: missing.map((file) => `.verid/${file}`).join(", "),
-                  })
-                : (dossier.problem ??
-                  moduleProblem(module) ??
-                  (module.name === PRODUCT &&
-                  views.some((item) => item.name !== PRODUCT && item.phase !== "done")
-                    ? say("reason_product")
-                    : null));
-        const isNext = !next && column === "backlog";
-        if (isNext) next = true;
-        return {
-          id: module.name,
-          mockups: moduleMockups(project, module.name),
-          usage: usage.get(module.name) ?? null,
-          title: /^Title:\s*(.+)$/m.exec(module.text)?.[1] ?? module.name,
-          text: module.text,
-          acs: module.text
-            .split(/\r?\n/)
-            .filter((line) => /^\s*[-*]\s+AC-\d+\b/.test(line))
-            .map((line) => line.replace(/^\s*[-*]\s+/, "")),
-          requirements: [...new Set(module.text.match(/\b(?:REQ|NFR|SEC)-\d+\b/g) ?? [])],
-          depends: module.depends ?? [],
-          waiting,
-          column,
-          reason,
-          selected,
-          specChanged: selected && specChanged,
-          needsReapproval,
-          dossier: { missing: dossier.missing, unresolved: dossier.unresolved },
-          next: isNext,
-          canMove:
-            column === "backlog" &&
-            module.name !== PRODUCT &&
-            !Object.hasOwn(state.modules, module.name) &&
-            state.auto.work?.module !== module.name,
-          canServe:
-            taskSessions(manifest) &&
+    ? orderedModules(plan.modules, state)
+        .filter((module) => !state.station || state.station.module === module.name)
+        .map((module) => {
+          const view = views.find((item) => item.name === module.name)!;
+          const station = stations[module.name] ?? null;
+          const selected = station !== null || active?.module === module.name;
+          const dossier =
+            view.phase === "done" && !/^Artifacts:/m.test(module.text)
+              ? { missing: [], unresolved: 0, problem: null }
+              : dossierStatus(project, module);
+          const needsReapproval =
             selected &&
-            !needsReapproval &&
-            view.phase === "evaluating" &&
-            state.review?.module === module.name &&
-            state.review.verdict === "pass" &&
-            !state.tdd.dirty &&
-            state.tdd.failing.length === 0 &&
-            (!manifest.roles?.security ||
-              (state.security?.module === module.name && state.security.verdict === "pass")),
-          review: selected ? (state.review?.verdict ?? null) : null,
-        };
-      })
+            !station &&
+            (specChanged ||
+              (manifest.drive === "auto"
+                ? state.auto.plan_sha256 !== facts?.planHash
+                : state.modules[module.name]?.sha256 !== plan.hashes[module.name]) ||
+              (manifest.drive === "auto"
+                ? state.auto.signed?.design_sha256
+                : state.modules[module.name]?.design_sha256) !==
+                readFileHash(join(project, ".verid/design.md")));
+          const column = station
+            ? "progress"
+            : view.phase === "done"
+              ? "done"
+              : selected && active?.session === null
+                ? "selected"
+                : selected && view.phase === "evaluating"
+                  ? "review"
+                  : selected
+                    ? "progress"
+                    : "backlog";
+          const waiting = (module.depends ?? []).filter(
+            (id) => views.find((item) => item.name === id)?.phase !== "done",
+          );
+          const reason = station
+            ? station.unavailable
+              ? say("station_unavailable")
+              : station.served
+                ? say("station_waiting")
+                : say("station", { module: module.name, tdd: station.tdd })
+            : state.halted
+              ? say("halted", { reason: state.halted.reason })
+              : view.phase === "done"
+                ? say("reason_done")
+                : active && !selected
+                  ? say("reason_finish_active", { module: active.module })
+                  : missing.length
+                    ? say("reason_missing", {
+                        files: missing.map((file) => `.verid/${file}`).join(", "),
+                      })
+                    : (dossier.problem ??
+                      moduleProblem(module) ??
+                      (module.name === PRODUCT &&
+                      views.some((item) => item.name !== PRODUCT && item.phase !== "done")
+                        ? say("reason_product")
+                        : null));
+          const isNext = !next && column === "backlog";
+          if (isNext) next = true;
+          return {
+            id: module.name,
+            station,
+            tdd: station?.tdd ?? state.tdd.state,
+            mockups: moduleMockups(project, module.name),
+            usage: usage.get(module.name) ?? null,
+            title: /^Title:\s*(.+)$/m.exec(module.text)?.[1] ?? module.name,
+            text: module.text,
+            acs: module.text
+              .split(/\r?\n/)
+              .filter((line) => /^\s*[-*]\s+AC-\d+\b/.test(line))
+              .map((line) => line.replace(/^\s*[-*]\s+/, "")),
+            requirements: [...new Set(module.text.match(/\b(?:REQ|NFR|SEC)-\d+\b/g) ?? [])],
+            depends: module.depends ?? [],
+            waiting,
+            column,
+            reason,
+            selected,
+            specChanged: selected && specChanged,
+            needsReapproval,
+            dossier: { missing: dossier.missing, unresolved: dossier.unresolved },
+            next: isNext,
+            canMove:
+              !station &&
+              column === "backlog" &&
+              module.name !== PRODUCT &&
+              !Object.hasOwn(state.modules, module.name) &&
+              state.auto.work?.module !== module.name,
+            canServe:
+              !station &&
+              taskSessions(manifest) &&
+              selected &&
+              !needsReapproval &&
+              view.phase === "evaluating" &&
+              state.review?.module === module.name &&
+              state.review.verdict === "pass" &&
+              !state.tdd.dirty &&
+              state.tdd.failing.length === 0 &&
+              (!manifest.roles?.security ||
+                (state.security?.module === module.name && state.security.verdict === "pass")),
+            review: selected ? (state.review?.verdict ?? null) : null,
+          };
+        })
     : [];
   // No-brain's restaurant: who works now and what the waiter tells the user, from state only.
   const kitchen =
@@ -231,6 +284,7 @@ function snapshotOf(project: string, manifest: Manifest, state: State) {
           spec,
           planText,
           state,
+          stations,
           plan?.ok ? plan.hashes : null,
           tasks.map((task) => task.dossier),
           tasks.map((task) => task.mockups),

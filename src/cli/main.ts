@@ -2,7 +2,7 @@ import { planned, taskSessions } from "../core/manifest.js";
 import type { ErrorCode, MessageKey } from "../core/errors.js";
 import { inAgentShell } from "../adapters/agent-environment.js";
 import { existsSync, readFileSync, rmSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { autoNextStep, autoPhase, changedServed, securityOf } from "../core/auto.js";
@@ -68,6 +68,8 @@ import { boardCommand } from "./board.js";
 import { baselineCommand, lastRefusal, testCommand, type CliResult } from "./test.js";
 import { pluginCommand } from "./plugin.js";
 import { emitPluginEvent } from "../adapters/plugin-hooks.js";
+import { resolveProject } from "../adapters/project.js";
+import { stationCommand } from "./station.js";
 
 /** `dist/cli.js`: the command line in, its output and exit code out. */
 export async function main(): Promise<void> {
@@ -82,11 +84,13 @@ export async function main(): Promise<void> {
  * refused or failed, and nothing counted as evidence.
  */
 export async function runCli(args: readonly string[]): Promise<CliResult> {
-  const project = findProject(process.cwd());
+  let project = process.cwd();
   const [cmd, ...rest] = args;
   setLanguage(languageOf(project));
   let r: CliResult;
   try {
+    project = resolveProject(process.cwd(), process.env.CLAUDE_PROJECT_DIR);
+    setLanguage(languageOf(project));
     const flags = cmd === "cook" || cmd === "upgrade" ? initFlags(rest, cmd) : null;
     if (flags?.lang === "vi" || flags?.lang === "en") setLanguage(flags.lang);
     // cook sets up the folder it runs in, like `git init`; the others look upwards for .verid.
@@ -104,6 +108,7 @@ export async function runCli(args: readonly string[]): Promise<CliResult> {
     else if (cmd === "setup-antigravity" && rest.length === 0) r = setupAntigravityCommand();
     else if (cmd === "plugin")
       r = await pluginCommand(project, rest, hasTerminal() ? terminalIo() : undefined);
+    else if (cmd === "station") r = await stationCommand(project, rest);
     else if (cmd === "taste" && rest.length === 0) r = await testCommand(project);
     else if (cmd === "doctor" && (rest.length === 0 || (rest.length === 1 && rest[0] === "--ci")))
       r = await doctorCommand(project, rest[0] === "--ci");
@@ -190,18 +195,6 @@ function initFlags(args: string[], command: "cook" | "upgrade") {
     };
   } catch {
     return null;
-  }
-}
-
-/**
- * Claude Code sets CLAUDE_PROJECT_DIR for hooks but not for Bash commands, and the agent may
- * have cd'ed into a subdirectory, so look upwards for .verid the way git looks for .git.
- */
-function findProject(cwd: string): string {
-  if (process.env.CLAUDE_PROJECT_DIR) return process.env.CLAUDE_PROJECT_DIR;
-  for (let dir = resolve(cwd); ; dir = dirname(dir)) {
-    if (existsSync(join(dir, ".verid"))) return dir;
-    if (dirname(dir) === dir) return cwd;
   }
 }
 
@@ -473,6 +466,12 @@ function usage(project: string, wrong: Misuse | null, next?: string): CliResult 
     { emoji: "▶️", command: `${v} resume`, what: say("usage.resume"), who: dev },
   ];
   rows.push({
+    emoji: "🍳",
+    command: `${v} station <module>|list|close <module>`,
+    what: say("usage.station"),
+    who: dev,
+  });
+  rows.push({
     emoji: "🧩",
     command: `${v} plugin <add|remove|list|doctor>`,
     what: say("usage.plugin"),
@@ -658,13 +657,17 @@ async function approve(project: string, wanted: string | undefined): Promise<Cli
   const result = withLock(paths, () => {
     const state = readState(paths);
     const views = planViews(project, plan, state);
-    const open = openModule(views);
+    const open = openModule(views.filter((view) => !state.stations[view.name]));
     const kanban = manifest && taskSessions(manifest);
     const specHash = kanban ? readFileHash(specFile(project)) : null;
     if (kanban && specHash === null)
       throw new VeridError("VERID_BURNT_PLAN_NO_SPEC", { target: specFile(project) });
     if (kanban && state.kanban.active && state.kanban.active.module !== name)
       throw new VeridError("VERID_BURNT_MODULE_OPEN", { module: state.kanban.active.module });
+    if (state.stations[name])
+      throw new VeridError("VERID_BURNT_STATION_INVALID", {
+        detail: `module already has a station: ${name}`,
+      });
     const keepTask =
       kanban &&
       state.kanban.active?.module === name &&
@@ -721,7 +724,8 @@ async function approve(project: string, wanted: string | undefined): Promise<Cli
     // this one. A new approval is a new chance for Stop to hold the conversation for this module,
     // and needs a new review.
     const served = Object.entries(state.modules).filter(
-      ([other, a]) => other !== name && a.served_at !== null,
+      ([other, a]) =>
+        other !== name && (a.served_at !== null || state.stations[other] !== undefined),
     );
     writeState(paths, {
       ...state,
@@ -792,7 +796,13 @@ function signAuto(project: string, manifest: Manifest, wanted: string | undefine
   const paths = statePaths(project);
   return withLock(paths, () => {
     const state = readState(paths);
-    const facts = autoFactsOf(project, state, manifest.iterations !== undefined, planned(manifest));
+    const facts = autoFactsOf(
+      project,
+      state,
+      manifest.iterations !== undefined,
+      planned(manifest),
+      manifest.stations,
+    );
     const { researchHash, specHash, designHash } = facts;
     if (researchHash === null)
       throw new VeridError("VERID_BURNT_RESEARCH_MISSING", { path: researchFile(project) });
@@ -875,6 +885,10 @@ async function serve(project: string, wanted: string): Promise<CliResult> {
     const state = readState(paths);
     const views = planViews(project, plan, state);
     const view = views.find((v) => v.name === name) as ModuleView;
+    if (state.stations[name])
+      throw new VeridError("VERID_BURNT_STATION_INVALID", {
+        detail: "serve inside the station, then station close from the primary worktree",
+      });
     if (
       taskSessions(manifest) &&
       (state.kanban.active?.module !== name ||
@@ -975,6 +989,15 @@ async function planModule(project: string, command: string, wanted: string | und
   if (mode === "remix") throw new VeridError("VERID_BURNT_MODE_MISMATCH", { command, mode });
   const file = planFile(project);
   const state = readState(statePaths(project));
+  if (
+    state.station &&
+    ["order", "serve"].includes(command) &&
+    wanted !== undefined &&
+    wanted !== state.station.module
+  )
+    throw new VeridError("VERID_BURNT_STATION_INVALID", {
+      detail: `this station owns ${state.station.module}`,
+    });
   const plan = readPlan(
     project,
     manifest.iterations !== undefined,

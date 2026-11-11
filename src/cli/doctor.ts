@@ -1,4 +1,5 @@
 import { planned } from "../core/manifest.js";
+import { stationDiagnostics } from "../adapters/station.js";
 import { spawnSync } from "node:child_process";
 import { antigravityPluginInstalled } from "../adapters/antigravity-settings.js";
 import { existsSync, readFileSync } from "node:fs";
@@ -64,6 +65,17 @@ export async function doctorCommand(project: string, ci = false): Promise<CliRes
   else lines.push(say("doctor.node.ok", { version: process.version }));
 
   let manifest: Manifest | null = null;
+  if (!ci) {
+    try {
+      for (const detail of stationDiagnostics(project))
+        problem("stations", "doctor.stations.problem", "doctor.stations.fix", { detail });
+    } catch (error) {
+      if (existsSync(statePaths(project).file))
+        problem("stations", "doctor.stations.problem", "doctor.stations.fix", {
+          detail: error instanceof Error ? error.message : String(error),
+        });
+    }
+  }
   try {
     manifest = await loadManifest(project, { readOnly: true, checkPaths: false });
     if (!manifest) problem("manifest", "doctor.manifest.missing", "doctor.manifest.cook");

@@ -9,6 +9,8 @@ On Antigravity, execute the TDD loop directly in the **main conversation** (Sing
 
 ## Token-Saving Loop per Uncovered AC
 
+In a station, stay in its worktree; read `<SKILLS_ROOT>/plan/references/stations.md`.
+
 1. **Check Status Lightly:**
    - Run `verid peek` (or `node .verid/verid.mjs peek`) and read `.verid/log/<module>.md` if present. Read only the target module's section in `.verid/plan.md` and referenced interfaces in `.verid/design.md`.
    - If the AC touches a specialized domain (UI, React, DB, DevOps, Mobile, Web-Testing, Edge-Cases), check `verid-router` and open only the matching reference section.
