@@ -170,7 +170,7 @@ export function renderInstructions(
     ...(planned(manifest)
       ? [
           `- Modules: read .verid/workflow.md and ${skill("modules")}. Run verid module <name>; fill BA/UI/spec/tests/security before order. Every plan module needs Artifacts: .verid/artifacts/03-modules/<name>.`,
-          "- Templates: .verid/templates/; main records review/release evidence; reviewers only read.",
+          "- Templates: .verid/templates/; main records evidence; reviewers only read.",
           ...(manifest.drive === "auto"
             ? [
                 "- AI: developer sets priorities in verid board and signs with verid order. One session follows that queue through TDD/review/serve; current work stays first.",
@@ -185,7 +185,7 @@ export function renderInstructions(
           `- Design: verid:design → ${skill("design")}.`,
           `- Plan: verid:plan → ${skill("plan")}.`,
           `- Build: verid:build → ${skill("build")}; the main agent writes tests and code under the TDD gate.`,
-          `- TDD: verid:tdd → ${skill("tdd")}; debugging: verid:debugging → ${skill("debugging")}.`,
+          `- TDD: verid:tdd → ${skill("tdd")}.`,
           ...(antigravity
             ? [
                 `- Review/serve: verid:review → ${skill("review")}; invoke_subagent verid-reviewer${manifest.roles?.security ? ", then verid-security," : ""} with module/AC identifiers, plan/design paths and .verid/review/work.md from verid menu --commits --file; its final line is Verdict: pass or Verdict: fail. Reviewer mappings: ${agents("reviewer")}.`,
@@ -203,7 +203,7 @@ export function renderInstructions(
           `- Build: verid:build → tester ${agents("tester")}, qa ${agents("qa")} for end-to-end tests, coder ${agents("coder")}; verid:tdd for each cycle, verid:debugging for unclear failures.`,
           `- Review/serve: verid:review → reviewer ${agents("reviewer")}${manifest.roles?.security ? `, then security reviewer ${agents("security")}` : ""}.`,
         ]),
-    "- Debugging: verid:tdd; verify with verid taste.",
+    `- Bug or failing test: verid:debugging${single ? ` → ${skill("debugging")}` : ""} first, fix under verid:tdd, verify with verid taste.`,
     `- ClaudeKit skills: ${skillsRoot.replaceAll("\\", "/")}/`,
     "",
     "### Commands",

@@ -170,6 +170,25 @@ describe("provider instruction blocks", () => {
     }
   });
 
+  it("sends a bug or failing test to the debugging skill before the TDD cycle", () => {
+    const parsed = parseManifest({
+      schemaVersion: 1,
+      mode: "prep",
+      repos: [{ path: ".", source_globs: ["**"], test_globs: ["**/*.test.ts"] }],
+    });
+    if (!parsed.ok) throw new Error(parsed.detail);
+    for (const provider of ["claude-code", "codex", "antigravity"] as const) {
+      const text = renderInstructions(parsed.manifest, provider);
+      const path = provider === "claude-code" ? "" : " → plugin/skills/debugging/SKILL.md";
+      expect(text, provider).toContain(
+        `- Bug or failing test: verid:debugging${path} first, fix under verid:tdd, verify with verid taste.`,
+      );
+      expect(text, provider).not.toContain("Debugging: verid:tdd");
+    }
+    const repo = renderInstructions({ ...parsed.manifest, resources: "repo" }, "claude-code");
+    expect(repo).toContain("Bug or failing test: verid-debugging first, fix under verid-tdd");
+  });
+
   it("sends a new developer or workspace to the read-only onboard skill", () => {
     const parsed = parseManifest({
       schemaVersion: 1,

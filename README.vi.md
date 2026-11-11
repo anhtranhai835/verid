@@ -407,6 +407,8 @@ Xác nhận để áp dụng kế hoạch đã kiểm tra. Nội dung chỉ dẫ
 | Serve         | Bằng chứng, coverage AC và verdict phải đạt để đóng module.                       |
 | Bàn giao      | Main chuẩn bị commits và PR sau các kiểm tra sản phẩm đã thống nhất.              |
 
+Bảng này là bản tóm tắt. Các bước đầy đủ nằm ở `.verid/workflow.md`.
+
 ### Mode và drive
 
 | Mode     | Điểm bắt đầu  | Công việc đầu tiên                   |

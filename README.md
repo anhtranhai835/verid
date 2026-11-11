@@ -409,6 +409,8 @@ a note. Confirmation applies the checked plan. Existing instruction text outside
 | Serve          | Evidence, AC coverage and verdicts must pass before closure.                   |
 | Handoff        | Main prepares the commits and PR after the agreed product checks.              |
 
+This table is a summary. The full steps are in `.verid/workflow.md`.
+
 ### Modes and drive
 
 | Mode     | Starting point          | First work                                 |
