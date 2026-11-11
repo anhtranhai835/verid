@@ -367,19 +367,22 @@ async function runOnce(project: string): Promise<RunOnce> {
   if (!manifest)
     throw new VeridError("VERID_BURNT_MANIFEST_MISSING", { path: manifestFile(project) });
   const scopedRunners = manifest.layout === "workspace" || manifest.repos.length > 1;
-  const repos = manifest.repos.map((repo) => {
-    const root = resolve(project, ...repo.path.split(/[/\\]/));
-    const prefix = repo.path.replaceAll("\\", "/").toLowerCase();
-    const seen = state.runners.filter((key) => {
-      const dir = key.slice(key.indexOf("@") + 1).toLowerCase();
-      return !scopedRunners || dir === prefix || dir.startsWith(`${prefix}/`);
+  // A legacy repo is only read: no runner starts there, since a test run can delete or create files.
+  const repos = manifest.repos
+    .filter((repo) => repo.role !== "legacy")
+    .map((repo) => {
+      const root = resolve(project, ...repo.path.split(/[/\\]/));
+      const prefix = repo.path.replaceAll("\\", "/").toLowerCase();
+      const seen = state.runners.filter((key) => {
+        const dir = key.slice(key.indexOf("@") + 1).toLowerCase();
+        return !scopedRunners || dir === prefix || dir.startsWith(`${prefix}/`);
+      });
+      return {
+        repo,
+        root,
+        runners: repo.test_cmd === undefined ? foundRunners(root, repo, seen, scopedRunners) : null,
+      };
     });
-    return {
-      repo,
-      root,
-      runners: repo.test_cmd === undefined ? foundRunners(root, repo, seen, scopedRunners) : null,
-    };
-  });
   const runners = repos.some((repo) => repo.runners !== null)
     ? repos.flatMap(({ repo, runners }) =>
         (runners ?? []).map((r) => runnerKey(r, scopedRunners ? repo.path : ".")),

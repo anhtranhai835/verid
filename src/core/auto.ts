@@ -113,7 +113,8 @@ export type StuckReason =
   | "coder_rounds"
   | "module_reviews"
   | "security_reviews"
-  | "no_progress";
+  | "no_progress"
+  | "reheat_gate";
 
 export type AutoPlanRead =
   | { ok: true; modules: PlanModule[]; hashes: Record<string, string> }
@@ -136,6 +137,11 @@ export interface AutoFacts {
   evidence: Pick<Evidence, "passedAcs" | "passedE2eAcs">;
   /** Trimmed text of `.verid/blocked.md`; null when it is missing or empty. */
   blockedFile: string | null;
+  /**
+   * Mode reheat: the units whose gate has not passed on what they hold now, and the ones with no
+   * parity signature. Absent in every other mode.
+   */
+  reheat?: { ungated: ReadonlySet<string>; unsigned: ReadonlySet<string> };
 }
 
 export type AutoPhase =
@@ -199,6 +205,9 @@ export function autoPhase(f: AutoFacts): AutoPhase {
   }
   const view = openModule(autoModules(plan.modules, plan.hashes, f.approvals, f.evidence));
   if (view === undefined) return { kind: "done" };
+  // A legacy unit opens only once the adapter's gate passed on its current spec.
+  if (f.reheat?.ungated.has(view.name))
+    return { kind: "stuck", reason: "reheat_gate", detail: view.name };
   return { kind: "module", view };
 }
 

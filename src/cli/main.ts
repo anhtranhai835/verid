@@ -71,6 +71,8 @@ import { emitPluginEvent } from "../adapters/plugin-hooks.js";
 import { resolveProject } from "../adapters/project.js";
 import { projectHook } from "../adapters/hook-wiring.js";
 import { stationCommand } from "./station.js";
+import { reheatArgs, reheatCommand } from "./reheat.js";
+import { confirmParity, gateProblem, serveParity, signParity } from "../adapters/reheat.js";
 
 /** `dist/cli.js`: the command line in, its output and exit code out. */
 export async function main(): Promise<void> {
@@ -110,6 +112,7 @@ export async function runCli(args: readonly string[]): Promise<CliResult> {
     else if (cmd === "plugin")
       r = await pluginCommand(project, rest, hasTerminal() ? terminalIo() : undefined);
     else if (cmd === "station") r = await stationCommand(project, rest);
+    else if (cmd === "reheat" && reheatArgs(rest)) r = await reheatCommand(project, rest);
     else if (cmd === "taste" && rest.length === 0) r = await testCommand(project);
     else if (cmd === "doctor" && (rest.length === 0 || (rest.length === 1 && rest[0] === "--ci")))
       r = await doctorCommand(project, rest[0] === "--ci");
@@ -117,8 +120,10 @@ export async function runCli(args: readonly string[]): Promise<CliResult> {
     else if (cmd === "module" && rest.length === 2 && ["--quick", "--fix"].includes(rest[1]!))
       r = await moduleCommand(project, rest[0]!, rest[1] === "--quick" ? "quick" : "fix");
     else if (cmd === "board")
-      r = await boardCommand(project, rest, (action, task) =>
-        action === "order" ? approve(project, task) : serve(project, task ?? ""),
+      r = await boardCommand(project, rest, (action, task, paritySigned) =>
+        action === "order"
+          ? approve(project, task)
+          : serve(project, task ?? "", { paritySigned: paritySigned === true }),
       );
     else if (cmd === "peek" && rest.length === 0) r = await status(project);
     else if (cmd === "usage") r = usageCommand(project, rest);
@@ -131,8 +136,13 @@ export async function runCli(args: readonly string[]): Promise<CliResult> {
     else if (cmd === "resume" && rest.length === 0) r = resume(project);
     else if (cmd === "stock" && rest.length === 0) r = await baselineCommand(project);
     else if (cmd === "order" && rest.length <= 1) r = await approve(project, rest[0]);
-    else if (cmd === "serve" && rest.length === 1) r = await serve(project, rest[0] as string);
-    else if (cmd === undefined) r = usage(project, null, await helpNextStep(project));
+    else if (cmd === "serve" && serveArgs(rest)) {
+      const names = rest.filter((arg) => arg !== "--parity-signed");
+      r = await serve(project, names[0] as string, {
+        paritySigned: names.length < rest.length,
+        ...(hasTerminal() && { io: terminalIo() }),
+      });
+    } else if (cmd === undefined) r = usage(project, null, await helpNextStep(project));
     else if (["help", "--help", "-h"].includes(cmd)) r = usage(project, null);
     else r = usage(project, misused(cmd, rest));
   } catch (err) {
@@ -156,6 +166,7 @@ const COOK_OPTIONS = {
   drive: { type: "string" },
   architecture: { type: "string" },
   layout: { type: "string" },
+  legacy: { type: "string" },
   provider: { type: "string", multiple: true },
   iterations: { type: "boolean" },
   duration: { type: "string" },
@@ -182,6 +193,7 @@ function initFlags(args: string[], command: "cook" | "upgrade") {
       drive: values.drive,
       architecture: values.architecture,
       layout: values.layout,
+      legacy: values.legacy,
       providers: values.provider,
       iterations: values.iterations,
       duration: values.duration,
@@ -288,6 +300,7 @@ async function contextCommand(project: string, args: string[]): Promise<CliResul
     ?.split(/\r?\n/)
     .findLast((line) => line.trim() !== "");
   const commands = manifest.repos.flatMap((repo) => {
+    if (repo.role === "legacy") return [];
     if (repo.test_cmd !== undefined) return [repo.test_cmd];
     try {
       return findRunners(resolve(project, ...repo.path.split(/[/\\]/)), {
@@ -400,6 +413,8 @@ function misused(cmd: string, rest: string[]): Misuse {
       params: { command: cmd, args: (odd.length > 0 ? odd : rest).join(" ") },
     };
   }
+  if (cmd === "reheat")
+    return { key: "usage.unexpected", params: { command: cmd, args: rest.join(" ") || "(none)" } };
   const max = ARGS[cmd];
   if (max === undefined) return { key: "usage.unknown", params: { command: cmd } };
   if (cmd === "serve" && rest.length === 0) return { key: "usage.no_module", params: {} };
@@ -471,6 +486,12 @@ function usage(project: string, wrong: Misuse | null, next?: string): CliResult 
     command: `${v} station <module>|list|close <module>`,
     what: say("usage.station"),
     who: dev,
+  });
+  rows.push({
+    emoji: "🔥",
+    command: `${v} reheat <inventory|extract <unit>|gate <unit>>`,
+    what: say("usage.reheat"),
+    who: "reheat",
   });
   rows.push({
     emoji: "🧩",
@@ -713,6 +734,10 @@ async function approve(project: string, wanted: string | undefined): Promise<Cli
     const before = state.modules[name];
     const kept = before?.served_at === null ? before.work : undefined;
     const work = kept ?? ("detail" in captured ? {} : captured);
+    // A legacy unit is ordered only on a gate that passed on what it holds now.
+    const gate = gateProblem(project, state, name);
+    if (gate !== null)
+      throw new VeridError("VERID_BURNT_REHEAT_GATE", { module: name, detail: gate });
     // Audit first: if it fails, state is untouched and nothing was approved.
     appendAudit(paths.audit, {
       event: "plan_approved",
@@ -875,13 +900,35 @@ function signAuto(project: string, manifest: Manifest, wanted: string | undefine
  * evidence holds. The developer vouches for the review; verid checks the tests: every AC of the
  * module passed in the last valid run, that run passed as a whole, and nothing changed since.
  */
-async function serve(project: string, wanted: string): Promise<CliResult> {
+async function serve(
+  project: string,
+  wanted: string,
+  options: { paritySigned?: boolean; io?: Io } = {},
+): Promise<CliResult> {
   if (inAgentShell()) throw new VeridError("VERID_BURNT_SERVE_IN_AGENT");
   // Before the plan is read: auto refuses even where there is no plan yet.
-  if ((await loadManifest(project))?.drive === "auto")
+  const drive = await loadManifest(project);
+  if (drive?.drive === "auto") {
+    // The one thing the developer does in a drive that serves by itself: sign a unit's parity.
+    if (options.paritySigned && drive.mode === "reheat") {
+      const sha256 = signParity(project, wanted);
+      return {
+        exit: 0,
+        stdout: `verid: parity of ${wanted} signed · ${sha256.slice(0, 8)}
+${bilingual("reheat.parity_signed", { module: wanted })}
+`,
+        stderr: "",
+      };
+    }
     throw new VeridError("VERID_BURNT_AUTO_SERVE");
+  }
   const { plan, name, manifest } = await planModule(project, "serve", wanted);
   const paths = statePaths(project);
+  // A terminal asks before the lock is taken; what the developer said yes to is bound to its hash.
+  const confirmed =
+    manifest.mode === "reheat" && !options.paritySigned && options.io
+      ? await confirmParity(project, name, options.io)
+      : null;
   const { result, reviewFile } = withLock(paths, () => {
     const state = readState(paths);
     const views = planViews(project, plan, state);
@@ -929,9 +976,15 @@ async function serve(project: string, wanted: string): Promise<CliResult> {
     if (security !== undefined && !(security?.module === name && security.verdict === "pass"))
       throw notReady("serve.no_security");
 
+    // A legacy unit also needs its gate and the developer's signature on its parity record.
+    const parity = serveParity(project, state, name, {
+      flag: options.paritySigned === true,
+      confirmed,
+    });
     const served = { ...(state.modules[name] as Approval), served_at: new Date().toISOString() };
     const next = {
       ...state,
+      ...(parity.signedNow && parity.reheat ? { reheat: parity.reheat } : {}),
       modules: { ...state.modules, [name]: served },
       ...(taskSessions(manifest) ? { kanban: { ...state.kanban, active: null } } : {}),
     };
@@ -947,6 +1000,7 @@ async function serve(project: string, wanted: string): Promise<CliResult> {
       existsSync(specFile(project)),
     );
     // Audit first: if it fails, state is untouched and the module stays open.
+    if (parity.signedNow) appendAudit(paths.audit, { event: "parity_signed", module: name });
     appendAudit(paths.audit, { event: "module_served", module: name });
     writeState(paths, next);
     const lines = [
@@ -977,6 +1031,12 @@ async function serve(project: string, wanted: string): Promise<CliResult> {
   });
   return result;
 }
+
+/** `serve <module>`, with `--parity-signed` before or after it, once at most. */
+const serveArgs = (args: readonly string[]): boolean => {
+  const names = args.filter((arg) => arg !== "--parity-signed");
+  return names.length === 1 && args.length - names.length <= 1;
+};
 
 /**
  * What `order` and `serve` share: a prep or recipe manifest, a readable plan, and the module

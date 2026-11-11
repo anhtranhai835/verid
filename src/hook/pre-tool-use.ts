@@ -43,6 +43,7 @@ import { consumeOverride, recordDenial } from "../core/override.js";
 import { autoPhase } from "../core/auto.js";
 import { withPluginDispatch } from "../adapters/plugin-store.js";
 import { stationPolicy } from "../adapters/station-policy.js";
+import { legacyPolicy } from "../adapters/legacy-policy.js";
 import { stationContext, stationSessionProblem } from "../adapters/project.js";
 
 export async function preToolUse(p: z.infer<typeof preToolUseSchema>): Promise<Result> {
@@ -102,7 +103,11 @@ export async function preToolUse(p: z.infer<typeof preToolUseSchema>): Promise<R
     });
     taskProblem = problem;
   }
-  const base = { ...policyContext(project, p.cwd), ...stationPolicy(project, p.cwd, writes) };
+  const base = {
+    ...policyContext(project, p.cwd),
+    ...stationPolicy(project, p.cwd, writes),
+    ...legacyPolicy(project, taskManifest, p.cwd),
+  };
   const stationSession = stationSessionProblem(project, shared.sessionKey(p.session_id));
   // Any project write outside .verid/ invalidates security review, including linked paths.
   const roots = [normalizePath(project), writtenPath(project)];

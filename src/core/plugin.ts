@@ -36,27 +36,49 @@ const command = text.check(
 );
 const jsonConfig = z.record(z.string(), z.json());
 
-export const pluginManifestSchema = z.strictObject({
-  name: pluginNameSchema,
-  version,
-  veridApi: z.literal("1"),
-  description: text,
-  requires: z._default(
-    z.array(
-      z.strictObject({
-        bin: text.check(z.regex(/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/)),
-        version: z.optional(text.check(z.regex(/^(?:>=|<=|>|<|=|\^|~)?\d+\.\d+\.\d+$/))),
-        install: z.optional(text),
-      }),
-    ),
-    [],
-  ),
-  setup: z._default(z.array(command), []),
-  hooks: z._default(z.partialRecord(z.enum(PLUGIN_EVENTS), command), {}),
-  skills: z._default(z.array(portablePath), []),
-  agents: z._default(z.array(portablePath), []),
-  config: z._default(jsonConfig, {}),
+/**
+ * What mode reheat runs to read a legacy system: one command per step. Placeholders
+ * {legacyRoot}, {unit}, {unitDir} and {specPath} are filled after the command is split, so a path
+ * with spaces stays one argument. `skill` names, without the plugin prefix, a skill of this
+ * package that writes a unit's spec.
+ */
+const adapter = z.strictObject({
+  unitKind: text,
+  commands: z.strictObject({ inventory: command, extract: command, gate: command }),
+  skill: z.optional(pluginNameSchema),
 });
+export type PluginAdapter = z.infer<typeof adapter>;
+
+export const pluginManifestSchema = z
+  .strictObject({
+    name: pluginNameSchema,
+    version,
+    veridApi: z.literal("1"),
+    description: text,
+    requires: z._default(
+      z.array(
+        z.strictObject({
+          bin: text.check(z.regex(/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/)),
+          version: z.optional(text.check(z.regex(/^(?:>=|<=|>|<|=|\^|~)?\d+\.\d+\.\d+$/))),
+          install: z.optional(text),
+        }),
+      ),
+      [],
+    ),
+    setup: z._default(z.array(command), []),
+    hooks: z._default(z.partialRecord(z.enum(PLUGIN_EVENTS), command), {}),
+    skills: z._default(z.array(portablePath), []),
+    agents: z._default(z.array(portablePath), []),
+    config: z._default(jsonConfig, {}),
+    adapter: z.optional(adapter),
+  })
+  .check(
+    z.refine(
+      (manifest) =>
+        manifest.adapter?.skill === undefined ||
+        manifest.skills.some((path) => path.split("/").at(-1) === manifest.adapter?.skill),
+    ),
+  );
 export type PluginManifest = z.infer<typeof pluginManifestSchema>;
 
 const entry = z

@@ -23,7 +23,12 @@ import { fileRole } from "../core/tdd.js";
 import { WEEKDAYS } from "../core/iterations.js";
 import { setupPreview } from "../core/setup-plan.js";
 import { bilingual, setLanguage } from "../adapters/i18n.js";
-import { loadManifest, manifestFile, missingManifestDefaults } from "../adapters/manifest.js";
+import {
+  isDirectory,
+  loadManifest,
+  manifestFile,
+  missingManifestDefaults,
+} from "../adapters/manifest.js";
 import { findRunners } from "../adapters/test-runner.js";
 import { languageOf, VeridError } from "../adapters/state-store.js";
 import { ARCHITECTURES } from "../core/rules.js";
@@ -33,7 +38,7 @@ import { planCook, projectFacts, servedLine, setupDoneLine, manifestUpgradeLines
 import type { CliResult } from "./test.js";
 import { restorePlugins } from "../adapters/plugin-store.js";
 
-const MODE_EMOJI: Record<Mode, string> = { prep: "🥕", recipe: "📖", remix: "🍲" };
+const MODE_EMOJI: Record<Mode, string> = { prep: "🥕", recipe: "📖", remix: "🍲", reheat: "🔥" };
 
 const say = (key: MessageKey, params: Record<string, string> = {}) => bilingual(key, params);
 
@@ -203,6 +208,23 @@ export async function interactiveCook(
     if (!(await askModeAndDrive())) return cancelled();
   }
 
+  /** Why a typed legacy folder cannot be used, or null when it can. */
+  function legacyProblem(answer: string): string | null {
+    const probe = { source_globs: ["**"], test_globs: ["**"] };
+    const r = parseManifest({
+      schemaVersion: 1,
+      mode: "reheat",
+      repos: [
+        { path: "app", ...probe },
+        { path: answer, role: "legacy", read_only: true, ...probe },
+      ],
+    });
+    if (!r.ok) return r.detail.replace(/^[w.]+: /, "");
+    return isDirectory(resolve(project, answer))
+      ? null
+      : say("cook.legacy_missing", { path: answer });
+  }
+
   /** The mode, then for prep and recipe who runs the kitchen; false when cancelled. */
   async function askModeAndDrive(): Promise<boolean> {
     const facts = projectFacts(project, repoPaths);
@@ -217,6 +239,12 @@ export async function interactiveCook(
     );
     if (mode === null) return false;
     flags.mode = MODES[mode];
+    // Reheat reads a legacy folder that stays untouched; it is asked here when no flag named it.
+    if (flags.mode === "reheat") {
+      const legacy = await askUntil(say("cook.legacy"), legacyProblem, flags.legacy);
+      if (legacy === null) return false;
+      flags.legacy = legacy;
+    } else delete flags.legacy;
     // Remix has no plan to walk module by module, so only prep and recipe can run on their own.
     if (flags.mode === "remix") {
       delete flags.drive;

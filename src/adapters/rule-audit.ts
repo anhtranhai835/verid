@@ -76,7 +76,7 @@ export function auditWarnings(project: string, manifest: Manifest, state: State)
             );
       }
     }
-    for (const repo of manifest.repos.filter((r) => r.architecture_check)) {
+    for (const repo of manifest.repos.filter((r) => r.architecture_check && r.role !== "legacy")) {
       const result = state.architecture[repo.path];
       if (!result || state.tdd.dirty || result.status !== "pass")
         warn(

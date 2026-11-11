@@ -13,8 +13,15 @@ import { boardHtml } from "./board-page.js";
 import { chooseMockup, mockupFile } from "../adapters/board-mockups.js";
 import type { CliResult } from "./test.js";
 
-/** The developer commands the board runs: `order` without a task signs no-brain drive's documents. */
-type Command = (command: "order" | "serve", task?: string) => Promise<CliResult>;
+/**
+ * The developer commands the board runs: `order` without a task signs no-brain drive's documents,
+ * and `serve` with `paritySigned` signs a legacy unit's parity record in that drive.
+ */
+type Command = (
+  command: "order" | "serve",
+  task?: string,
+  paritySigned?: boolean,
+) => Promise<CliResult>;
 
 /** A board message in the project's language, else the machine's. */
 const say = (project: string, key: string, params: Record<string, string> = {}) =>
@@ -149,7 +156,10 @@ export async function startBoard(project: string, command: Command, port = 0, sp
       return send(res, 400, { error: say(project, "err_read_only") });
     if (snapshot.drive === "auto" && ["select", "serve", "prompt"].includes(String(input.action)))
       return send(res, 409, { error: say(project, "err_auto_queue") });
-    if (snapshot.drive !== "auto" && (input.action === "chat" || input.action === "sign"))
+    if (
+      snapshot.drive !== "auto" &&
+      (input.action === "chat" || input.action === "sign" || input.action === "parity")
+    )
       return send(res, 409, {
         error: say(project, input.action === "chat" ? "err_no_chat" : "err_sign_terminal"),
       });
@@ -194,6 +204,14 @@ export async function startBoard(project: string, command: Command, port = 0, sp
           }),
         });
       const result = await command("order");
+      if (result.exit !== 0) return send(res, 409, { error: result.stderr });
+    } else if (input.action === "parity") {
+      // The signature on a unit's parity record, by the developer who read it: the same one as
+      // `verid serve <unit> --parity-signed` in the terminal.
+      const task = snapshot.tasks.find((item) => item.id === input.task);
+      if (!task?.migration?.canSignParity)
+        return send(res, 409, { error: say(project, "err_parity_not_ready") });
+      const result = await command("serve", task.id, true);
       if (result.exit !== 0) return send(res, 409, { error: result.stderr });
     } else if (input.action === "move") {
       if (

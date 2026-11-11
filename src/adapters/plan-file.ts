@@ -16,6 +16,7 @@ import type { Drive, Iterations, Manifest, Mode, Roles } from "../core/manifest.
 import { singleWriterOnly } from "../core/manifest.js";
 import { iterationDates } from "../core/iterations.js";
 import {
+  MODULE_INPUTS,
   modulePhases,
   nextStep,
   openModule,
@@ -26,6 +27,7 @@ import {
   type PlanModule,
 } from "../core/plan.js";
 import { mappedAgents } from "../core/roles.js";
+import { statusText } from "../core/reheat.js";
 import type { State } from "../core/state.js";
 import { cycleHint, cycleLabel } from "../core/tdd.js";
 import { checkedRepos } from "./architecture.js";
@@ -35,15 +37,9 @@ import { auditLines } from "./rule-audit.js";
 import { errno, readFileHash } from "./state-store.js";
 import { checkSetupPath } from "./workspace.js";
 import { effectiveOrder } from "../core/kanban.js";
+import { reheatFacts, unitState } from "./reheat-evidence.js";
 
-export const MODULE_INPUTS = [
-  "ba/requirements.md",
-  "ui/brief.md",
-  "spec/spec.md",
-  "spec/design.md",
-  "tests/test-plan.md",
-  "security/threat-model.md",
-] as const;
+export { MODULE_INPUTS };
 
 export const planFile = (project: string): string => join(project, ".verid", "plan.md");
 export const researchFile = (project: string): string => join(project, ".verid", "research.md");
@@ -315,8 +311,10 @@ export function autoFactsOf(
       : plan?.ok
         ? { ...plan, modules: orderedModules(plan.modules, state) }
         : plan;
+  const reheat = reheatFacts(project, state);
   return {
     ...(state.station ? { station: state.station.module } : {}),
+    ...(reheat ? { reheat } : {}),
     parallel:
       !state.station &&
       stations > 1 &&
@@ -509,9 +507,13 @@ const moduleCount = (views: readonly ModuleView[]) =>
 export const unservedDependencies = (v: ModuleView, views: readonly ModuleView[]): string[] =>
   (v.depends ?? []).filter((dep) => views.some((o) => o.name === dep && o.phase !== "done"));
 
-const moduleLine = (v: ModuleView, views: readonly ModuleView[]) => {
+const moduleLine = (
+  v: ModuleView,
+  views: readonly ModuleView[],
+  unit: ReturnType<typeof unitState> = null,
+) => {
   const waiting = v.phase === "planned" ? unservedDependencies(v, views) : [];
-  return `  ${v.name} · ${v.phase} · ${v.acs.length - v.uncovered.length}/${v.acs.length} ACs${v.designChanged ? " · design changed since order" : ""}${waiting.length > 0 ? ` · waits for ${waiting.join(", ")}` : ""}`;
+  return `  ${v.name} · ${v.phase} · ${v.acs.length - v.uncovered.length}/${v.acs.length} ACs${v.designChanged ? " · design changed since order" : ""}${waiting.length > 0 ? ` · waits for ${waiting.join(", ")}` : ""}${unit ? ` · ${statusText(unit)}` : ""}`;
 };
 
 /** Calendar status only: it never feeds a gate or an auto-drive decision. */
@@ -603,7 +605,7 @@ export function menuLines(
   return [
     `verid: mode ${mode}${research}${spec}${design} · ${moduleCount(views)}`,
     ...iterationLines(manifest?.iterations, plan.modules, views, today),
-    ...views.map((v) => moduleLine(v, views)),
+    ...views.map((v) => moduleLine(v, views, unitState(project, state, v.name))),
     ...plan.questions,
     ...(manifest ? auditLines(project, manifest, state, false) : []),
     ...architectureLines(manifest, state, plan),
@@ -656,7 +658,7 @@ function autoMenuLines(
       views,
       today,
     ),
-    ...views.map((v) => moduleLine(v, views)),
+    ...views.map((v) => moduleLine(v, views, unitState(project, state, v.name))),
     ...(auto.signed === null ? [] : [`  ${counters.join(" · ")}`]),
     ...questionLines(project),
     ...(manifest ? auditLines(project, manifest, state, false) : []),

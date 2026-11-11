@@ -36,6 +36,7 @@ import { checkSetupPath } from "./workspace.js";
 import { systemLanguage, t } from "./i18n.js";
 import { moduleMockups } from "./board-mockups.js";
 import { stationContext } from "./project.js";
+import { unitState } from "./reheat-evidence.js";
 
 const boardMessage = (project: string, key: string) =>
   t(languageOf(project) ?? systemLanguage(), `board.${key}`, {});
@@ -157,6 +158,9 @@ function snapshotOf(project: string, manifest: Manifest, state: State) {
                   : selected
                     ? "progress"
                     : "backlog";
+          // Mode reheat: the module rebuilds one legacy unit, which has its own progress.
+          const unit = ownEntry(state.reheat ?? {}, module.name);
+          const status = unit ? unitState(project, state, module.name) : null;
           const waiting = (module.depends ?? []).filter(
             (id) => views.find((item) => item.name === id)?.phase !== "done",
           );
@@ -178,6 +182,9 @@ function snapshotOf(project: string, manifest: Manifest, state: State) {
                       })
                     : (dossier.problem ??
                       moduleProblem(module) ??
+                      (status && status.gate !== "pass"
+                        ? say("reason_reheat_gate", { module: module.name })
+                        : null) ??
                       (module.name === PRODUCT &&
                       views.some((item) => item.name !== PRODUCT && item.phase !== "done")
                         ? say("reason_product")
@@ -223,8 +230,28 @@ function snapshotOf(project: string, manifest: Manifest, state: State) {
               !state.tdd.dirty &&
               state.tdd.failing.length === 0 &&
               (!manifest.roles?.security ||
-                (state.security?.module === module.name && state.security.verdict === "pass")),
+                (state.security?.module === module.name && state.security.verdict === "pass")) &&
+              (status === null || status.parity === "signed"),
             review: selected ? (state.review?.verdict ?? null) : null,
+            migration:
+              unit && status
+                ? {
+                    title: unit.title,
+                    family: unit.family ?? null,
+                    parent: unit.parent ?? null,
+                    extracted: status.extracted,
+                    gate: status.gate,
+                    parityState: status.parity,
+                    parity: status.parity === "signed",
+                    // No-brain only: the developer signs on the board what the agent cannot sign.
+                    canSignParity:
+                      manifest.drive === "auto" &&
+                      !station &&
+                      view.phase !== "done" &&
+                      status.gate === "pass" &&
+                      status.parity === "unsigned",
+                  }
+                : null,
           };
         })
     : [];
@@ -238,6 +265,7 @@ function snapshotOf(project: string, manifest: Manifest, state: State) {
           design: !missing.includes("design.md"),
           halted: state.halted?.reason ?? null,
           denied: state.last_denied,
+          parity: tasks.find((task) => task.migration?.canSignParity)?.id ?? null,
           tasks,
           now: Date.now(),
         })
@@ -289,6 +317,7 @@ function snapshotOf(project: string, manifest: Manifest, state: State) {
           plan?.ok ? plan.hashes : null,
           tasks.map((task) => task.dossier),
           tasks.map((task) => task.mockups),
+          tasks.map((task) => task.migration),
           ...["research.md", "design.md"].map((file) =>
             readFileHash(join(project, ".verid", file)),
           ),

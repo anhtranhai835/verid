@@ -158,6 +158,16 @@ export function parsePlan(text: string, iterations = false): PlanCheck {
 /** The module that says the product works: ordered last, every AC end to end. */
 export const PRODUCT = "product";
 
+/** The dossier documents a module's plan hash and its approval cover, relative to its folder. */
+export const MODULE_INPUTS = [
+  "ba/requirements.md",
+  "ui/brief.md",
+  "spec/spec.md",
+  "spec/design.md",
+  "tests/test-plan.md",
+  "security/threat-model.md",
+] as const;
+
 /**
  * What is wrong with the modules' dependencies, one line each, for the audit. A module may build
  * only on modules above it in the plan, so file order is an order that works and no cycle exists.

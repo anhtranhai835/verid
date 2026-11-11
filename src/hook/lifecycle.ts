@@ -378,8 +378,16 @@ function autoStop(
     );
     facts = { ...facts, auto: state.auto, approvals: state.modules };
     let phase = autoPhase(facts);
+    // A legacy unit that is ready except for the developer's signature on its parity record: the
+    // drive waits for it and the agent may stop, as it does when stuck.
+    const parityUnit =
+      phase.kind === "module" &&
+      facts.reheat?.unsigned.has(phase.view.name) &&
+      closeReady(phase.view, state.tdd, state.review, securityOf(state, manifest.roles))
+        ? phase.view.name
+        : null;
 
-    if (!over(phase)) {
+    if (!over(phase) && parityUnit === null) {
       const served = Object.entries(state.modules)
         .filter(([, a]) => a.served_at !== null)
         .map(([m]) => m);
@@ -397,15 +405,18 @@ function autoStop(
         phase = autoPhase({ ...facts, auto: state.auto });
       }
     }
-    const step = autoNextStep(
-      phase,
-      facts.researchHash !== null,
-      facts.designHash !== null,
-      state.review,
-      securityOf(state, manifest.roles),
-      facts.specHash !== null,
-      state.auto.module_reviews,
-    );
+    const step =
+      parityUnit === null
+        ? autoNextStep(
+            phase,
+            facts.researchHash !== null,
+            facts.designHash !== null,
+            state.review,
+            securityOf(state, manifest.roles),
+            facts.specHash !== null,
+            state.auto.module_reviews,
+          )
+        : { key: "auto.reheat_parity" as const, params: { module: parityUnit } };
     const lines = [
       shared.statusLine(manifest.mode, state.tdd, state.tdd.last_run),
       ...auditLines(project, manifest, state, false, warnings),
@@ -413,7 +424,7 @@ function autoStop(
       bilingual(step.key, { ...shared.mappedNames(manifest.roles), ...step.params }),
     ].join("\n");
     // The agent may stop, and the developer sees why.
-    if (over(phase)) {
+    if (over(phase) || parityUnit !== null) {
       writeState(paths, state);
       return { exit: 0, stdout: JSON.stringify({ systemMessage: lines }) };
     }
@@ -501,7 +512,9 @@ export function tryClose(
   if (
     phase.kind !== "module" ||
     !facts.plan?.ok ||
-    !closeReady(phase.view, state.tdd, state.review, securityOf(state, manifest.roles))
+    !closeReady(phase.view, state.tdd, state.review, securityOf(state, manifest.roles)) ||
+    // A legacy unit is served only after the developer signed its parity record.
+    facts.reheat?.unsigned.has(phase.view.name)
   )
     return state;
   const view = phase.view;

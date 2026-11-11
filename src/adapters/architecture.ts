@@ -13,10 +13,15 @@ import { runCommand } from "./test-runner.js";
 
 type Check = NonNullable<Repo["architecture_check"]>;
 
-/** The repos whose manifest entry configures an architecture check, with it. */
+/**
+ * The repos whose manifest entry configures an architecture check, with it. A legacy repo is never
+ * checked: the command could write there, and the legacy system is only read.
+ */
 export const checkedRepos = (manifest: Pick<Manifest, "repos">): { repo: Repo; check: Check }[] =>
   manifest.repos.flatMap((repo) =>
-    repo.architecture_check ? [{ repo, check: repo.architecture_check }] : [],
+    repo.architecture_check && repo.role !== "legacy"
+      ? [{ repo, check: repo.architecture_check }]
+      : [],
   );
 
 const repoRoot = (project: string, repo: Repo) => resolve(project, ...repo.path.split(/[/\\]/));

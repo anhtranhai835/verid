@@ -77,7 +77,9 @@ const repo = z.strictObject({
     gitValue.check(z.refine(safeCloneRemote, { error: "must not name a network file share" })),
   ),
   default_branch: z.optional(gitValue),
-  role: z.optional(z.enum(["frontend", "backend", "e2e", "other"])),
+  role: z.optional(z.enum(["frontend", "backend", "e2e", "other", "legacy"])),
+  // A legacy repo (mode reheat) is only ever read: no write, no commit, no test run reaches it.
+  read_only: z.optional(z.boolean()),
   // {junit} is replaced by the quoted path; runners set up through an environment variable
   // read the same path from VERID_JUNIT (cmd.exe keeps quotes in `set VAR="..."`). Without it,
   // verid finds the runners from the build files (core/runners.ts).
@@ -110,7 +112,7 @@ const repo = z.strictObject({
 // explained by verid rather than cut off by Claude Code.
 export const DEFAULT_TIMEOUT_SEC = 100;
 
-export const MODES = ["prep", "recipe", "remix"] as const;
+export const MODES = ["prep", "recipe", "remix", "reheat"] as const;
 export type Mode = (typeof MODES)[number];
 export const PROVIDERS = ["claude-code", "codex", "antigravity"] as const;
 export type Provider = (typeof PROVIDERS)[number];
@@ -269,7 +271,9 @@ const manifestSchema = z
   .strictObject({
     schemaVersion: z.literal(1),
     // A manifest written before modes existed gets told what to add, not "Invalid input".
-    mode: z.enum(MODES, { error: "must be prep, recipe or remix" }),
+    mode: z.enum(MODES, {
+      error: "must be prep, recipe or remix (or reheat to rewrite a legacy system)",
+    }),
     providers: z._default(
       z.array(z.enum(PROVIDERS, { error: "must be claude-code, codex or antigravity" })).check(
         z.minLength(1, nonEmpty),
@@ -308,11 +312,42 @@ const manifestSchema = z
     // fill in, a role left unmapped would leave a step with no one to take it.
     z.superRefine((m, ctx) => {
       const paths: string[] = [];
-      if ((m.stations ?? 1) > 1 && (m.layout === "workspace" || m.mode === "remix"))
+      if (
+        (m.stations ?? 1) > 1 &&
+        (m.layout === "workspace" || m.mode === "remix" || m.mode === "reheat")
+      )
         return ctx.addIssue({
           code: "custom",
           path: ["stations"],
           message: "parallel stations need a prep or recipe monorepo",
+        });
+      // The legacy system is read-only by manifest, in one spelling only: role legacy with
+      // read_only true, in mode reheat, beside at least one repo that takes the new code.
+      for (const [i, repo] of m.repos.entries()) {
+        if (repo.role === "legacy" && repo.read_only !== true)
+          return ctx.addIssue({
+            code: "custom",
+            path: ["repos", i, "read_only"],
+            message: "a legacy repo must set read_only: true",
+          });
+        if (repo.role !== "legacy" && repo.read_only === true)
+          return ctx.addIssue({
+            code: "custom",
+            path: ["repos", i, "role"],
+            message: "read_only: true belongs to a repo with role: legacy",
+          });
+        if (repo.role === "legacy" && m.mode !== "reheat")
+          return ctx.addIssue({
+            code: "custom",
+            path: ["repos", i, "role"],
+            message: "role legacy needs mode reheat",
+          });
+      }
+      if (m.repos.every((repo) => repo.role === "legacy"))
+        return ctx.addIssue({
+          code: "custom",
+          path: ["repos"],
+          message: "needs a repo that is not legacy, where the new code goes",
         });
       for (const [i, repo] of m.repos.entries()) {
         const path = repoPathKey(repo.path);
@@ -364,7 +399,7 @@ export type Manifest = z.infer<typeof manifestSchema>;
 export type Iterations = NonNullable<Manifest["iterations"]>;
 export type Roles = NonNullable<Manifest["roles"]>;
 
-/** Prep and recipe walk a plan of modules; remix has none. */
+/** Prep, recipe and reheat walk a plan of modules; remix has none. */
 export const planned = (manifest: Pick<Manifest, "mode">): boolean => manifest.mode !== "remix";
 /** The developer selects each task and opens a fresh session in human drive. */
 export const taskSessions = (manifest: Pick<Manifest, "mode" | "drive">): boolean =>
@@ -471,6 +506,8 @@ export interface InitFlags {
   drive?: string | undefined;
   /** As typed; an existing manifest keeps its chosen layout. */
   layout?: string | undefined;
+  /** mode reheat: the folder of the legacy system, relative to the project. */
+  legacy?: string | undefined;
   /** Repeatable --provider; an existing manifest keeps its developer's selection. */
   providers?: readonly string[] | undefined;
   /** Optional calendar planning for prep and recipe; never changes module order or gates. */
@@ -621,7 +658,8 @@ export function renderManifest(
   return [
     "# verid manifest: only the developer edits this file. Commit it with the project.",
     "schemaVersion: 1",
-    `mode: ${JSON.stringify(mode)} # ${MODES.join(" | ")}`,
+    // reheat is listed only in a manifest that chose it: every other file reads as it always did.
+    `mode: ${JSON.stringify(mode)} # ${MODES.filter((m) => m !== "reheat" || mode === "reheat").join(" | ")}`,
     `providers: ${JSON.stringify(providers)} # ${PROVIDERS.join(" | ")}`,
     `architecture: ${architecture} # ddd | clean | layered | none`,
     ...(options.resources ? [`resources: ${options.resources} # installed | repo`] : []),
@@ -652,6 +690,7 @@ export function renderManifest(
         ? [`    default_branch: ${JSON.stringify(repo.default_branch)}`]
         : []),
       ...(repo.role ? [`    role: ${JSON.stringify(repo.role)}`] : []),
+      ...(repo.read_only === undefined ? [] : [`    read_only: ${repo.read_only}`]),
       repo.test_cmd === undefined
         ? "    # test_cmd: verid finds the test runner from the build files; set one to choose it"
         : `    test_cmd: ${JSON.stringify(repo.test_cmd)}`,

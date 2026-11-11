@@ -34,6 +34,12 @@ export interface PolicyContext {
     frozen: boolean;
     reserved: readonly { root: string; boundary: readonly string[] }[];
   };
+  /**
+   * Mode reheat: the legacy repos, as resolved and as written. No call writes into them and no
+   * `/verid tip` lifts that. `shellWrite` names what a shell command does there, following `cd`
+   * and `git -C`, and is null when it does nothing to them.
+   */
+  legacy?: { roots: readonly string[]; shellWrite: (command: string) => string | null };
   stateDir: string;
   manifestPath: string;
   transcriptsDir: string;
@@ -91,6 +97,12 @@ function decideFile(
   lifted: ReadonlySet<RuleCode>,
 ): PolicyDecision {
   const write = a.access === "write";
+  // Before every rule that an override can lift: the legacy system is only ever read.
+  if (
+    write &&
+    ctx.legacy?.roots.some((root) => [a.path, a.written ?? ""].some((path) => isUnder(path, root)))
+  )
+    return deny("VERID_BURNT_LEGACY_READ_ONLY", a.display, "the legacy repo is read-only");
   if (write && [a.path, a.display, a.written ?? ""].some(isPluginPath))
     return deny(
       "VERID_BURNT_PLUGIN_PROTECTED",
@@ -330,6 +342,8 @@ function decideBash(
   lifted: ReadonlySet<RuleCode>,
 ): PolicyDecision {
   const target = command.length > 200 ? `${command.slice(0, 200)}…` : command;
+  const legacyWrite = ctx.legacy?.shellWrite(command) ?? null;
+  if (legacyWrite !== null) return deny("VERID_BURNT_LEGACY_READ_ONLY", target, legacyWrite);
   const forms = [command, unquote(command)].flatMap((c) => {
     const raw = c.toLowerCase();
     const slashed = raw.replace(/\\/g, "/");

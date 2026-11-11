@@ -17,6 +17,8 @@ export interface KitchenInput {
   design: boolean;
   halted: string | null;
   denied: { rule: RuleCode; at: string } | null;
+  /** Mode reheat: a unit that is ready except for the developer's parity signature. */
+  parity?: string | null;
   tasks: readonly { id: string; title: string; column: string; selected: boolean; tdd?: string }[];
   now: number;
 }
@@ -52,6 +54,7 @@ const STUCK_KIND: Record<string, string> = {
   module_reviews: "reviews",
   security_reviews: "reviews",
   no_progress: "stalled",
+  reheat_gate: "gate",
 };
 
 function roleOf(input: KitchenInput): Role {
@@ -81,6 +84,7 @@ function waiterOf(input: KitchenInput): WaiterLine | null {
   if (input.halted !== null) return { kind: "halted", params: { detail: input.halted } };
   if (phase?.kind === "stuck")
     return { kind: STUCK_KIND[phase.reason] ?? "stalled", params: { detail: phase.detail } };
+  if (input.parity) return { kind: "parity", params: { detail: input.parity } };
   if (denied && input.now - Date.parse(denied.at) < DENIAL_FRESH_MS)
     return { kind: denialKind(denied.rule), params: { code: denied.rule } };
   if (phase?.kind === "unsigned" && input.research && input.design)

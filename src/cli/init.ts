@@ -21,6 +21,7 @@ import {
   renderManifest,
   suggestManifest,
   suggestMode,
+  TEST_GLOBS,
   type InitFlags,
   type Repo,
   type ProjectFacts,
@@ -81,6 +82,8 @@ import type { CliResult } from "./test.js";
 import { ARCHITECTURES, DOCS_NOTE, projectRules } from "../core/rules.js";
 
 const LANGS = ["vi", "en"] as const;
+/** Where cook puts the new system in a reheat project; the developer may edit the manifest. */
+const NEW_SYSTEM = "app";
 
 export type { Action } from "../core/setup-plan.js";
 
@@ -122,6 +125,18 @@ export async function initCommand(
     ...flags,
     ...((flags.yes || command === "upgrade") && { upgrade: true }),
   };
+  // A new reheat project needs the legacy folder: a terminal is asked, a script must pass --legacy.
+  if (
+    command === "cook" &&
+    flags.mode === "reheat" &&
+    flags.legacy === undefined &&
+    io &&
+    !flags.yes &&
+    !existsSync(manifestFile(project))
+  ) {
+    const typed = (await ask(io, bilingual("cook.legacy", {})))?.trim();
+    if (typed) chosen.legacy = typed;
+  }
   let plan = await planCook(project, chosen, command === "upgrade");
   const preview = () =>
     (io?.output ?? process.stdout).write(
@@ -173,7 +188,9 @@ export async function servedLine(project: string): Promise<string> {
     agent === "Claude Code"
       ? first
         ? "cook.served_remix"
-        : "cook.served"
+        : manifest?.mode === "reheat"
+          ? "cook.served_reheat"
+          : "cook.served"
       : agent === "Codex"
         ? "cook.codex_served"
         : "cook.antigravity_served";
@@ -342,6 +359,7 @@ export async function planCook(
     });
 
   let repo: Repo | undefined;
+  let reheatRepos: Repo[] | undefined;
   // The roles the manifest maps once cook is done: verid's own unless the developer chose others.
   let roles: Roles | null | undefined;
   const flagsGiven =
@@ -351,6 +369,7 @@ export async function planCook(
     flags.drive !== undefined ||
     flags.architecture !== undefined ||
     flags.layout !== undefined ||
+    flags.legacy !== undefined ||
     flags.providers !== undefined ||
     flags.iterations !== undefined ||
     flags.duration !== undefined ||
@@ -396,7 +415,7 @@ export async function planCook(
     if (flags.mode === undefined && !flags.yes && !flags.dryRun)
       throw new VeridError("VERID_BURNT_INIT_NO_MODE", { suggested: suggestMode(facts) });
     const mode = MODES.find((m) => m === (flags.mode ?? suggestMode(facts)));
-    if (!mode) throw invalid("--mode", "must be prep, recipe or remix");
+    if (!mode) throw invalid("--mode", "must be prep, recipe, remix or reheat");
     const drive = flags.drive === undefined ? undefined : driveNamed(flags.drive);
     if (flags.drive !== undefined && !drive) throw invalid("--drive", DRIVE_ERROR);
     if (
@@ -411,10 +430,29 @@ export async function planCook(
     )
       throw invalid("--architecture", "must be ddd, clean, layered or none");
     const suggested = suggestManifest(flags);
+    // Reheat: the new system goes in a folder of its own, beside the legacy one, which is only read.
+    if (mode === "reheat") {
+      if (layout === "workspace") throw invalid("--mode", "reheat needs the monorepo layout");
+      if (flags.legacy === undefined)
+        throw invalid("--legacy", "needed with --mode reheat: the folder of the legacy system");
+      if (!isDirectory(resolve(project, ...flags.legacy.split(/[/\\]/))))
+        throw invalid("--legacy", `${flags.legacy} is not a folder of this project`);
+      reheatRepos = [
+        { ...suggested, path: NEW_SYSTEM },
+        {
+          path: flags.legacy,
+          role: "legacy",
+          read_only: true,
+          source_globs: ["**"],
+          test_globs: [...TEST_GLOBS],
+        },
+      ];
+    }
     const repos =
-      layout === "workspace"
+      reheatRepos ??
+      (layout === "workspace"
         ? (detected?.repos ?? []).map((repo) => ({ ...suggested, ...repo }))
-        : [suggested];
+        : [suggested]);
     const selectedRoles = resourceRoles(defaultRoles(providers), flags.resources);
     const checked = parseManifest({
       schemaVersion: 1,
@@ -473,7 +511,11 @@ export async function planCook(
       );
     }
     roles = selectedRoles;
-    if (layout === "monorepo") repo = suggested;
+    if (layout === "monorepo") repo = reheatRepos?.[0] ?? suggested;
+    if (reheatRepos?.[1])
+      notes.push(
+        bilingual("cook.legacy_note", { legacy: reheatRepos[1].path, target: NEW_SYSTEM }),
+      );
     step("created", ".verid/manifest.yaml", {
       content: text,
       apply: () => writeFileSync(manifestFile(project), text, { flag: "wx" }),
@@ -583,12 +625,20 @@ export async function planCook(
     });
   const configured =
     existing?.repos ??
+    reheatRepos ??
     (layout === "workspace"
       ? (detected?.repos ?? []).map((repo) => ({ ...suggestManifest(flags), ...repo }))
       : [repo!]);
-  const missing = configured.filter(
-    (repo) => !existsSync(resolve(project, ...repo.path.split(/[/\\]/))),
-  );
+  // The folder for the new system is made here; the legacy folder was checked to exist.
+  const made = reheatRepos?.filter((repo) => repo.role !== "legacy") ?? [];
+  const folderOf = (repo: Repo) => resolve(project, ...repo.path.split(/[/\\]/));
+  const missing = configured.filter((repo) => !made.includes(repo) && !existsSync(folderOf(repo)));
+  for (const repo of made)
+    if (!existsSync(folderOf(repo)))
+      step("created", `${repo.path}/`, {
+        content: "",
+        apply: () => mkdirSync(folderOf(repo), { recursive: true }),
+      });
   if (layout === "workspace") {
     validateRepoPaths(project, { layout, repos: configured }, true);
     step(existsSync(join(project, ".verid", ".git")) ? "kept" : "created", ".verid/.git/");
@@ -600,6 +650,7 @@ export async function planCook(
     );
   }
   for (const repo of configured) {
+    if (repo.role === "legacy") continue;
     const seen = sees(repo);
     if (!seen) continue;
     const scoped = seen.runners.map((r) => ({

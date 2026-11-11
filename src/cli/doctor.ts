@@ -32,7 +32,7 @@ import { ROLE_NAMES, type Manifest } from "../core/manifest.js";
 import { dossierStatus, readPlan, servedModules } from "../adapters/plan-file.js";
 import type { ErrorCode, MessageKey } from "../core/errors.js";
 import type { CliResult } from "./test.js";
-import { pluginProblems } from "../adapters/plugin-store.js";
+import { checkedPlugin, pluginProblems, readPlugins } from "../adapters/plugin-store.js";
 
 /**
  * Read-only checks: never run a test, repair settings, or write the manifest cache. With `ci`,
@@ -81,11 +81,15 @@ export async function doctorCommand(project: string, ci = false): Promise<CliRes
     if (!manifest) problem("manifest", "doctor.manifest.missing", "doctor.manifest.cook");
   } catch (e) {
     if (!(e instanceof VeridError) && !["EACCES", "EPERM"].includes(errno(e) ?? "")) throw e;
+    const detail = e instanceof VeridError ? (e.params.detail ?? e.code) : "";
     problem(
       "manifest",
       e instanceof VeridError ? "doctor.manifest.invalid" : "doctor.manifest.unreadable",
-      "doctor.manifest.fix",
-      { detail: e instanceof VeridError ? (e.params.detail ?? e.code) : "" },
+      // A legacy repo without read_only is the one manifest mistake with a fix of its own.
+      /(?:read_only|role legacy)/.test(detail)
+        ? "doctor.manifest.legacy_fix"
+        : "doctor.manifest.fix",
+      { detail },
     );
   }
 
@@ -356,6 +360,8 @@ export async function doctorCommand(project: string, ci = false): Promise<CliRes
       else lines.push(say("doctor.repo.clean", { repo: repo.path }));
     }
     if (manifest?.layout === "workspace" && repo.path === ".verid") continue;
+    // The legacy repo is only read: no test runner is wanted there.
+    if ("role" in repo && repo.role === "legacy") continue;
     const runners = repo.test_cmd
       ? repo.test_cmd
       : findRunners(folder, {
@@ -371,6 +377,22 @@ export async function doctorCommand(project: string, ci = false): Promise<CliRes
       });
     else if (repo.test_cmd) lines.push(say("doctor.repo.runner.custom", { repo: repo.path }));
     else lines.push(say("doctor.repo.runner.ok", { repo: repo.path, runners }));
+  }
+  if (manifest?.mode === "reheat") {
+    if (!manifest.repos.some((repo) => repo.role === "legacy" && repo.read_only === true))
+      problem("reheat.legacy", "doctor.reheat.legacy", "doctor.reheat.legacy_fix");
+    // The adapter is installed code, which a fresh clone has not restored yet.
+    if (!ci) {
+      try {
+        const adapters = readPlugins(project).plugins.filter(
+          (entry) => entry.enabled && checkedPlugin(project, entry).manifest.adapter,
+        );
+        if (adapters.length === 0)
+          problem("reheat.adapter", "doctor.reheat.adapter", "doctor.reheat.adapter_fix");
+      } catch {
+        // A plugin that is missing or changed is reported with the other plugin problems below.
+      }
+    }
   }
   // Git as the hook and the close read it, offline: main and the branch in each root, then the
   if (manifest) {

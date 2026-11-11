@@ -160,6 +160,31 @@ const autoState = z.strictObject({
   ),
 });
 
+/**
+ * One unit of a legacy system (mode reheat), kept under the name of the module that rebuilds it.
+ * Each record is a fact the commands recorded: what was extracted, the gate's last answer and the
+ * hash of the parity evidence the developer signed. None of it counts once its inputs changed.
+ */
+const reheatUnit = z.strictObject({
+  title: z.string(),
+  parent: z.optional(z.string()),
+  family: z.optional(z.string()),
+  extracted: z.optional(
+    z.strictObject({ at: z.string(), files: z.array(z.string()), sha256: z.string() }),
+  ),
+  gate: z.optional(
+    z.strictObject({
+      at: z.string(),
+      pass: z.boolean(),
+      /** The dossier inputs and extracted files the adapter judged, by hash. */
+      inputs_sha256: z.string(),
+      findings: z.int().check(z.nonnegative()),
+    }),
+  ),
+  parity: z.optional(z.strictObject({ at: z.string(), sha256: z.string() })),
+});
+export type ReheatUnit = z.infer<typeof reheatUnit>;
+
 /** A read-only reviewer's recorded report on the open module. */
 const report = z.strictObject({
   module: z.string(),
@@ -286,6 +311,8 @@ const stateSchema = z.strictObject({
   auto: z._default(autoState, FRESH_AUTO),
   /** Each configured repo's last architecture check, by repo path; every evidence run clears it. */
   architecture: z._default(z.record(z.string(), architectureResult), {}),
+  /** Legacy units by module name; absent until `verid reheat inventory` runs, so other modes never hold it. */
+  reheat: z.optional(z.record(z.string(), reheatUnit)),
   /** Set by `verid halt`, cleared by `verid resume`: while set, every agent tool call is denied. */
   halted: z._default(z.nullable(z.strictObject({ at: z.string(), reason: z.string() })), null),
   /** Kanban selection and session ownership survive restarts and context compaction. */
