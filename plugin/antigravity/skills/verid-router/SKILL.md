@@ -36,5 +36,3 @@ Locate the skills root `<SKILLS_ROOT>`:
 | **Modular workflow: module dossiers and contracts**    | Read `<SKILLS_ROOT>/modules/SKILL.md` for every prep/recipe project.                                                                              |
 | **Full security method for `verid-security` review**   | Read `<SKILLS_ROOT>/security/SKILL.md` -> matching file in `references/` (STRIDE/OWASP, supply chain, LLM/agentic).                               |
 | **Missing external library/API documentation**         | Read `<SKILLS_ROOT>/docs-seeker/SKILL.md` or use Antigravity's `search_web`.                                                                      |
-
-For prep/recipe, the developer arranges the priority queue in `verid board`. Complete module dossiers before order. Human drive binds one fresh session per selected task and stops after serve. AI drive follows that queue in one session after `verid order`; reprioritizing never interrupts current work. Remix keeps its baseline flow.

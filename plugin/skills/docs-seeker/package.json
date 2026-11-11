@@ -3,12 +3,6 @@
   "version": "3.0.0",
   "description": "Documentation discovery scripts for docs-seeker skill",
   "private": true,
-  "scripts": {
-    "test": "node scripts/tests/run-tests.js",
-    "test:detect": "node scripts/tests/test-detect-topic.js",
-    "test:fetch": "node scripts/tests/test-fetch-docs.js",
-    "test:analyze": "node scripts/tests/test-analyze-llms.js"
-  },
   "keywords": [
     "documentation",
     "llms.txt",
