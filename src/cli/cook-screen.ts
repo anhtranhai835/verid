@@ -34,7 +34,8 @@ import { languageOf, VeridError } from "../adapters/state-store.js";
 import { ARCHITECTURES } from "../core/rules.js";
 import { checkWorkspaceRoot, detectLayout } from "../adapters/workspace.js";
 import { ask, select, type Io } from "../adapters/terminal.js";
-import { planCook, projectFacts, servedLine, setupDoneLine, manifestUpgradeLines } from "./init.js";
+import { planCook, servedLine, setupDoneLine } from "./init.js";
+import { manifestUpgradeLines, projectFacts } from "./cook/manifest.js";
 import type { CliResult } from "./test.js";
 import { restorePlugins } from "../adapters/plugin-store.js";
 
