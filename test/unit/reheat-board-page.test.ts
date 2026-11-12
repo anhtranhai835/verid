@@ -45,12 +45,12 @@ describe("a legacy unit on the board", () => {
       const html = boardHtml("en", drive);
       expect(html).toContain('id="task-migration"');
       expect(html).toContain("function renderMigration(task)");
-      expect(html).toContain("L['gate_'+task.migration.gate]");
+      expect(html).toContain('L["gate_" + task.migration.gate]');
       expect(html).toContain("task.migration.parityState");
       // The sign button is built only for the no-brain drive, names its unit and runs one action.
-      expect(html).toContain("m.canSignParity&&board.drive==='auto'");
-      expect(html).toContain("fmt('parity_sign_aria',{id:task.id})");
-      expect(html).toContain("act('parity',{task:task.id})");
+      expect(html).toContain('m.canSignParity && board.drive === "auto"');
+      expect(html).toContain('fmt("parity_sign_aria", { id: task.id })');
+      expect(html).toContain('act("parity", { task: task.id })');
     }
   });
 

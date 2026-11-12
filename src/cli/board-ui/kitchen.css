@@ -1,0 +1,212 @@
+.kitchen {
+  margin: 0 0 28px;
+  padding: 24px;
+  border-radius: 14px;
+  color: #f3ead8;
+  border: 1px solid #454238;
+  background: #2b2924 repeating-conic-gradient(#ffffff07 0 25%, transparent 0 50%) 0 0/24px 24px;
+}
+.k-head h2 {
+  margin: 0;
+  font-size: 20px;
+  color: #fff4dc;
+}
+.k-head p {
+  margin: 4px 0 18px;
+  color: #d6ccb8;
+  font-size: 13px;
+}
+.crew,
+.pass,
+.plates {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.crew {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+}
+.crew-member {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 4px;
+  padding: 14px 8px 12px;
+  border-radius: 10px;
+  background: #36332c;
+  border: 2px solid #4a463c;
+}
+.crew-member strong {
+  font-size: 13px;
+  color: #fff4dc;
+}
+.job {
+  font-size: 11px;
+  color: #d6ccb8;
+  line-height: 1.35;
+}
+.k-state {
+  margin-top: 4px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  color: #c3b79f;
+  font-weight: 700;
+}
+.crew-member.on {
+  border-color: #e6ab78;
+  background: #433d31;
+}
+.crew-member.on .k-state {
+  color: #ffd29e;
+}
+.kitchen .sprite {
+  width: 48px;
+  height: 84px;
+  margin-bottom: 6px;
+}
+.crew-member.on .sprite,
+.calling [data-role="waiter"] .sprite {
+  animation: k-hop 0.7s linear infinite;
+}
+@keyframes k-hop {
+  50%,
+  100% {
+    transform: translateY(-3px);
+  }
+}
+.waiter-row {
+  display: grid;
+  grid-template-columns: 132px 1fr 132px;
+  align-items: end;
+  gap: 16px;
+  margin: 20px 0 22px;
+}
+.speech {
+  position: relative;
+  background: #fbf4e4;
+  color: #39352e;
+  border-radius: 4px;
+  padding: 14px 16px;
+  border: 3px solid #1f1b17;
+  box-shadow: 4px 4px 0 #1f1b17;
+}
+.speech::before {
+  content: "";
+  position: absolute;
+  left: -15px;
+  bottom: 22px;
+  border: 6px solid transparent;
+  border-right-color: #1f1b17;
+}
+.speech p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.speech .next {
+  margin-top: 8px;
+  font-size: 13px;
+}
+.speech a.btn {
+  display: inline-flex;
+  margin-top: 12px;
+  text-decoration: none;
+  flex: none;
+}
+.calling .speech {
+  border-color: #c4462b;
+  box-shadow: 4px 4px 0 #c4462b;
+}
+.kitchen h3 {
+  margin: 0 0 10px;
+  font-size: 12px;
+  letter-spacing: 1.6px;
+  text-transform: uppercase;
+  color: #f0b886;
+}
+.pass {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+}
+.lane {
+  background: #1f1d19;
+  padding: 10px;
+  min-height: 96px;
+  border-top: 4px solid #a79b83;
+}
+.lane[data-station="RAW"] {
+  border-top-color: #d77a61;
+}
+.lane[data-station="COOKING"] {
+  border-top-color: #e6ab78;
+}
+.lane[data-station="PLATED"] {
+  border-top-color: #8bd5b1;
+}
+.lane[data-station="served"] {
+  border-top-color: #9cc3e6;
+}
+.lane h4 {
+  margin: 0 0 8px;
+  font-size: 11px;
+  color: #f3ead8;
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+}
+.plates {
+  display: grid;
+  gap: 6px;
+}
+.plate {
+  position: relative;
+  font-size: 12px;
+  line-height: 1.35;
+  background: #fbf4e4;
+  color: #39352e;
+  padding: 6px 8px;
+  border-radius: 3px;
+  box-shadow: 2px 2px 0 #0007;
+  overflow-wrap: anywhere;
+}
+.lane[data-station="COOKING"] .plate::after {
+  content: "";
+  position: absolute;
+  right: 10px;
+  top: -6px;
+  width: 3px;
+  height: 3px;
+  background: #fff;
+  box-shadow:
+    4px -4px 0 #fffa,
+    0 -8px 0 #fff8;
+  animation: k-steam 1.2s steps(3) infinite;
+}
+@keyframes k-steam {
+  to {
+    transform: translateY(-6px);
+    opacity: 0;
+  }
+}
+@media (max-width: 900px) {
+  .crew {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .pass {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .waiter-row {
+    grid-template-columns: 1fr;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .kitchen *,
+  .kitchen *::after {
+    animation: none !important;
+  }
+}
