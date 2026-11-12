@@ -82,6 +82,26 @@ interface Installer {
   args: string[];
   path: () => string;
 }
+/**
+ * The folders install.sh finds its own tools in. Git Bash's hold none of the stubbed commands.
+ * Elsewhere `/usr/bin` may hold a real gh, node or claude (GitHub's Ubuntu runners ship gh
+ * there), which a case that removes the stub would then find: PATH gets only links to the two
+ * programs the script runs that no shell builds in.
+ */
+function systemTools(): string {
+  if (process.platform === "win32") return "/usr/bin:/bin";
+  const tools = join(dir, "tools");
+  if (!existsSync(tools)) {
+    mkdirSync(tools);
+    for (const name of ["mktemp", "rm"]) {
+      const real = ["/usr/bin", "/bin"].map((folder) => join(folder, name)).find(existsSync);
+      if (!real) throw new Error(`Installer tests need ${name} in /usr/bin or /bin`);
+      symlinkSync(real, join(tools, name));
+    }
+  }
+  return tools;
+}
+
 const shells: Installer[] = [
   {
     name: "install.ps1",
@@ -137,7 +157,7 @@ const shells: Installer[] = [
     available: bash !== null,
     command: bash ?? "bash",
     args: ["--noprofile", "--norc", posix(join(root, "install.sh"))],
-    path: () => `${posix(bin)}:/usr/bin:/bin`,
+    path: () => `${posix(bin)}:${systemTools()}`,
     stub: (name) => {
       const file = join(bin, name);
       writeFileSync(

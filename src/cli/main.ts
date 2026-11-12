@@ -947,8 +947,7 @@ ${bilingual("reheat.parity_signed", { module: wanted })}
         state.modules[name]?.design_sha256 !== readFileHash(designFile(project)))
     )
       throw new VeridError("VERID_BURNT_TASK_SESSION", {
-        target:
-          "Spec, plan hoặc design đã thay đổi. Duyệt lại task bằng verid board trước khi nghiệm thu.",
+        detail_key: "task_session.serve_changed",
       });
     // The reason is a message of its own, so it comes in the developer's language.
     const reviewers = (manifest.roles?.reviewer ?? []).join(", ");
@@ -1014,11 +1013,7 @@ ${bilingual("reheat.parity_signed", { module: wanted })}
         : []),
       ...auditLines(project, manifest, state),
       ...questions,
-      ...(taskSessions(manifest)
-        ? [
-            "verid: stop this session. Select the next task in verid board or your terminal, then open a fresh AI session.",
-          ]
-        : []),
+      ...(taskSessions(manifest) ? [bilingual("task_session.stop", {})] : []),
       bilingual(step.key, "module" in step ? { module: step.module } : {}),
     ];
     return {

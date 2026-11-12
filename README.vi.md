@@ -42,10 +42,10 @@ Cần Node.js 22 trở lên, Git, và Claude Code hoặc Codex. Các cách cài 
 
 Muốn thử verid trên một project nhỏ trước, làm theo [examples/slugify](examples/slugify/README.md).
 
-**1. Cài.**
+**1. Cài.** verid không có trên registry npm: mỗi bản là một file đính trong GitHub Release của repo không công khai này. Đăng nhập [GitHub CLI](https://cli.github.com) bằng `gh auth login`, rồi chạy installer. Đây là lệnh cho macOS và Linux; lệnh PowerShell cho Windows nằm ở [cài đặt](docs/installation.vi.md).
 
 ```sh
-npm install -g @anhtranhai835/verid
+gh api -H "Accept: application/vnd.github.raw" repos/anhtranhai835/verid/contents/install.sh | sh
 ```
 
 **2. Thiết lập project.** Nhấn Enter ở mỗi câu hỏi: ngôn ngữ, mode (`prep` cho ý tưởng, `recipe` cho đặc tả có sẵn, `remix` cho code có sẵn, `reheat` để viết lại hệ cũ chỉ đọc) và, với prep và recipe, drive (`big-brain`: bạn chọn và duyệt từng task; `no-brain`: bạn gõ ý tưởng, agent lo phần còn lại). Cook hiện provider, layout, test runner tìm được và các file sẽ ghi; "Đổi thiết lập" để đổi phần còn lại.

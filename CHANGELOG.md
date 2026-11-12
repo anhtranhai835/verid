@@ -41,6 +41,17 @@ tags `1.0.0` and `1.2.0` keep their names.
   `human`, `ai` and `auto` still load and `--drive` still takes them; see "Upgrading" in
   [docs/installation.md](docs/installation.md).
 
+### Fixed
+
+- Board, task-session and board-chat messages follow the project's language; they were
+  Vietnamese in every project.
+- `verid setup-codex` and `verid cook --provider codex` work when another user installed verid
+  (`sudo npm install -g`): the reviewer's agent file then goes beside Codex's own config.
+- The context-engineering document reader reports a blank PDF page as a page without text
+  instead of a failed extraction.
+- The README install step uses the GitHub Release installer; the package is not on npm.
+- The test suite passes on Linux and macOS, which the release workflow requires.
+
 ## [2.0.0] - 2026-11-10
 
 ### Added
@@ -95,7 +106,8 @@ tags `1.0.0` and `1.2.0` keep their names.
 
 Initial release of the evidence-verified, hook-enforced TDD harness for Claude Code and Codex.
 
-[Unreleased]: https://github.com/anhtranhai835/verid/compare/1.2.0...HEAD
+[Unreleased]: https://github.com/anhtranhai835/verid/compare/v2.1.0...HEAD
+[2.1.0]: https://github.com/anhtranhai835/verid/releases/tag/v2.1.0
 [2.0.0]: https://github.com/anhtranhai835/verid/commit/dd6d7bb
 [1.2.0]: https://github.com/anhtranhai835/verid/releases/tag/1.2.0
 [1.1.0]: https://github.com/anhtranhai835/verid/releases/tag/v1.1.0

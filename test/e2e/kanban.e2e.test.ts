@@ -200,17 +200,42 @@ it("keeps TDD and independent review required, closes one task, and refuses sess
   expect(state().kanban.active?.session).toBe("codex:second");
 });
 
+it("refuses a document it cannot use, in the project's language", () => {
+  const spec = (text: string) => writeFileSync(join(project, ".verid/spec.md"), text);
+  const rows = [
+    ["# Spec without requirements\n", "The spec needs requirements"],
+    ["- REQ-1: Add\n- REQ-1: Add again\n", "requirement REQ-1 twice"],
+    ["- REQ-1: Add [NEEDS CLARIFICATION: which numbers]\n", "NEEDS CLARIFICATION"],
+  ] as const;
+  for (const [text, message] of rows) {
+    spec(text);
+    expect(() => saveBoardDocument(project, "split"), text).toThrow(message);
+  }
+  spec("- REQ-1: Add two numbers\n- REQ-2: Subtract two numbers\n");
+  expect(() => saveBoardDocument(project, "plan", " \n")).toThrow("must not be empty");
+  expect(() => saveBoardDocument(project, "plan", "## Module: add\n\nTitle: Add\n")).toThrow(
+    "at least one acceptance criterion",
+  );
+  expect(() =>
+    saveBoardDocument(
+      project,
+      "plan",
+      "## Module: add\n\nTitle: Add\n\n- AC-1: Adds (REQ-1, REQ-9)\n",
+    ),
+  ).toThrow("No AC yet for: REQ-2. IDs not in the spec: REQ-9.");
+});
+
 it("requires reapproval after a changed spec and prevents resetting documents during an open task", async () => {
   split();
-  expect(() => saveBoardDocument(project, "split")).toThrow("Đã có plan");
+  expect(() => saveBoardDocument(project, "split")).toThrow("A plan already exists");
   expect((await cli("order", "req-1")).code).toBe(0);
   await hook("SessionStart", "first", { source: "startup" });
-  expect(() => saveBoardDocument(project, "plan", "changed")).toThrow("Đang có task");
+  expect(() => saveBoardDocument(project, "plan", "changed")).toThrow("A task is open");
   writeFileSync(
     join(project, ".verid/spec.md"),
     "- REQ-1: Add integers\n- REQ-2: Subtract integers\n",
   );
-  expect((await patch("first", "test/new.test.ts")).stdout).toContain("Spec đã thay đổi");
+  expect((await patch("first", "test/new.test.ts")).stdout).toContain("The spec changed");
   expect((await cli("serve", "req-1")).stderr).toContain("VERID_BURNT_TASK_SESSION");
   expect((await cli("order", "req-1")).code).toBe(0);
   expect(state().kanban.active?.session).toBeNull();
@@ -256,7 +281,7 @@ it.each(["plan", "design"])(
       ),
     );
     expect((await patch("first", "test/changed.test.ts")).stdout).toContain(
-      "Plan hoặc design đã thay đổi",
+      "The plan or design changed",
     );
     expect(
       (await boardSnapshot(project)).tasks.find((task) => task.id === "req-1")?.needsReapproval,
@@ -331,7 +356,7 @@ it("serves a protected local board with real selection and rejects CSRF, stale r
   const owned = await boardSnapshot(project);
   const duplicate = await post({ action: "prompt", task: "req-2", revision: owned.revision });
   expect(duplicate.status).toBe(400);
-  expect((await duplicate.json()).error).toContain("Tiếp tục session hiện tại");
+  expect((await duplicate.json()).error).toContain("already has an AI session");
 });
 
 it("opens the browser with a one-time link, never the API token another process could read", async () => {

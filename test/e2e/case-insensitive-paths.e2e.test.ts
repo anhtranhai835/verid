@@ -1,20 +1,10 @@
 import { tempProject } from "../support/project.js";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { caseInsensitiveFs } from "../support/temporary.js";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { runHook } from "./in-process.js";
 
-/** macOS and Windows file systems ignore case by default; there `.VERID` is `.verid`. */
-const caseInsensitive = (() => {
-  const dir = mkdtempSync(join(tmpdir(), "verid-case-probe-"));
-  try {
-    writeFileSync(join(dir, "probe"), "");
-    return existsSync(join(dir, "PROBE"));
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-})();
+const caseInsensitive = caseInsensitiveFs();
 
 let project: string;
 tempProject("verid-case-", {

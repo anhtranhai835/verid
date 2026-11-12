@@ -50,8 +50,16 @@ describe("one task per session", () => {
     expect(claimTaskSession(bound, "codex:one")).toBe(bound);
     expect(claimTaskSession(bound, "codex:two").active?.session).toBe("codex:one");
     expect(taskSessionProblem(bound, "codex:one", "spec")).toBeNull();
-    expect(taskSessionProblem(bound, "codex:two", "spec")).toContain("session riêng");
-    expect(taskSessionProblem(bound, "codex:one", "changed")).toContain("Spec đã thay đổi");
+    expect(taskSessionProblem(bound, "codex:two", "spec")).toEqual({
+      key: "task_session.other_session",
+      module: "first",
+    });
+    expect(taskSessionProblem(bound, "codex:one", "changed")?.key).toBe(
+      "task_session.spec_changed",
+    );
+    expect(taskSessionProblem({ ...bound, active: null }, "codex:one", "spec")?.key).toBe(
+      "task_session.none",
+    );
   });
   it("never reuses a planning session, prior task session, or an unbound resumed conversation", () => {
     const planning = claimTaskSession(

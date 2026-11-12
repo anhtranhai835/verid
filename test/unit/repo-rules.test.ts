@@ -397,7 +397,9 @@ describe("repo rules", () => {
   });
 
   it("recorded Claude Code fixtures leak no user paths or names", () => {
-    const user = userInfo().username.toLowerCase();
+    // The superuser's name identifies nobody, and Codex names its top agent `/root`.
+    const account = userInfo();
+    const user = account.uid === 0 ? "" : account.username.toLowerCase();
     const leaking = filesUnder("test/fixtures").filter((file) => {
       const text = readFileSync(file, "utf8");
       return (

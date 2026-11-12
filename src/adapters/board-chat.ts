@@ -5,7 +5,7 @@ import { join } from "node:path";
 import type { Provider } from "../core/manifest.js";
 import { loadManifest } from "./manifest.js";
 import { languageOf, readState, statePaths, withLock } from "./state-store.js";
-import { systemLanguage, t } from "./i18n.js";
+import { systemLanguage, t, type Lang } from "./i18n.js";
 import { appendAudit } from "./audit-log.js";
 import { isCount, type TokenUsage } from "../core/usage.js";
 import { scheduleStations } from "./station.js";
@@ -67,7 +67,8 @@ export function launchFor(
   resume: string | null,
   project: string,
 ): Launch {
-  if (resume !== null && !SAFE_ID.test(resume)) throw new Error("Session ID không hợp lệ.");
+  if (resume !== null && !SAFE_ID.test(resume))
+    throw new Error(t(languageOf(project) ?? systemLanguage(), "board.err_session_id", {}));
   if (provider === "claude-code")
     return {
       command: "claude",
@@ -151,7 +152,7 @@ export function readEvent(line: string): {
     }
   } else if (type === "result") {
     if (event.is_error === true || (str(event.subtype) ?? "success") !== "success")
-      out.push({ role: "error", text: clip(str(event.result) ?? str(event.subtype) ?? "Lỗi") });
+      out.push({ role: "error", text: clip(str(event.result) ?? str(event.subtype) ?? "error") });
     // Codex
   } else if (type === "item.completed") {
     const item = obj(event.item) ?? {};
@@ -224,9 +225,9 @@ function toolLine(name: unknown, input: unknown): string {
 }
 
 /** Windows runs npm's .cmd shims through cmd.exe: quote each argument, refuse cmd metacharacters. */
-export function windowsArgs(args: readonly string[]): string[] {
+export function windowsArgs(args: readonly string[], lang: Lang = systemLanguage()): string[] {
   return args.map((arg) => {
-    if (/["%^&|<>!\r\n]/.test(arg)) throw new Error(`Không thể chạy với tham số: ${arg}`);
+    if (/["%^&|<>!\r\n]/.test(arg)) throw new Error(t(lang, "board.err_chat_arg", { arg }));
     return /^[\w.:\\/=@,-]+$/.test(arg) ? arg : `"${arg}"`;
   });
 }
@@ -237,12 +238,16 @@ export const spawnLaunch: Spawner = (launch, cwd) => {
   const win = process.platform === "win32";
   // claude and codex are .cmd shims on Windows, which need cmd.exe; agy is an .exe.
   const shell = win && launch.command !== "agy";
-  return spawn(launch.command, shell ? windowsArgs(launch.args) : launch.args, {
-    cwd,
-    shell,
-    windowsHide: true,
-    stdio: [launch.stdin === null ? "ignore" : "pipe", "pipe", "pipe"],
-  });
+  return spawn(
+    launch.command,
+    shell ? windowsArgs(launch.args, languageOf(cwd) ?? systemLanguage()) : launch.args,
+    {
+      cwd,
+      shell,
+      windowsHide: true,
+      stdio: [launch.stdin === null ? "ignore" : "pipe", "pipe", "pipe"],
+    },
+  );
 };
 
 export interface ChatStatus {

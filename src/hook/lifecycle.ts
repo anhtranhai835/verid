@@ -25,7 +25,7 @@ import { bilingual, veridName } from "../adapters/i18n.js";
 import { appendAudit } from "../adapters/audit-log.js";
 import { ERROR_CODES } from "../core/errors.js";
 import { planned, taskSessions, type Roles, type Manifest } from "../core/manifest.js";
-import { claimTaskSession, taskSessionProblem } from "../core/kanban.js";
+import { claimTaskSession, taskSessionProblem, type TaskProblem } from "../core/kanban.js";
 import { type Cycle } from "../core/tdd.js";
 import { openModule } from "../core/plan.js";
 import { type State } from "../core/state.js";
@@ -167,7 +167,7 @@ export async function lifecycle(
     const problem = kanbanSessionProblem(project, { ...readState(paths), kanban }, key, manifest);
     taskContext.push(
       problem
-        ? `verid: ${problem}`
+        ? bilingual(problem.key, { module: problem.module })
         : `verid: task ${kanban.active!.module}; ONE TASK PER SESSION. Run verid context ${kanban.active!.module} first; TDD → review → developer serve → STOP. Never start another task in this session.`,
     );
     if (p.hook_event_name === "Stop" && problem) return { exit: 0 };
@@ -315,7 +315,7 @@ export function kanbanSessionProblem(
   state: State,
   session: string,
   manifest: Manifest,
-): string | null {
+): TaskProblem | null {
   const problem = taskSessionProblem(
     state.kanban,
     session,
@@ -336,7 +336,7 @@ export function kanbanSessionProblem(
     approval.sha256 !== plan.hashes[name] ||
     approval.design_sha256 !== readFileHash(join(project, ".verid/design.md"))
   )
-    return "Plan hoặc design đã thay đổi. Người dùng cần duyệt lại task trên verid board rồi mở session mới.";
+    return { key: "task_session.plan_changed", module: name };
   return null;
 }
 

@@ -1,4 +1,12 @@
-import { tempProject, manifest, FRESH_STATE, CLI, RUNNER, type Run } from "../support/project.js";
+import {
+  tempProject,
+  tempDirs,
+  manifest,
+  FRESH_STATE,
+  CLI,
+  RUNNER,
+  type Run,
+} from "../support/project.js";
 import { moduleHash, readyModulePlan } from "./helpers.js";
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -523,15 +531,26 @@ describe("verid taste finds the test runner when the manifest names none", () =>
     '    test_globs: ["test/**"]',
     "",
   ].join("\n");
+  const scratch = tempDirs("verid-tdd-tools-", "suite");
+  let failingBuilds: string | undefined;
   // Only node and the system shell on PATH: a runner's own tool (gotestsum) is surely missing.
+  // /usr/bin may hold a real Maven or Gradle (GitHub's Ubuntu runners ship both), whose start
+  // alone can outlast a test: these fail at once, as a build that does not compile does.
   const bare = () => {
     const kept = Object.entries(env()).filter(([k]) => k.toUpperCase() !== "PATH");
-    const system =
-      process.platform === "win32"
-        ? join(process.env.SystemRoot ?? "C:\\Windows", "System32")
-        : "/usr/bin:/bin";
-    const sep = process.platform === "win32" ? ";" : ":";
-    return { ...Object.fromEntries(kept), PATH: `${dirname(process.execPath)}${sep}${system}` };
+    if (process.platform === "win32") {
+      const system = join(process.env.SystemRoot ?? "C:\\Windows", "System32");
+      return { ...Object.fromEntries(kept), PATH: `${dirname(process.execPath)};${system}` };
+    }
+    if (!failingBuilds) {
+      failingBuilds = scratch();
+      for (const tool of ["mvn", "gradle"])
+        writeFileSync(join(failingBuilds, tool), "#!/bin/sh\nexit 1\n", { mode: 0o755 });
+    }
+    return {
+      ...Object.fromEntries(kept),
+      PATH: `${failingBuilds}:${dirname(process.execPath)}:/usr/bin:/bin`,
+    };
   };
   const bareCli = (command: string) => {
     const r = spawnSync(process.execPath, [CLI, command], {
