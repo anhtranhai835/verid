@@ -15,7 +15,7 @@ private repository `anhtranhai835/verid`, so you need a GitHub account with read
 and the [GitHub CLI](https://cli.github.com) signed in with `gh auth login`.
 
 The one-line installers download the latest Release (or the version in `VERID_VERSION`, such as
-`2.0.0`), install it with npm and attempt provider setup. They need Node.js already installed.
+`2.1.0`), install it with npm and attempt provider setup. They need Node.js already installed.
 
 **Windows — PowerShell**
 

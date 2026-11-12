@@ -14,7 +14,7 @@ verid không có trên registry npm. Mỗi bản là một file `.tgz` đính tr
 không công khai `anhtranhai835/verid`, nên cần tài khoản GitHub có quyền đọc repo và
 [GitHub CLI](https://cli.github.com) đã đăng nhập bằng `gh auth login`.
 
-Các lệnh cài một dòng tải Release mới nhất (hoặc bản ghi trong `VERID_VERSION`, ví dụ `2.0.0`),
+Các lệnh cài một dòng tải Release mới nhất (hoặc bản ghi trong `VERID_VERSION`, ví dụ `2.1.0`),
 cài bằng npm và thử thiết lập provider. Máy cần có Node.js trước.
 
 **Windows — PowerShell**

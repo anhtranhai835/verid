@@ -7,6 +7,8 @@ tags `1.0.0` and `1.2.0` keep their names.
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-11-12
+
 ### Added
 
 - `verid usage`, with token totals on board cards; the audit log records usage counts and
