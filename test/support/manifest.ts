@@ -50,11 +50,10 @@ export const architectureManifest = (
 
 export function projectManifest(extra: Payload = {}, preset = "plain"): Payload {
   const repo: Payload = { path: ".", source_globs: ["src/**"], test_globs: ["test/**"] };
-  if (preset === "review" || preset === "antigravity")
-    repo.test_cmd = `"${process.execPath}" "${RUNNER}" {junit}`;
+  if (preset === "review") repo.test_cmd = `"${process.execPath}" "${RUNNER}" {junit}`;
   const value: Payload = {
     schemaVersion: 1,
-    mode: preset === "review" || preset === "antigravity" ? "recipe" : "remix",
+    mode: preset === "review" ? "recipe" : "remix",
   };
   if (preset === "review") value.drive = "human";
   if (preset === "codex")
@@ -73,11 +72,6 @@ export function projectManifest(extra: Payload = {}, preset = "plain"): Payload 
         reviewer: ["verid:reviewer", "verid_reviewer"],
         security: ["verid:security", "codex_security"],
       },
-    });
-  if (preset === "antigravity")
-    Object.assign(value, {
-      providers: ["antigravity"],
-      roles: { reviewer: ["verid-reviewer"], tester: ["verid:tester"], coder: ["verid:coder"] },
     });
   return { ...value, repos: [repo], ...extra };
 }

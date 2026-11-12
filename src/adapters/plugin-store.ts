@@ -185,7 +185,7 @@ function resources(
       files.push({ rel: `.verid/skills/${name}${file.rel}`, content });
       if (providers.includes("claude-code"))
         files.push({ rel: `.claude/skills/${name}${file.rel}`, content });
-      if (providers.includes("codex") || providers.includes("antigravity"))
+      if (providers.includes("codex"))
         files.push({ rel: `.agents/skills/${name}${file.rel}`, content });
     }
   }

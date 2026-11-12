@@ -7,7 +7,7 @@ trong plan, và mọi yêu cầu của spec đều được một AC dẫn tới
 
 Lệnh này không thay hook. Bằng chứng TDD, approval và kết quả review nằm trong `.verid/.state/`,
 không bao giờ commit, nên CI không thấy. Nó cũng bỏ qua những gì thuộc riêng một máy: nối dây
-hook, plugin và agent đã cài, trust của Codex hay Antigravity.
+hook, plugin và agent đã cài, trust của Codex.
 
 ## GitHub Actions
 

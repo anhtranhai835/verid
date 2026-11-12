@@ -10,7 +10,7 @@ verid cook --mode prep --resources repo --provider codex --lang en --yes
 | -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
 | `--mode`                                     | `prep`, `recipe`, `remix` or `reheat`.                                                                           |
 | `--resources`                                | `installed` or `repo`.                                                                                           |
-| `--provider`                                 | `claude-code`, `codex` or `antigravity`; repeat for several.                                                     |
+| `--provider`                                 | `claude-code` or `codex`; repeat for several.                                                                    |
 | `--drive`                                    | `big-brain` or `no-brain` for prep/recipe (`human`, `ai` and `auto` remain aliases).                             |
 | `--architecture`                             | `ddd`, `clean`, `layered` or `none`.                                                                             |
 | `--layout`                                   | `monorepo` or `workspace`; otherwise detected.                                                                   |

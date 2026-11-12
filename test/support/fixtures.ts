@@ -82,12 +82,6 @@ export function startTaskSession(
   session = FIXTURE_SESSION,
   provider = "claude-code",
 ) {
-  if (provider === "antigravity")
-    return runHook(
-      JSON.stringify({ conversationId: session, workspacePaths: [project], source: "startup" }),
-      {},
-      ["--provider", "antigravity", "--event", "SessionStart"],
-    );
   return runHook(
     JSON.stringify({
       hook_event_name: "SessionStart",

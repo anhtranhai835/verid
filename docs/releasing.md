@@ -6,8 +6,8 @@ verid is released only as a `.tgz` on a GitHub Release of the private repository
 
 ## Release a version
 
-1. Set the new version in all three files: `package.json`, `plugin/.claude-plugin/plugin.json`
-   and `plugin/antigravity/plugin.json`. `test/unit/repo-rules.test.ts` fails when they differ.
+1. Set the new version in both files: `package.json` and `plugin/.claude-plugin/plugin.json`.
+   `test/unit/repo-rules.test.ts` fails when they differ.
 2. In `CHANGELOG.md`, rename `## [Unreleased]` to `## [X.Y.Z] - YYYY-MM-DD` and add a new empty
    `## [Unreleased]` above it. The text under the version heading becomes the release notes.
 3. Check locally: `node scripts/release-notes.mjs vX.Y.Z` prints those notes and exits 0.

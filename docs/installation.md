@@ -105,20 +105,6 @@ and invalidation after a module spec change. An offline check with Codex CLI
 `0.166.0` also confirmed that its model-visible input includes the project
 instructions and repo skills. See the [validation notes](modular-cook.md#dùng-với-codex).
 
-## Antigravity setup
-
-1. Run `verid setup-antigravity` once per machine, and again after each verid update.
-   It installs verid's plugin in `~/.gemini/config/plugins/verid/`. Restart Antigravity.
-2. Run cook with `--provider antigravity` (add `--provider claude-code` for both).
-3. Run `verid doctor` and resolve setup findings.
-4. Let main write tests/code; dispatch `verid-reviewer` (and `verid-security`) with
-   `invoke_subagent` for review. Type `/verid peek`, `/verid tip` and `/verid confirm`
-   in the chat.
-
-verid's core reads Antigravity's hook payloads itself, so the same rules, TDD gate and
-review binding apply as on Claude Code and Codex. The payload shapes are not yet checked
-against recorded Antigravity fixtures. See [the integration notes](antigravity-integration.vi.md).
-
 ## Upgrading
 
 For repo resources, `node .verid/verid.mjs cook --yes` rewires the committed version

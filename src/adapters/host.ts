@@ -3,7 +3,6 @@ import type { ErrorCode } from "../core/errors.js";
 import type { Provider } from "../core/manifest.js";
 import { bilingual } from "./i18n.js";
 import { projectDir as claudeProjectDir, type FileAction, type PreToolUse } from "./claude-code.js";
-import { antigravityHost } from "./antigravity.js";
 import { CODEX_TOOLS, codexAction, codexOutput, codexPayload, codexProject } from "./codex.js";
 import { VeridError } from "./state-store.js";
 
@@ -99,17 +98,12 @@ export function hostFor(args: readonly string[]): { host: Host; error?: VeridErr
   const bad = (host: Host) => ({
     host,
     error: new VeridError("VERID_BURNT_PAYLOAD", {
-      detail: "expected --provider claude-code|codex|antigravity",
+      detail: "expected --provider claude-code|codex",
     }),
   });
   if (args.length === 0) return { host: claudeHost };
   if (args[0] !== "--provider") return bad(claudeHost);
   if (args[1] === "codex") return args.length === 2 ? { host: codexHost } : bad(codexHost);
   if (args[1] === "claude-code") return args.length === 2 ? { host: claudeHost } : bad(claudeHost);
-  if (args[1] === "antigravity") {
-    const event = args[2] === "--event" && args.length === 4 ? args[3] : undefined;
-    const host = antigravityHost(event);
-    return event ? { host } : bad(host);
-  }
   return bad(claudeHost);
 }

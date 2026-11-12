@@ -61,8 +61,7 @@ import { interactiveCook } from "./cook-screen.js";
 import { doctorCommand } from "./doctor.js";
 import { auditLines } from "../adapters/rule-audit.js";
 import { writeReviewPacket } from "../adapters/review-packet.js";
-import { initCommand, setupAntigravityCommand, setupCodexCommand } from "./init.js";
-import { antigravityPluginInstalled } from "../adapters/antigravity-settings.js";
+import { initCommand, setupCodexCommand } from "./init.js";
 import { moduleCommand } from "./module.js";
 import { boardCommand } from "./board.js";
 import { baselineCommand, lastRefusal, testCommand, type CliResult } from "./test.js";
@@ -108,7 +107,6 @@ export async function runCli(args: readonly string[]): Promise<CliResult> {
         cmd === "upgrade" ? "upgrade" : "cook",
       );
     else if (cmd === "setup-codex" && rest.length === 0) r = setupCodexCommand();
-    else if (cmd === "setup-antigravity" && rest.length === 0) r = setupAntigravityCommand();
     else if (cmd === "plugin")
       r = await pluginCommand(project, rest, hasTerminal() ? terminalIo() : undefined);
     else if (cmd === "station") r = await stationCommand(project, rest);
@@ -348,9 +346,7 @@ async function status(project: string): Promise<CliResult> {
   const guarded = (manifest?.providers ?? ["claude-code"]).every((provider) =>
     provider === "codex"
       ? hasCurrentCodexHooks(readJson(join(project, ".codex", "hooks.json")), hook)
-      : provider === "antigravity"
-        ? antigravityPluginInstalled()
-        : claude,
+      : claude,
   );
   const stderr = guarded ? "" : `${bilingual("status.no_hooks", {})}\n`;
   // The gate follows the manifest, not state: say so when it is off (an invalid one throws).

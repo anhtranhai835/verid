@@ -59,8 +59,6 @@ const PROVIDER_CHOICES = [
   { label: "Claude Code", providers: ["claude-code"] },
   { label: "Codex", providers: ["codex"] },
   { label: "Claude Code + Codex", providers: ["claude-code", "codex"] },
-  { label: "Antigravity", providers: ["antigravity"] },
-  { label: "Claude Code + Antigravity", providers: ["claude-code", "antigravity"] },
 ] as const;
 
 /**

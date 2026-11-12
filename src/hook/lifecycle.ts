@@ -287,12 +287,10 @@ export async function lifecycle(
       bilingual(`mode.${mode}`, {}),
       ...(shared.host().singleWriter
         ? [
-            bilingual(
-              shared.host().id === "antigravity"
-                ? "session.single_writer_antigravity"
-                : "session.single_writer",
-              { reviewer: agents.reviewer, security: agents.security },
-            ),
+            bilingual("session.single_writer", {
+              reviewer: agents.reviewer,
+              security: agents.security,
+            }),
           ]
         : []),
       ...(manifest.drive === "auto" ? [bilingual("drive.auto", {})] : []),

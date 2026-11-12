@@ -50,7 +50,7 @@ export interface ProjectOptions {
   provider?: string;
   payload?: Payload;
   cliEnv?: NodeJS.ProcessEnv | (() => NodeJS.ProcessEnv);
-  manifestPreset?: "plain" | "codex" | "review" | "antigravity";
+  manifestPreset?: "plain" | "codex" | "review";
   hookEnv?: NodeJS.ProcessEnv | (() => NodeJS.ProcessEnv);
   approved?: boolean;
 }

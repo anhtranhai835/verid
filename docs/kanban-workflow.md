@@ -81,7 +81,6 @@ provider's CLI headless in the project, one run at a time:
 | ----------- | --------------------------------------- | ------------------------------ | -------------------------------------------------------------- |
 | Claude Code | `claude -p --output-format stream-json` | `--resume <session>`           | Edits accepted; shell only verid and local git (`--settings`). |
 | Codex       | `codex exec --json -`                   | `codex exec resume <thread> -` | `sandbox_mode=workspace-write`, `approval_policy=never`.       |
-| Antigravity | `agy -p --output-format stream-json`    | `--conversation <id>`          | `--mode accept-edits --sandbox`.                               |
 
 The prompt goes to Claude Code and Codex on stdin, never on a command line. The
 first message opens the drive's session; later messages resume it, and its provider
@@ -91,8 +90,7 @@ Every tool call still passes verid's hook. Before **Sign research & design** the
 board shows `.verid/summary.md` (when present), `research.md` and `design.md`; the
 button records the same signature as `verid order` and is refused while either file
 is missing.
-Antigravity's stream format has no recorded fixture yet: unknown event shapes
-are shown as their text. Existing TDD, role and independent review rules apply. `serve` closes the selection and tells the agent to stop.
+Unknown event shapes are shown as their text. Existing TDD, role and independent review rules apply. `serve` closes the selection and tells the agent to stop.
 No hook or UI operation automatically opens the next task.
 
 Git commits follow small feature increments, rather than one large task dump.

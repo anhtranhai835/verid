@@ -72,7 +72,7 @@ describe("provider instruction blocks", () => {
   });
 
   it("keeps workflow references short with the effective allowlists", () => {
-    const CAPS = { "claude-code": 2850, codex: 3399, antigravity: 3400 } as const;
+    const CAPS = { "claude-code": 2850, codex: 3399 } as const;
     const parsed = parseManifest({
       schemaVersion: 1,
       mode: "prep",
@@ -91,7 +91,6 @@ describe("provider instruction blocks", () => {
     const rows = [
       { provider: "claude-code", notice: "Claude Code hooks enforce" },
       { provider: "codex", notice: "Codex hooks enforce" },
-      { provider: "antigravity", notice: "Antigravity hooks enforce" },
     ] as const;
     for (const { provider, notice } of rows) {
       const text = renderInstructions(parsed.manifest, provider, "C:/install/plugin/skills");
@@ -183,7 +182,7 @@ describe("provider instruction blocks", () => {
       repos: [{ path: ".", source_globs: ["**"], test_globs: ["**/*.test.ts"] }],
     });
     if (!parsed.ok) throw new Error(parsed.detail);
-    for (const provider of ["claude-code", "codex", "antigravity"] as const) {
+    for (const provider of ["claude-code", "codex"] as const) {
       const text = renderInstructions(parsed.manifest, provider);
       const path = provider === "claude-code" ? "" : " → plugin/skills/debugging/SKILL.md";
       expect(text, provider).toContain(
