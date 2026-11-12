@@ -125,8 +125,12 @@ def pdf_blocks(raw):
         try:
             text = page.extract_text(extraction_mode="layout") or ""
         except Exception:
-            text = ""
-            issues.append("Text extraction failed; inspect the original")
+            # Some pypdf versions raise in layout mode on a page with no content or fonts.
+            try:
+                text = page.extract_text() or ""
+            except Exception:
+                text = ""
+                issues.append("Text extraction failed; inspect the original")
         if not text.strip():
             issues.append("No extractable text; inspect or OCR if needed")
         if issues:
