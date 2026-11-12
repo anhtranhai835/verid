@@ -1,8 +1,9 @@
 # Every test of the repo with a coverage floor, on Windows: verid's main platform, and the one
-# the recorded hook payloads in test/e2e/hook.e2e.test.ts come from. Linux and macOS test runs
-# happen only by hand and before a release: this repository is private, so Actions minutes are
-# billed (Windows 2x, macOS 10x), and a push or pull request pays only for typecheck, format and
-# the Windows tests.
+# the recorded hook payloads in test/e2e/hook.e2e.test.ts come from. The full suite also runs on
+# Ubuntu with Node 22 for every push and pull request: Linux minutes are the cheapest, and a test
+# that only passes on Windows otherwise shows up at the release tag. Node 24 and macOS run only
+# by hand and before a release: this repository is private, so Actions minutes are billed
+# (Windows 2x, macOS 10x).
 name: CI
 
 # Branches run through their pull request; pushes run only on main, so a PR is tested once.
@@ -74,6 +75,31 @@ jobs:
       # Bash). Fails when coverage of src/ drops under the thresholds in vitest.config.ts.
       - run: npm run test:coverage
 
+  linux:
+    name: All tests (Ubuntu), then the packed tarball
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npx vitest run
+      - name: Install the packed tarball and run it in a fresh repository
+        run: |
+          npm pack --ignore-scripts
+          npm install -g --prefix "$RUNNER_TEMP/prefix" ./*.tgz
+          export PATH="$RUNNER_TEMP/prefix/bin:$PATH"
+          cd "$(mktemp -d)"
+          git init -q
+          verid --help
+          verid cook --mode prep --provider claude-code --dry-run --yes
+
   posix:
     name: Tests on ${{ matrix.os }}, Node ${{ matrix.node }}
     # By hand, and from release.yml on a version tag or its own manual run.
@@ -84,9 +110,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
-            node: 22
-            pack: true
           - os: ubuntu-latest
             node: 24
           # macOS minutes cost ten times Linux, and Ubuntu already runs the full suite on POSIX.
@@ -115,13 +138,3 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npx vitest run ${{ matrix.tests }}
-      - name: Install the packed tarball and run it in a fresh repository
-        if: matrix.pack
-        run: |
-          npm pack --ignore-scripts
-          npm install -g --prefix "$RUNNER_TEMP/prefix" ./*.tgz
-          export PATH="$RUNNER_TEMP/prefix/bin:$PATH"
-          cd "$(mktemp -d)"
-          git init -q
-          verid --help
-          verid cook --mode prep --provider claude-code --dry-run --yes

@@ -12,8 +12,8 @@ verid is released only as a `.tgz` on a GitHub Release of the private repository
    `## [Unreleased]` above it. The text under the version heading becomes the release notes.
 3. Check locally: `node scripts/release-notes.mjs vX.Y.Z` prints those notes and exits 0.
 4. Open a pull request with the commit `chore(release): verid X.Y.Z`. A pull request runs the
-   tests on Windows only, so also run the Release workflow on the branch, which adds the Linux
-   and macOS tests and packs the tarball without releasing:
+   tests on Windows and Ubuntu, so also run the Release workflow on the branch, which adds the
+   macOS and Node 24 tests without releasing:
    `gh workflow run release.yml --repo anhtranhai835/verid --ref <branch>`. Merge once both pass.
 5. Tag the merge commit on `main` and push the tag:
 
