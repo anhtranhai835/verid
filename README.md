@@ -42,10 +42,10 @@ Needs Node.js 22 or later, Git, and Claude Code or Codex. Other ways to install,
 
 To try verid on a small project first, follow [examples/slugify](examples/slugify/README.md).
 
-**1. Install.**
+**1. Install.** verid is not on the npm registry: each version is a file on a GitHub Release of this private repository. Sign the [GitHub CLI](https://cli.github.com) in with `gh auth login`, then run the installer. This is the macOS and Linux line; the Windows PowerShell line is in [installation](docs/installation.md).
 
 ```sh
-npm install -g @anhtranhai835/verid
+gh api -H "Accept: application/vnd.github.raw" repos/anhtranhai835/verid/contents/install.sh | sh
 ```
 
 **2. Set the project up.** Press Enter at each question: the language, the mode (`prep` for an idea, `recipe` for existing specs, `remix` for existing code, `reheat` to rewrite a read-only legacy system) and, for prep and recipe, the drive (`big-brain`: you pick and approve each task; `no-brain`: you type the idea and the agent does the rest). Cook shows the provider, layout and test runner it found and the files it will write; "Change settings" changes the rest.
