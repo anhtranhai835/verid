@@ -1,4 +1,4 @@
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { afterAll, afterEach } from "vitest";
@@ -33,4 +33,18 @@ export function tempDirs(prefix: string, scope: "test" | "suite" = "test") {
   const dirs = temporaryDirectories(prefix);
   (scope === "suite" ? afterAll : afterEach)(dirs.cleanup);
   return dirs.create;
+}
+
+let ignoresCase: boolean | undefined;
+
+/** macOS and Windows file systems ignore case by default; there `.VERID` is `.verid`. */
+export function caseInsensitiveFs(): boolean {
+  if (ignoresCase !== undefined) return ignoresCase;
+  const dir = mkdtempSync(join(tmpdir(), "verid-case-probe-"));
+  try {
+    writeFileSync(join(dir, "probe"), "");
+    return (ignoresCase = existsSync(join(dir, "PROBE")));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 }

@@ -1,4 +1,5 @@
 import { tempProject, HOOK } from "../support/project.js";
+import { caseInsensitiveFs } from "../support/temporary.js";
 import { autoFactsOf } from "../../src/adapters/plan-file.js";
 import { readState, statePaths } from "../../src/adapters/state-store.js";
 
@@ -789,7 +790,15 @@ describe("workspace hook", () => {
       join(project, "web/src"),
       process.platform === "win32" ? "junction" : "dir",
     );
-    const rows = ["api/src/new.ts", "web/src/new.ts", "WEB\\SRC\\new.ts"];
+    // `\\` separates folders only on Windows, and another case names the same folder only where
+    // the file system ignores case.
+    const respelled =
+      process.platform === "win32"
+        ? "WEB\\SRC\\new.ts"
+        : caseInsensitiveFs()
+          ? "WEB/SRC/new.ts"
+          : null;
+    const rows = ["api/src/new.ts", "web/src/new.ts", ...(respelled ? [respelled] : [])];
     for (const path of rows) {
       const result = await hook(path);
       expect(result.code, result.err).toBe(2);

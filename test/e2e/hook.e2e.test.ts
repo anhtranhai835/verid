@@ -1,4 +1,5 @@
 import { tempProject, HOOK, type Run } from "../support/project.js";
+import { caseInsensitiveFs } from "../support/temporary.js";
 
 import { mkdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -81,8 +82,10 @@ describe("1. the hook really blocks forbidden actions", () => {
   });
 
   it("denies reading state (through mixed slashes, case and ..), secrets and transcripts", () => {
+    // Another case names the same folder only where the file system ignores case.
+    const stateDir = caseInsensitiveFs() ? ".VERID/.State" : ".verid/.state";
     const rows: [string, string][] = [
-      [`${project}/SRC/../.VERID/.State/state.json`, "VERID_BURNT_STATE_PROTECTED"],
+      [`${project}/SRC/../${stateDir}/state.json`, "VERID_BURNT_STATE_PROTECTED"],
       [join(project, ".env"), "VERID_BURNT_SECRET_PROTECTED"],
       [join(homedir(), ".claude", "projects", "p", "s.jsonl"), "VERID_BURNT_TRANSCRIPT_PROTECTED"],
     ];
