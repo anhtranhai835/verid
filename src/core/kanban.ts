@@ -1,14 +1,37 @@
+import type { MessageKey } from "./errors.js";
 import type { State } from "./state.js";
 
-/** A deterministic starting plan. The developer reviews its scope before selecting a task. */
-export function planFromSpec(spec: string): string {
+/** Why a spec cannot be split into tasks. The board says it in the developer's language. */
+export class SpecSplitError extends Error {
+  constructor(
+    readonly problem: "requirements" | "clarification" | "duplicate",
+    readonly id = "",
+  ) {
+    super(
+      problem === "duplicate"
+        ? `Duplicate requirement: ${id}`
+        : problem === "requirements"
+          ? "The spec needs requirements of the form - REQ-1: testable behaviour (or NFR-1, SEC-1)."
+          : "Resolve the NEEDS CLARIFICATION items in the spec before splitting it into tasks.",
+    );
+  }
+}
+
+/**
+ * A deterministic starting plan. The developer reviews its scope before selecting a task.
+ * `productTitle` names the closing end-to-end task, in the developer's language.
+ */
+export function planFromSpec(
+  spec: string,
+  productTitle = "End-to-end check of the complete product",
+): string {
   const requirements: Array<{ id: string; text: string }> = [];
   let last: string | null = null;
   for (const line of spec.split(/\r?\n/)) {
     const match = /^\s*[-*]\s+((?:REQ|NFR|SEC)-\d+):\s*(\S.*)$/.exec(line);
     if (match) {
       if (requirements.some((item) => item.id === match[1]))
-        throw new Error(`Duplicate requirement: ${match[1]}`);
+        throw new SpecSplitError("duplicate", match[1]);
       requirements.push({ id: match[1]!, text: match[2]! });
       last = match[1]!;
     } else if (last !== null && /^\s*Dropped\b/.test(line)) {
@@ -16,17 +39,15 @@ export function planFromSpec(spec: string): string {
       last = null;
     }
   }
-  if (requirements.length === 0)
-    throw new Error("Spec cần yêu cầu dạng - REQ-1: hành vi có thể kiểm thử (hoặc NFR-1, SEC-1).");
-  if (spec.includes("[NEEDS CLARIFICATION"))
-    throw new Error("Hãy giải quyết các mục NEEDS CLARIFICATION trong spec trước khi tách task.");
+  if (requirements.length === 0) throw new SpecSplitError("requirements");
+  if (spec.includes("[NEEDS CLARIFICATION")) throw new SpecSplitError("clarification");
   return [
     "# Task plan\n\nEach requirement starts as one task. Review and refine acceptance criteria, dependencies and scope before selecting a task. Human drive opens a fresh session per task; AI drive follows the priority queue in one session.\n",
     ...requirements.map(
       (item, index) =>
         `## Module: ${item.id.toLowerCase()}\n\nTitle: ${item.text}\nArtifacts: .verid/artifacts/03-modules/${item.id.toLowerCase()}\n\n- AC-${index + 1}: ${item.text} (${item.id})\n`,
     ),
-    `## Module: product\n\nTitle: Kiểm thử luồng sản phẩm hoàn chỉnh\nArtifacts: .verid/artifacts/03-modules/product\nDepends: ${requirements.map((item) => item.id.toLowerCase()).join(", ")}\n\n- AC-${requirements.length + 1} (e2e): Verify the agreed user journeys end to end (${requirements.map((item) => item.id).join(", ")}).\n`,
+    `## Module: product\n\nTitle: ${productTitle}\nArtifacts: .verid/artifacts/03-modules/product\nDepends: ${requirements.map((item) => item.id.toLowerCase()).join(", ")}\n\n- AC-${requirements.length + 1} (e2e): Verify the agreed user journeys end to end (${requirements.map((item) => item.id).join(", ")}).\n`,
   ].join("\n");
 }
 
@@ -83,17 +104,25 @@ export function moveInQueue(
   return next;
 }
 
+/**
+ * Why a session may not work on the selected task: the message that says it, and the task it
+ * names. The key is what the audit log and a repeated denial compare.
+ */
+export interface TaskProblem {
+  key: Extract<MessageKey, `task_session.${string}`>;
+  module: string;
+}
+
 export function taskSessionProblem(
   kanban: State["kanban"],
   session: string,
   specHash: string | null,
-): string | null {
+): TaskProblem | null {
   const active = kanban.active;
-  if (!active)
-    return "Chưa chọn task. Người dùng chọn task trên verid board rồi mở session AI mới.";
+  if (!active) return { key: "task_session.none", module: "" };
   if (active.spec_sha256 !== specHash)
-    return "Spec đã thay đổi. Người dùng cần duyệt lại task trên verid board.";
+    return { key: "task_session.spec_changed", module: active.module };
   if (active.session !== session)
-    return `Task ${active.module} cần session riêng. Mở session AI mới sau khi chọn task; không dùng lại session của task khác hoặc session lập kế hoạch.`;
+    return { key: "task_session.other_session", module: active.module };
   return null;
 }

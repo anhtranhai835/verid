@@ -68,7 +68,7 @@ export async function subagentStop(p: z.infer<typeof lifecycleSchema>): Promise<
         appendAudit(paths.audit, {
           event: "task_subagent_ignored",
           session: p.session_id,
-          reason: problem,
+          reason: problem.key,
         }),
       );
       return { exit: 0 };

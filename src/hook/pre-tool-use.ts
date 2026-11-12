@@ -1,4 +1,5 @@
 import type * as z from "zod/mini";
+import type { TaskProblem } from "../core/kanban.js";
 import {
   preToolUseSchema,
   toAction,
@@ -77,7 +78,7 @@ export async function preToolUse(p: z.infer<typeof preToolUseSchema>): Promise<R
   );
   // A broken manifest must still allow reads; existing write gates report its error in order.
   const taskManifest = await loadManifest(project, { readOnly: true }).catch(() => null);
-  let taskProblem: string | null = null;
+  let taskProblem: TaskProblem | null = null;
   if (taskManifest && (taskSessions(taskManifest) || stationContext(project)?.station)) {
     const key = shared.sessionKey(p.session_id);
     const layouts = tddLayouts(project, taskManifest);
@@ -216,8 +217,9 @@ export async function preToolUse(p: z.infer<typeof preToolUseSchema>): Promise<R
       return {
         kind: "deny",
         code: "VERID_BURNT_TASK_SESSION",
-        target: taskProblem,
-        reason: taskProblem,
+        target: taskProblem.key,
+        reason: taskProblem.key,
+        params: { detail_key: taskProblem.key, module: taskProblem.module },
       };
     const dispatched = dispatch(lifted);
     if (dispatched.kind === "deny") return dispatched;
@@ -309,6 +311,7 @@ export async function preToolUse(p: z.infer<typeof preToolUseSchema>): Promise<R
         const result = (repeated ? shared.denyAgain : shared.deny)(denied.code, {
           ...gate.names,
           target,
+          ...denied.params,
         });
         appendAudit(paths.audit, {
           event: "denied",

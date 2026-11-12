@@ -170,4 +170,11 @@ export const isOverridable = (code: RuleCode): boolean => OVERRIDABLE.has(code);
 
 export type PolicyDecision =
   | { kind: "allow"; reason: string }
-  | { kind: "deny"; code: RuleCode; reason: string; target: string };
+  | {
+      kind: "deny";
+      code: RuleCode;
+      reason: string;
+      target: string;
+      /** More of the message's parameters: a `detail_key` and what its message reads. */
+      params?: Record<string, string>;
+    };

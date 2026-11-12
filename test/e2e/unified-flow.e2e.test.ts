@@ -366,7 +366,10 @@ it("AC-16, AC-25, AC-26: AI follows priorities, preserves current work, and forb
       })
     ).status,
   ).toBe(400);
-  expect(() => saveBoardDocument(project, "spec", "- REQ-1: changed")).toThrow("Đang có task");
+  // This project has set no language, so the machine's is used.
+  expect(() => saveBoardDocument(project, "spec", "- REQ-1: changed")).toThrow(
+    /A task is open|Đang có task mở/,
+  );
 });
 
 it.each([

@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { ownEntry } from "../core/station.js";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
-import { moveInQueue, planFromSpec } from "../core/kanban.js";
+import { moveInQueue, planFromSpec, SpecSplitError } from "../core/kanban.js";
 import { autoModules, autoPhase } from "../core/auto.js";
 import { kitchenOf } from "../core/kitchen.js";
 import { planned, taskSessions, type Manifest } from "../core/manifest.js";
@@ -38,8 +38,8 @@ import { moduleMockups } from "./board-mockups.js";
 import { stationContext } from "./project.js";
 import { unitState } from "./reheat-evidence.js";
 
-const boardMessage = (project: string, key: string) =>
-  t(languageOf(project) ?? systemLanguage(), `board.${key}`, {});
+const boardMessage = (project: string, key: string, params: Record<string, string> = {}) =>
+  t(languageOf(project) ?? systemLanguage(), `board.${key}`, params);
 const textOf = (file: string) => (existsSync(file) ? readFileSync(file, "utf8") : "");
 
 export async function boardSnapshot(project: string) {
@@ -347,24 +347,34 @@ export function saveBoardDocument(
       aiOpen ||
       Object.values(state.modules).some((item) => item.served_at === null)
     )
-      throw new Error("Đang có task mở. Hoàn tất và nghiệm thu task trước khi sửa tài liệu.");
+      throw new Error(boardMessage(project, "err_task_open"));
     const rel = `.verid/${kind === "spec" ? "spec" : "plan"}.md`;
     checkSetupPath(project, rel);
     if (kind === "split") {
-      if (existsSync(planFile(project)))
-        throw new Error("Đã có plan. Chỉnh sửa task trong plan hiện có; không ghi đè kế hoạch.");
-      content = planFromSpec(textOf(specFile(project)));
+      if (existsSync(planFile(project))) throw new Error(boardMessage(project, "err_plan_exists"));
+      try {
+        content = planFromSpec(
+          textOf(specFile(project)),
+          boardMessage(project, "plan_product_title"),
+        );
+      } catch (error) {
+        if (!(error instanceof SpecSplitError)) throw error;
+        throw new Error(boardMessage(project, `err_spec_${error.problem}`, { id: error.id }));
+      }
     }
-    if (!content.trim()) throw new Error("Tài liệu không được để trống.");
+    if (!content.trim()) throw new Error(boardMessage(project, "err_doc_empty"));
     if (kind !== "spec") {
       const plan = parsePlan(content);
       if (!plan.ok) throw new Error(plan.detail);
       if (plan.modules.every((module) => module.acs.length === 0))
-        throw new Error("Plan cần ít nhất một acceptance criterion dạng - AC-1: hành vi kiểm thử.");
+        throw new Error(boardMessage(project, "err_plan_no_ac"));
       const trace = specTrace(textOf(specFile(project)), content);
       if (trace.unknown.length || trace.uncovered.length)
         throw new Error(
-          `Plan cần bao phủ các yêu cầu trong spec. Chưa có AC: ${trace.uncovered.join(", ") || "—"}. ID không tồn tại: ${trace.unknown.join(", ") || "—"}.`,
+          boardMessage(project, "err_plan_trace", {
+            uncovered: trace.uncovered.join(", ") || "—",
+            unknown: trace.unknown.join(", ") || "—",
+          }),
         );
     }
     if (kind === "split") {
@@ -410,8 +420,8 @@ export async function moveTask(
 export function taskPrompt(project: string, task: string): string {
   const state = readState(statePaths(project));
   if (state.kanban.active?.module !== task)
-    throw new Error("Chọn task này trước khi chuẩn bị session.");
+    throw new Error(boardMessage(project, "err_select_first"));
   if (state.kanban.active.session !== null)
-    throw new Error("Task này đã có session AI. Tiếp tục session hiện tại; không mở session khác.");
+    throw new Error(boardMessage(project, "err_session_exists"));
   return `Start with verid context ${task}: it prints this task's ACs, the spec lines they cite, dependencies, file state and the full-document paths. Open the full spec, design, plan section or log only where it points, or to check a dependency or an exception. This is a NEW session for task ${task} only. Follow Verid TDD: write a failing test → verid taste → implement → verid taste → independent review. Record results and hand off for developer serve. STOP after this task; do not select or implement any other task. Run CLI commands using the path specified in AGENTS.md.`;
 }
