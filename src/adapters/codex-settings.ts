@@ -1,5 +1,5 @@
 import { homedir } from "node:os";
-import { readFileSync } from "node:fs";
+import { accessSync, constants, existsSync, readFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -30,7 +30,26 @@ export const reviewerTemplateFile = (): string =>
   isRepoRuntime()
     ? join(contentRoot(), "templates/codex-reviewer.toml")
     : join(contentRoot(), "codex/verid-reviewer.toml");
-export const reviewerOverlay = (): string => join(runtimeDirectory(), "codex-reviewer.toml");
+
+/** This user may write `file`, or create it in its folder. */
+export function writable(file: string): boolean {
+  try {
+    accessSync(existsSync(file) ? file : dirname(file), constants.W_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The reviewer's Codex agent file: beside the bundle, which the hook protects. A verid that
+ * another user installed (`sudo npm install -g`) is not this user's to write, so there the file
+ * goes beside Codex's own config, which names it.
+ */
+export function reviewerOverlay(canWrite: (file: string) => boolean = writable): string {
+  const beside = join(runtimeDirectory(), "codex-reviewer.toml");
+  return canWrite(beside) ? beside : join(codexHome(), "verid-reviewer.toml");
+}
 
 export function reviewerContent(skillsRoot = installedSkills()): string {
   const template = readFileSync(reviewerTemplateFile(), "utf8");
