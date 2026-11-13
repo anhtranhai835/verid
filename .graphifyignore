@@ -1,0 +1,21 @@
+# Dependencies, generated output and runtime state
+node_modules/
+dist/
+coverage/
+graphify-out/
+.git/
+.verid/.state/
+*.tgz
+package-lock.json
+
+# Installed assistant skills are tooling, not project source
+.codex/
+.claude/
+.agents/
+
+# Local credentials and environment files
+.env
+.env.*
+.aws/
+*.pem
+*.key
