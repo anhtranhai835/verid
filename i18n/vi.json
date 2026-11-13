@@ -263,6 +263,8 @@
   "auto.stuck.security_reviews": "Drive no-brain đang kẹt: security reviewer đã cho module đang mở fail {detail} lần. Developer đọc báo cáo của security reviewer, giải quyết chỗ cứ fail, rồi chạy `{verid} order` từ terminal của mình để chạy tiếp.",
   "auto.stuck.no_progress": "Drive no-brain đang kẹt: Stop đã giữ agent {detail} lần liên tiếp mà không có gì tiến triển: test, plan, commit và các bộ đếm đều không đổi. Developer xem agent đang chờ gì, rồi chạy `{verid} order` từ terminal của mình để chạy tiếp.",
   "cook.providers": "Chọn provider",
+  "cook.provider_found": "đã cài trên máy này",
+  "cook.provider_missing": "không thấy trong PATH — cài trước khi nấu",
   "init.codex_done": "Đã lưu hướng dẫn Codex. Commit .verid/manifest.yaml, .verid/.gitignore và {instructions}. Người trong team chạy `{verid} cook` sau khi clone.",
   "workspace.codex_done": "Đã lưu hướng dẫn workspace cho Codex. Commit file dùng chung bên trong .verid/ bằng `git -C .verid`; {instructions} ở gốc workspace thuộc từng máy, cook tạo lại block verid trong đó. Người trong team chạy `{verid} cook` sau khi clone.",
   "cook.codex_served": "Hook Codex và AGENTS.md đã sẵn sàng. Tin cậy project và từng hook verid trong /hooks rồi chạy verid doctor.",

@@ -109,6 +109,8 @@ describe("board chat launches", () => {
     const next = launchFor("codex", "x", "thread-1", project);
     expect(next.args.slice(0, 2)).toEqual(["exec", "resume"]);
     expect(next.args.slice(-2)).toEqual(["thread-1", "-"]);
+    // Outside a Git repository Codex trusts, a resumed turn is refused without it.
+    for (const launch of [fresh, next]) expect(launch.args).toContain("--skip-git-repo-check");
   });
 
   it("refuses unsafe session IDs and cmd.exe metacharacters", () => {

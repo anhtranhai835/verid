@@ -13,8 +13,18 @@ tags `1.0.0` and `1.2.0` keep their names.
   `plugin/antigravity`. A manifest that lists `antigravity` under `providers` no longer loads;
   remove the entry and run `verid cook` again. Claude Code and Codex are unchanged.
 
+### Changed
+
+- `verid cook` asks for the provider right after the language on a new project, the one installed
+  on this machine first and each choice saying whether its command was found, instead of picking
+  Codex silently when `claude` is not on PATH.
+- On the no-brain board, only the crew member's own pixels move and glow while they work; the
+  room behind them and their name tag stay still.
+
 ### Fixed
 
+- The board's chat with Codex no longer stops at the second message outside a Git repository
+  Codex trusts: a resumed turn passes `--skip-git-repo-check` too.
 - A `|` in an acceptance criterion no longer splits its row of the scaffolded trace table: it is
   written as `\|`.
 

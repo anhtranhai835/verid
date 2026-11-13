@@ -22,7 +22,8 @@
   padding: 0;
 }
 
-/* The room: the developer's art, each crew member a cut of it placed back on its own spot. */
+/* The room: the developer's art without its crew, each crew member put back on their own spot as
+   a cut of the crew layer. Only the crew's pixels are opaque there, so they move and glow alone. */
 .scene {
   position: relative;
   aspect-ratio: 1024 / 644;
@@ -43,7 +44,7 @@
 .crop {
   position: absolute;
   inset: 0;
-  background: var(--art) var(--bp) / var(--bs) no-repeat;
+  background: var(--crew) var(--bp) / var(--bs) no-repeat;
   image-rendering: pixelated;
   transform-origin: 50% 100%;
 }

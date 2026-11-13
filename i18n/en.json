@@ -263,6 +263,8 @@
   "auto.stuck.security_reviews": "The no-brain drive is stuck: the security reviewer has failed the open module {detail} times. The developer reads the security reviewer's report, settles what keeps failing, then runs `{verid} order` from their own terminal to continue.",
   "auto.stuck.no_progress": "The no-brain drive is stuck: Stop held the agent {detail} times in a row and nothing progressed: the tests, the plan, the commits and the counters did not change. The developer looks at what the agent is waiting for, then runs `{verid} order` from their own terminal to continue.",
   "cook.providers": "Choose providers",
+  "cook.provider_found": "installed on this machine",
+  "cook.provider_missing": "not found on PATH — install it before cooking",
   "init.codex_done": "Codex instructions saved. Commit .verid/manifest.yaml, .verid/.gitignore and {instructions}. Teammates run `{verid} cook` after cloning.",
   "workspace.codex_done": "Codex workspace instructions saved. Commit shared files inside .verid/ with `git -C .verid`; keep {instructions} at the workspace root as per-machine files. cook regenerates their verid blocks. Teammates run `{verid} cook` after cloning.",
   "cook.codex_served": "Codex hooks and AGENTS.md are ready. Trust this project and every verid hook in /hooks, then run verid doctor.",

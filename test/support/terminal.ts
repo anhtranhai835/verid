@@ -28,7 +28,8 @@ export function fakeTerminal() {
 /** Answer cook prompts as they are drawn, allowing filesystem changes between keys. */
 export function scriptedTerminal(
   keys: (string | (() => string))[],
-  providerKeys = ENTER,
+  /** One answer for every providers question, or one per question in order (then Enter). */
+  providerKeys: string | string[] = ENTER,
   architectureKeys = ENTER,
   layoutKeys: string | (string | (() => string))[] = ENTER,
   resourceKeys = ENTER,
@@ -53,7 +54,8 @@ export function scriptedTerminal(
       return;
     }
     if (/(^|\n|\x1b\[0J)\? (Choose providers|Chọn provider)/.test(String(d))) {
-      setImmediate(() => t.type(providerKeys));
+      const next = Array.isArray(providerKeys) ? (providerKeys.shift() ?? ENTER) : providerKeys;
+      setImmediate(() => t.type(next));
       return;
     }
     if (/\? (Project architecture|Kiến trúc dự án)/.test(String(d))) {

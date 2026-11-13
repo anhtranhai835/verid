@@ -83,12 +83,18 @@ export function launchFor(
       ],
       stdin: prompt,
     };
-  const options = ["--json", "-c", "sandbox_mode=workspace-write", "-c", "approval_policy=never"];
+  // The project need not be a Git repository Codex trusts: every turn, a resumed one too, says so.
+  const options = [
+    "--json",
+    "-c",
+    "sandbox_mode=workspace-write",
+    "-c",
+    "approval_policy=never",
+    "--skip-git-repo-check",
+  ];
   return {
     command: "codex",
-    args: resume
-      ? ["exec", "resume", ...options, resume, "-"]
-      : ["exec", ...options, "--skip-git-repo-check", "-"],
+    args: resume ? ["exec", "resume", ...options, resume, "-"] : ["exec", ...options, "-"],
     stdin: prompt,
   };
 }

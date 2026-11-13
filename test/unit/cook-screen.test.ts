@@ -123,7 +123,7 @@ describe("interactiveCook: verid cook in the developer's terminal", () => {
     vitestProject();
     const terminal = scriptedTerminal(
       [ENTER, "1" + ENTER, ENTER, "1" + ENTER, ...enters()],
-      DOWN + ENTER,
+      [DOWN + ENTER, ENTER],
       ENTER,
       ENTER,
       DOWN + ENTER,
@@ -163,17 +163,25 @@ describe("interactiveCook: verid cook in the developer's terminal", () => {
     }
   });
   it("asks for providers and supports Claude Code, Codex and both before preview", async () => {
+    // Only Codex on PATH: verid offers it first, and Claude Code stays one key away.
+    const bin = join(project, "..", `bin-${process.pid}`);
+    mkdirSync(bin, { recursive: true });
+    writeFileSync(join(bin, "codex"), "#!/bin/sh\n", { mode: 0o755 });
+    writeFileSync(join(bin, "codex.cmd"), "@echo off\r\n");
+    vi.stubEnv("PATH", bin);
     const rows = [
-      { keys: ENTER, providers: ["claude-code"], claude: true, codex: false },
-      { keys: DOWN + ENTER, providers: ["codex"], claude: false, codex: true },
-      { keys: DOWN + DOWN + ENTER, providers: ["claude-code", "codex"], claude: true, codex: true },
+      { keys: ENTER, providers: ["codex"], claude: false },
+      { keys: UP + ENTER, providers: ["claude-code"], claude: true },
+      { keys: DOWN + ENTER, providers: ["claude-code", "codex"], claude: true },
     ];
     for (const row of rows) {
       vitestProject();
-      const terminal = scriptedTerminal(enters(), row.keys, ENTER, ENTER, ENTER, SETTINGS);
+      const terminal = scriptedTerminal(enters(), [row.keys]);
       const result = await interactiveCook(project, terminal.io, "en-US");
       expect(result.exit).toBe(0);
       expect(terminal.screen()).toContain("Choose providers");
+      expect(terminal.screen()).toMatch(/Claude Code\s+not found on PATH/);
+      expect(terminal.screen()).toMatch(/Codex\s+installed on this machine/);
       expect(parse(manifest()).providers).toEqual(row.providers);
       expect(existsSync(join(project, "CLAUDE.md"))).toBe(row.claude);
       expect(existsSync(join(project, "AGENTS.md"))).toBe(true); // the block, for every provider
@@ -620,12 +628,13 @@ describe("interactiveCook: verid cook in the developer's terminal", () => {
     expect(t.screen()).toMatch(/🍽️ {2}Served! First run `.+ stock` here/);
   });
 
-  it("cooks an empty folder with Enter alone in four questions, showing what it found, and doctor passes", async () => {
+  it("cooks an empty folder with Enter alone in five questions, showing what it found, and doctor passes", async () => {
     const t = scriptedTerminal(Array.from({ length: 10 }, () => ENTER));
     expect((await interactiveCook(project, t.io, "en-US")).exit).toBe(0);
     const asked = new Set(t.screen().match(/^\? .*? \(↑\/↓/gm));
     expect([...asked]).toEqual([
       "? Chọn ngôn ngữ / Choose your language (↑/↓",
+      "? Choose providers (↑/↓",
       "? What are we cooking today? (↑/↓",
       "? Who runs the kitchen? (↑/↓",
       "? Apply? (Y/n) (↑/↓",
@@ -642,7 +651,7 @@ describe("interactiveCook: verid cook in the developer's terminal", () => {
     vitestProject();
     const again = scriptedTerminal(Array.from({ length: 10 }, () => ENTER));
     expect((await interactiveCook(project, again.io, "en-US")).exit).toBe(0);
-    expect(new Set(again.screen().match(/^\? .*? \(↑\/↓/gm)).size).toBeLessThanOrEqual(4);
+    expect(new Set(again.screen().match(/^\? .*? \(↑\/↓/gm)).size).toBeLessThanOrEqual(5);
     expect(again.screen()).toMatch(/^Found: Claude Code · monorepo · test runner: vitest$/m);
     // Doctor reads Claude Code's plugin record; use one of our own, not this machine's.
     const config = mkdtempSync(join(tmpdir(), "verid-claude-config-"));

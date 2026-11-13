@@ -193,8 +193,10 @@ export async function interactiveCook(
       flags.upgrade = add === 0;
     }
   } else {
-    // What verid can see is shown in the plan, not asked; "Change settings" asks everything.
+    // The agent is the developer's pick, not a guess from PATH: the installed one is only the
+    // default. What else verid can see is shown in the plan; "Change settings" asks everything.
     flags.providers = installedProviders(project);
+    if (!(await askProviders())) return cancelled();
     if (layout === "workspace")
       try {
         checkWorkspaceRoot(project);
@@ -266,13 +268,22 @@ export async function interactiveCook(
     return true;
   }
 
-  /** Every setting of a new manifest, each defaulting to the current pick; false when cancelled. */
-  async function askSettings(): Promise<boolean> {
+  /** Who runs the kitchen, defaulting to the current pick; false when cancelled. */
+  async function askProviders(): Promise<boolean> {
     const current = (flags.providers ?? ["claude-code"]).join();
+    const found = {
+      "claude-code": launchable("claude", project),
+      codex: launchable("codex", project),
+    };
     const provider = await select(
       io,
       say("cook.providers"),
-      PROVIDER_CHOICES.map(({ label }) => ({ label })),
+      PROVIDER_CHOICES.map(({ label, providers }) => ({
+        label,
+        hint: say(
+          providers.every((p) => found[p]) ? "cook.provider_found" : "cook.provider_missing",
+        ),
+      })),
       Math.max(
         0,
         PROVIDER_CHOICES.findIndex((c) => c.providers.join() === current),
@@ -280,6 +291,12 @@ export async function interactiveCook(
     );
     if (provider === null) return false;
     flags.providers = [...PROVIDER_CHOICES[provider]!.providers];
+    return true;
+  }
+
+  /** Every setting of a new manifest, each defaulting to the current pick; false when cancelled. */
+  async function askSettings(): Promise<boolean> {
+    if (!(await askProviders())) return false;
     const children = detectLayout(project, "workspace").repos;
     for (;;) {
       const choice = await select(

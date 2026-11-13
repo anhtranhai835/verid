@@ -49,7 +49,9 @@ describe("no-brain kitchen", () => {
     expect(html).toContain("prefers-reduced-motion");
     // Each crew member is a cut of the art for the eye; screen readers get the name and state.
     expect(html).toMatch(/class="crop" aria-hidden="true"/);
+    // The room stays still under the crew layer, so only the crew's own pixels move.
     expect(html).toContain("--art:url(data:image/webp;base64,");
+    expect(html).toContain("--crew:url(data:image/webp;base64,");
   });
 
   it("speaks Vietnamese in a Vietnamese project", () => {
