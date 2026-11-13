@@ -8,6 +8,7 @@ import themeCss from "./board-ui/theme.css?raw";
 import boardJs from "./board-ui/board.client.js?raw";
 import kitchenJs from "./board-ui/kitchen.client.js?raw";
 import mockupsJs from "./board-ui/mockups.client.js?raw";
+import restaurantArt from "./board-ui/restaurant.webp?inline";
 
 const escapeHtml = (text: string) =>
   text.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
@@ -39,7 +40,7 @@ export function boardHtml(lang: Lang, drive: "human" | "auto" = "human"): string
   return page
     .replace(/\{\{(\w+)\}\}/g, (_, key: string) => filled[key] ?? s(key))
     .replace("<!--styles-->", () => `<style>${styles}</style>`)
-    .replace("<!--kitchen-->", () => (auto ? kitchenMarkup(s) : ""))
+    .replace("<!--kitchen-->", () => (auto ? kitchenMarkup(s, restaurantArt) : ""))
     .replace(
       "<!--scripts-->",
       () =>

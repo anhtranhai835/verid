@@ -208,7 +208,7 @@ export function tempProject(prefix: string, options: ProjectOptions = {}) {
       await options.teardown?.();
     } finally {
       roots.length = 0;
-      directories.cleanup();
+      await directories.cleanup();
     }
   });
   return project;

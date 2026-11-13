@@ -1,4 +1,5 @@
 import { existsSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { afterAll, afterEach } from "vitest";
@@ -17,12 +18,13 @@ export function temporaryDirectories(prefix: string, cleanup: CleanupOptions = {
       roots.push(created);
       return canonical ? realpathSync.native(created) : created;
     },
-    cleanup(): void {
+    async cleanup(): Promise<void> {
       for (const created of roots.splice(0).reverse()) {
         const target = resolve(created);
         if (dirname(target) !== resolve(tmpdir()))
           throw new Error("cleanup outside temporary directory");
-        rmSync(target, { recursive: true, force: true, ...cleanup });
+        // Yield between retries so a killed child's working-directory and file handles can close.
+        await rm(target, { recursive: true, force: true, ...cleanup });
       }
     },
   };
