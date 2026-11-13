@@ -523,6 +523,23 @@ it("chats on the no-brain board in one queue session: new session first, then th
   expect(launches[1]!.args).toContain("t-1");
 });
 
+it("starts the AI on a card dragged into Cooking, and refuses a card that is not on the board", async () => {
+  noBrain();
+  split();
+  const launches: Launch[] = [];
+  server = await startBoard(project, runCli, 0, fakeChat(launches));
+  const { post, get } = api(server);
+  const board = await boardSnapshot(project);
+  const task = board.tasks[0]!;
+  expect((await post({ action: "run", task: "nope", provider: "codex" })).status).toBe(409);
+  const run = await post({ action: "run", task: task.id, provider: "codex" });
+  expect(run.status, await run.clone().text()).toBe(200);
+  expect(launches).toHaveLength(1);
+  expect(launches[0]!.stdin).toContain(`verid context ${task.id}`);
+  for (let i = 0; i < 100 && (await (await get("/api/chat")).json()).running; i++)
+    await new Promise((resolve) => setTimeout(resolve, 50));
+});
+
 it("refuses sign to a caller without the board's credential, including one holding the launch link", async () => {
   noBrain();
   split();

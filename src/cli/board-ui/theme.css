@@ -1,0 +1,502 @@
+/*
+ * One look for the whole board: a lamp-lit restaurant at night. Warm dark surfaces, cream text,
+ * amber for the one main action, teal for focus and done, red for trouble. Loaded after the
+ * board's own styles, so these tokens decide every colour below.
+ */
+:root {
+  --bg: #17130f;
+  --surface-1: #1f1a15;
+  --surface-2: #28211b;
+  --surface-3: #332a22;
+  --line: #3d3329;
+  --line-strong: #56483a;
+  --text: #f3ead8;
+  --text-2: #cbbda5;
+  --text-3: #a39379;
+  --amber: #f0a04b;
+  --amber-ink: #241405;
+  --amber-hover: #f6b46a;
+  --teal: #6cc4b4;
+  --red: #e2654a;
+  --radius: 10px;
+  --radius-sm: 6px;
+  --shadow: 0 1px 0 #ffffff08 inset, 0 6px 18px #0006;
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  color: var(--text);
+  background: var(--bg);
+  color-scheme: dark;
+}
+body {
+  background: var(--bg);
+  background-image: radial-gradient(#ffffff06 1px, transparent 1px);
+  background-size: 8px 8px;
+}
+button,
+.card,
+.view-btn,
+.tab {
+  transition:
+    background-color 0.18s var(--ease),
+    border-color 0.18s var(--ease),
+    color 0.18s var(--ease),
+    transform 0.18s var(--ease),
+    box-shadow 0.18s var(--ease);
+}
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+.card:focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: 2px;
+}
+
+/* Sidebar and top bar */
+aside {
+  background: #120f0c;
+  border-right: 1px solid var(--line);
+  color: var(--text-2);
+}
+.aside-label {
+  color: var(--text-3);
+}
+.view-btn {
+  min-height: 44px;
+  color: var(--text-2);
+}
+.view-btn:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.view-btn[aria-pressed="true"] {
+  background: var(--surface-3);
+  border-color: var(--line-strong);
+  color: var(--text);
+}
+.aside-bottom {
+  border-color: var(--line);
+}
+.topbar {
+  background: #120f0ccc;
+  backdrop-filter: blur(6px);
+  border-bottom: 1px solid var(--line);
+  color: var(--text-3);
+  height: 56px;
+}
+.topbar::before {
+  height: 3px;
+  background: repeating-linear-gradient(90deg, var(--amber) 0 12px, transparent 12px 24px);
+  opacity: 0.6;
+}
+.breadcrumb strong {
+  color: var(--text);
+}
+.local,
+.chip {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  color: var(--text-2);
+}
+main {
+  padding-top: 24px;
+}
+
+/* Buttons: one primary (amber), one quiet secondary */
+.btn {
+  min-height: 36px;
+  padding: 8px 14px;
+  font-size: 12px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  border: 1px solid var(--line-strong);
+  color: var(--text);
+  box-shadow: none;
+}
+.btn:hover:not(:disabled) {
+  background: var(--surface-3);
+  border-color: #6b5a48;
+}
+.btn.primary {
+  background: var(--amber);
+  border-color: var(--amber);
+  color: var(--amber-ink);
+  box-shadow: 0 2px 0 #9a5a1c;
+}
+.btn.primary:hover:not(:disabled) {
+  background: var(--amber-hover);
+}
+.btn:active:not(:disabled) {
+  transform: translateY(1px);
+  box-shadow: none;
+}
+.btn:disabled {
+  opacity: 0.4;
+}
+
+/* Workspace tabs and filters */
+.work-head {
+  border-bottom-color: var(--line);
+}
+.work-tabs {
+  background: var(--surface-1);
+  border: 1px solid var(--line);
+}
+.tab {
+  color: var(--text-3);
+  min-height: 36px;
+}
+.tab:hover {
+  color: var(--text);
+}
+.tab.active,
+.work-tabs .tab.active {
+  background: var(--surface-3);
+  color: var(--text);
+  box-shadow: inset 0 -2px 0 var(--amber);
+}
+.tab span {
+  background: var(--surface-3);
+  color: var(--text-2);
+}
+.search {
+  background: var(--surface-1);
+  border-color: var(--line);
+  color: var(--text-3);
+  min-height: 36px;
+}
+.search input {
+  color: var(--text);
+}
+.search input::placeholder {
+  color: var(--text-3);
+}
+.drag-hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-2);
+}
+.drag-hint::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  background: var(--amber);
+  box-shadow: 0 0 8px var(--amber);
+}
+
+/* Steps, progress, notices */
+.steps {
+  background: var(--surface-1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: none;
+  margin: 0 0 16px;
+  padding: 10px 14px;
+}
+.step,
+.step-note {
+  color: var(--text-3);
+}
+.step span {
+  border-color: var(--line-strong);
+  color: var(--text-3);
+}
+.step.current {
+  color: var(--amber);
+}
+.step.current span {
+  background: #f0a04b22;
+  border-color: var(--amber);
+  color: var(--amber);
+}
+.step-arrow {
+  color: var(--line-strong);
+}
+.summary,
+.summary strong {
+  color: var(--text-2);
+}
+.progress-track {
+  background: var(--surface-3);
+  width: 140px;
+  height: 6px;
+}
+.progress-fill {
+  background: var(--teal);
+}
+.notice {
+  background: #f0a04b14;
+  border: 1px solid #f0a04b55;
+  color: var(--text);
+  border-radius: var(--radius-sm);
+}
+.welcome {
+  background: var(--surface-1);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius);
+}
+.welcome h2,
+.dialog-head h2 {
+  font: inherit;
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--text);
+}
+.welcome p,
+.dialog-body p,
+.dialog-body h3 {
+  color: var(--text-2);
+}
+
+/* Kanban: columns are rails, cards are tickets */
+.columns {
+  gap: 12px;
+}
+.column {
+  background: var(--surface-1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 12px 10px;
+}
+.column-head .dot {
+  width: 8px;
+  height: 8px;
+  background: var(--line-strong);
+}
+.column[data-column="selected"] .dot {
+  background: #d77a61;
+}
+.column[data-column="progress"] .dot {
+  background: var(--amber);
+}
+.column[data-column="review"] .dot {
+  background: #c9b25e;
+}
+.column[data-column="done"] .dot {
+  background: var(--teal);
+}
+.column-head {
+  color: var(--text);
+  font-size: 12px;
+  margin-bottom: 12px;
+}
+.column-head .count {
+  background: var(--surface-3);
+  border: 0;
+  color: var(--text-2);
+}
+.column-head .decor {
+  display: none;
+}
+.column-empty {
+  color: var(--text-3);
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  font-style: normal;
+}
+.card {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  color: var(--text);
+}
+.card::after {
+  display: none;
+}
+.card:hover {
+  border-color: var(--line-strong);
+  transform: translateY(-2px);
+  box-shadow:
+    0 1px 0 #ffffff0a inset,
+    0 10px 22px #0008;
+}
+.card.selected {
+  border-color: var(--amber);
+  box-shadow: 0 0 0 1px #f0a04b55;
+}
+.card h3 {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.task-id,
+.card-bottom,
+.card-note {
+  color: var(--text-3);
+}
+.card-bottom {
+  border-color: var(--line);
+}
+.tag,
+.tag.product {
+  background: #6cc4b41f;
+  color: var(--teal);
+}
+.card .chip {
+  background: var(--surface-3);
+  border-color: transparent;
+}
+.card .btn {
+  min-height: 28px;
+  padding: 4px 10px;
+}
+.column.drop-ok {
+  outline: 2px dashed var(--amber);
+  outline-offset: -3px;
+}
+.column.drop-over {
+  background: #f0a04b18;
+  outline-style: solid;
+}
+
+/* Chat */
+.chat-box {
+  margin-top: 0;
+  background: var(--surface-1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 16px;
+}
+.chat-head h3,
+#sign-box summary {
+  color: var(--text);
+}
+.chat-provider,
+.chat-note,
+.help {
+  color: var(--text-3);
+}
+.chat-provider select {
+  background: var(--surface-2);
+  border-color: var(--line-strong);
+  color: var(--text);
+  min-height: 32px;
+}
+.chat-log {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+  font-size: 13px;
+  max-height: none;
+}
+.chat-line.you {
+  background: var(--amber);
+  color: var(--amber-ink);
+  border-radius: 12px 12px 2px 12px;
+}
+.chat-line.ai {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  color: var(--text);
+  border-radius: 12px 12px 12px 2px;
+}
+.chat-line.tool {
+  background: transparent;
+  border-left: 2px solid var(--line-strong);
+  color: var(--text-3);
+  border-radius: 0;
+}
+.chat-line.error {
+  background: #e2654a1a;
+  border-color: #e2654a66;
+  color: #f2a08d;
+}
+.chat-line.info,
+.chat-empty {
+  color: var(--text-3);
+  font-style: normal;
+}
+#chat-input,
+.session-box textarea,
+.editor,
+.doc-text {
+  background: var(--bg);
+  border: 1px solid var(--line-strong);
+  color: var(--text);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+}
+#chat-input:focus {
+  border-color: var(--teal);
+}
+
+/* Dialogs, toast, footer */
+dialog {
+  background: var(--surface-1);
+  color: var(--text);
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  box-shadow: 0 24px 60px #000a;
+}
+dialog::backdrop {
+  background: #000a;
+}
+.dialog-head,
+.dialog-footer {
+  border-color: var(--line);
+}
+.close {
+  color: var(--text-2);
+  background: transparent;
+}
+.session-box h3,
+.session-box p {
+  color: var(--text-2);
+}
+.toast {
+  background: var(--surface-3);
+  border: 1px solid var(--line-strong);
+  color: var(--text);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 10px 30px #000a;
+}
+.toast.error {
+  background: #4a1f16;
+  border-color: var(--red);
+}
+.footer,
+.footer strong {
+  color: var(--text-3);
+  border-color: var(--line);
+}
+.kitchen {
+  background: var(--surface-1);
+  border-color: var(--line);
+  border-radius: 12px;
+}
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+  }
+}
+
+/* The waiter's speech in the same night palette; the pass repeats the Kanban, so only the room view shows it. */
+.speech {
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  box-shadow: none;
+}
+.calling .speech {
+  border-color: var(--amber);
+}
+body[data-view="split"] .kitchen h3,
+body[data-view="split"] .pass {
+  display: none;
+}
+.plate {
+  background: var(--surface-3);
+  color: var(--text);
+  box-shadow: none;
+  border: 1px solid var(--line-strong);
+}
+.lane {
+  background: var(--bg);
+}

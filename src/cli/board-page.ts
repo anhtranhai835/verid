@@ -4,6 +4,7 @@ import page from "./board-ui/page.html?raw";
 import boardCss from "./board-ui/board.css?raw";
 import kitchenCss from "./board-ui/kitchen.css?raw";
 import mockupsCss from "./board-ui/mockups.css?raw";
+import themeCss from "./board-ui/theme.css?raw";
 import boardJs from "./board-ui/board.client.js?raw";
 import kitchenJs from "./board-ui/kitchen.client.js?raw";
 import mockupsJs from "./board-ui/mockups.client.js?raw";
@@ -31,7 +32,7 @@ export function boardHtml(lang: Lang, drive: "human" | "auto" = "human"): string
   };
   // < is escaped so no message can close the script element.
   const table = JSON.stringify(messages(lang, "board.")).replace(/</g, "\\u003c");
-  const styles = [boardCss, auto ? kitchenCss : "", mockupsCss, HIDDEN].join("");
+  const styles = [boardCss, auto ? kitchenCss : "", mockupsCss, themeCss, HIDDEN].join("");
   // The scripts share one scope and run in this order: the board's own, then what builds on it.
   const scripts = [boardJs, auto ? kitchenJs : "", mockupsJs].join("\n");
   // Messages are filled first, and only in the page: nothing below is searched for {{key}} again.

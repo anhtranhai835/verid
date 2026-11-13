@@ -18,16 +18,24 @@
       </div>
       <div class="logo-subtitle">THE DEV KITCHEN</div>
       <div class="aside-label label">{{aside_label}}</div>
-      <div class="nav">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
-          <path d="M4 16a8 8 0 0 1 16 0M2 20h20M12 5V3M9 3h6" /></svg
-        >{{nav}}
-      </div>
-      <div class="kitchen-note">
-        <span class="label">{{chef_note}}</span>
-        <p>{{chef_note_1}}<br />{{chef_note_2}}</p>
-        <small>{{chef_note_small}}</small>
-      </div>
+      <nav class="views" aria-label="{{view_menu}}">
+        <button class="view-btn" data-view="split">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+            <rect x="3" y="4" width="18" height="16" rx="2" />
+            <path d="M11 4v16" /></svg
+          >{{view_split}}</button
+        ><button class="view-btn" data-view="scene">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+            <path d="M4 16a8 8 0 0 1 16 0M2 20h20M12 5V3M9 3h6" /></svg
+          >{{view_scene}}</button
+        ><button class="view-btn" data-view="work">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+            <rect x="3" y="4" width="5" height="16" rx="1" />
+            <rect x="10" y="4" width="5" height="11" rx="1" />
+            <rect x="17" y="4" width="4" height="7" rx="1" /></svg
+          >{{nav}}
+        </button>
+      </nav>
       <div class="aside-bottom">
         <span class="status-dot"></span>{{kitchen_open}}<strong id="aside-project"
           >{{loading_kitchen}}</strong
@@ -45,219 +53,165 @@
         <div class="local"><span class="status-dot"></span>{{local}}</div>
       </header>
       <main>
-        <p class="eyebrow label">Verid · {{eyebrow}}</p>
-        <div class="title-row">
-          <div class="title-copy">
-            <h1>{{hero_1}}<br /><em>{{hero_2}}</em></h1>
-            <p class="subtitle">{{subtitle_1}}<br />{{subtitle_2}}</p>
-            <div class="buttons hero-buttons">
-              <button class="btn" id="docs-btn">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
-                  <path d="M14 3H5v18h14V8zM14 3v5h5M8 12h8M8 16h6" /></svg
-                >{{docs_btn}}</button
-              ><button class="btn primary" id="split-btn">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
-                  <path d="M8 3v6a3 3 0 0 0 3 3h5M16 7l5 5-5 5M8 15v6M5 18h6" /></svg
-                >{{split_btn}}
-              </button>
+        <div class="layout">
+          <!--kitchen-->
+          <div class="pane-work" id="work" data-tab="kanban">
+            <div class="work-head">
+              <div class="work-tabs" role="tablist" aria-label="{{work_tabs}}">
+                <button class="tab active" role="tab" data-tab-btn="kanban" aria-selected="true">
+                  {{tab_kanban}}</button
+                ><button
+                  class="tab"
+                  role="tab"
+                  data-tab-btn="chat"
+                  id="tab-chat"
+                  aria-selected="false"
+                  hidden
+                >
+                  {{tab_chat}}<i class="live-dot" aria-hidden="true"></i></button
+                ><button
+                  class="tab"
+                  role="tab"
+                  data-tab-btn="sign"
+                  id="tab-sign"
+                  aria-selected="false"
+                  hidden
+                >
+                  {{tab_sign}}
+                </button>
+              </div>
+              <div class="buttons">
+                <button class="btn" id="docs-btn">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+                    <path d="M14 3H5v18h14V8zM14 3v5h5M8 12h8M8 16h6" /></svg
+                  >{{docs_btn}}</button
+                ><button class="btn primary" id="split-btn">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+                    <path d="M8 3v6a3 3 0 0 0 3 3h5M16 7l5 5-5 5M8 15v6M5 18h6" /></svg
+                  >{{split_btn}}
+                </button>
+              </div>
             </div>
-          </div>
-          <div class="chef-corner">
-            <div class="chef-says">
-              <strong>Yes, chef!</strong><span>{{chef_says_1}}<br />{{chef_says_2}}</span>
+            <div class="notice" id="notice" role="status"></div>
+            <div class="welcome" id="welcome">
+              <h2 id="welcome-title">{{welcome_empty_title}}</h2>
+              <p id="welcome-text">{{welcome_default}}</p>
+              <div class="buttons">
+                <button class="btn primary" id="welcome-btn">{{add_spec}}</button>
+              </div>
             </div>
-            <svg
-              class="chef-mascot"
-              viewBox="0 0 180 190"
-              fill="none"
-              role="img"
-              aria-label="{{mascot_aria}}"
-            >
-              <circle cx="93" cy="106" r="70" fill="#f1e3c9" />
-              <path
-                d="M30 169c0-30 20-48 55-48s56 18 56 48"
-                fill="#fffcf0"
-                stroke="#665b43"
-                stroke-width="2"
-              />
-              <path d="m68 127 18 15 18-15M86 142v34" stroke="#cfb995" stroke-width="2" />
-              <path d="m72 128 14 13 15-14-3 24-12-6-12 6z" fill="#bc5036" />
-              <circle cx="86" cy="95" r="33" fill="#f3cba0" stroke="#665b43" stroke-width="2" />
-              <path d="M56 89c-4-9-2-21 4-28h51c7 8 8 17 4 28" fill="#665b43" />
-              <path
-                d="M57 75V57c-17 0-22-22-7-29 0-19 27-24 35-9 12-16 36-8 35 9 17 6 13 29-3 29v18z"
-                fill="#fffdf4"
-                stroke="#665b43"
-                stroke-width="2"
-                stroke-linejoin="round"
-              />
-              <path
-                d="M58 66h58M76 43l3 18M99 43l-2 18"
-                stroke="#dac8a7"
-                stroke-width="2"
-                stroke-linecap="round"
-              />
-              <path
-                d="M61 81c-8 1-9 14-1 15M112 81c9 1 10 14 3 15"
-                fill="#f3cba0"
-                stroke="#665b43"
-                stroke-width="2"
-              />
-              <circle cx="75" cy="91" r="2.5" fill="#665b43" />
-              <path
-                d="M95 90q5-5 9 1M84 95l-2 7h6M79 111q9 9 17-2"
-                stroke="#665b43"
-                stroke-width="2"
-                stroke-linecap="round"
-              />
-              <ellipse cx="67" cy="102" rx="6" ry="3" fill="#e7a58a" />
-              <ellipse cx="106" cy="102" rx="5" ry="3" fill="#e7a58a" />
-              <path
-                d="M127 149q12-4 15-17"
-                stroke="#665b43"
-                stroke-width="16"
-                stroke-linecap="round"
-              />
-              <path
-                d="M127 147q10-2 13-17"
-                stroke="#fffcf0"
-                stroke-width="12"
-                stroke-linecap="round"
-              />
-              <circle cx="143" cy="125" r="8" fill="#f3cba0" stroke="#665b43" stroke-width="2" />
-              <path d="m143 120 8-34" stroke="#a97c46" stroke-width="5" stroke-linecap="round" />
-              <ellipse
-                cx="153"
-                cy="76"
-                rx="7"
-                ry="12"
-                transform="rotate(12 153 76)"
-                fill="#cda268"
-                stroke="#a97c46"
-                stroke-width="2"
-              />
-              <circle cx="99" cy="156" r="2" fill="#665b43" />
-              <circle cx="99" cy="167" r="2" fill="#665b43" />
-              <path
-                d="m24 65 2-6 2 6 6 2-6 2-2 6-2-6-6-2zM145 39l2-5 2 5 5 2-5 2-2 5-2-5-5-2z"
-                fill="#b49b63"
-              />
-            </svg>
+            <div class="work-panel" data-panel="kanban">
+              <p class="drag-hint" id="drag-hint">{{drag_hint}}</p>
+              <div class="steps">
+                <div class="step" id="step-spec" title="{{step_spec_title}}">
+                  <span>1</span>{{step_spec}}
+                </div>
+                <div class="step-arrow">›</div>
+                <div class="step" id="step-tasks" title="{{step_tasks_title}}">
+                  <span>2</span>{{step_tasks}}
+                </div>
+                <div class="step-arrow">›</div>
+                <div class="step" id="step-select" title="{{step_select_title}}">
+                  <span>3</span>{{step_select}}
+                </div>
+                <div class="step-arrow">›</div>
+                <div class="step" id="step-session" title="{{step_session_title}}">
+                  <span>4</span>{{step_session}}
+                </div>
+                <div class="step-note" id="drive-guide">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <rect x="5" y="10" width="14" height="11" rx="2" />
+                    <path d="M8 10V7a4 4 0 0 1 8 0v3" /></svg
+                  >{{guide_default}}
+                </div>
+              </div>
+              <div class="toolbar">
+                <div class="tabs" role="group" aria-label="{{filter_aria}}">
+                  <button class="tab active" data-filter="all">
+                    {{filter_all}} <span id="total-count">0</span></button
+                  ><button class="tab" data-filter="active">{{filter_active}}</button
+                  ><button class="tab" data-filter="done">{{filter_done}}</button>
+                </div>
+                <label class="search"
+                  ><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+                    <circle cx="10" cy="10" r="6" />
+                    <path d="m15 15 5 5" /></svg
+                  ><input
+                    id="search"
+                    placeholder="{{search_placeholder}}"
+                    aria-label="{{search_aria}}"
+                /></label>
+              </div>
+              <div class="summary">
+                <strong id="completion">{{completion}}</strong>
+                <div class="progress-track"><div class="progress-fill" id="progress"></div></div>
+                <span id="cycle">{{loading_kitchen}}</span>
+              </div>
+              <div class="columns" id="columns" aria-label="{{columns_aria}}">
+                <div class="loading">{{loading_tasks}}</div>
+              </div>
+            </div>
+            <div class="chat-box work-panel" data-panel="chat" id="chat-box" hidden>
+              <div class="chat-head">
+                <h3>{{chat_heading}}</h3>
+                <label class="chat-provider" for="chat-station"
+                  >{{chat_station}}
+                  <select id="chat-station"></select></label
+                ><label class="chat-provider"
+                  >Provider
+                  <select id="chat-provider"></select
+                ></label>
+              </div>
+              <div
+                class="chat-log"
+                id="chat-log"
+                role="log"
+                aria-live="polite"
+                aria-label="{{chat_log_aria}}"
+              ></div>
+              <textarea
+                id="chat-input"
+                aria-label="{{chat_input_aria}}"
+                placeholder="{{chat_placeholder}}"
+              ></textarea>
+              <div class="chat-actions">
+                <span class="chat-note" id="chat-note"></span
+                ><button class="btn" id="chat-stop" disabled>{{chat_stop}}</button
+                ><button class="btn primary" id="chat-send">{{chat_send}}</button>
+              </div>
+            </div>
+            <section class="chat-box work-panel" data-panel="sign" id="sign-box" hidden>
+              <div class="chat-head">
+                <h3>{{sign_heading}}</h3>
+                <span class="chip" id="sign-state"></span>
+              </div>
+              <p class="help">{{sign_help}}</p>
+              <details id="summary-doc" open>
+                <summary>{{summary_label}}</summary>
+                <pre class="doc-text" id="summary-text"></pre>
+              </details>
+              <details>
+                <summary>.verid/research.md</summary>
+                <pre class="doc-text" id="research-text"></pre>
+              </details>
+              <details>
+                <summary>.verid/design.md</summary>
+                <pre class="doc-text" id="design-text"></pre>
+              </details>
+              <div class="chat-actions">
+                <button class="btn primary" id="sign-btn">{{sign_btn}}</button>
+              </div>
+            </section>
+            <footer class="footer">
+              <span
+                ><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+                  <path d="m12 3 8 4v6c0 5-8 8-8 8s-8-3-8-8V7z" />
+                  <path d="m8 12 3 3 5-6" /></svg
+                ><strong id="drive-footer">{{footer_human}}</strong> {{footer_chef}}</span
+              ><span id="connection" role="status">{{connection_auto}}</span>
+            </footer>
           </div>
         </div>
-        <div class="steps">
-          <div class="step" id="step-spec" title="{{step_spec_title}}">
-            <span>1</span>{{step_spec}}
-          </div>
-          <div class="step-arrow">›</div>
-          <div class="step" id="step-tasks" title="{{step_tasks_title}}">
-            <span>2</span>{{step_tasks}}
-          </div>
-          <div class="step-arrow">›</div>
-          <div class="step" id="step-select" title="{{step_select_title}}">
-            <span>3</span>{{step_select}}
-          </div>
-          <div class="step-arrow">›</div>
-          <div class="step" id="step-session" title="{{step_session_title}}">
-            <span>4</span>{{step_session}}
-          </div>
-          <div class="step-note" id="drive-guide">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-              <rect x="5" y="10" width="14" height="11" rx="2" />
-              <path d="M8 10V7a4 4 0 0 1 8 0v3" /></svg
-            >{{guide_default}}
-          </div>
-        </div>
-        <!--kitchen-->
-        <div class="notice" id="notice" role="status"></div>
-        <div class="welcome" id="welcome">
-          <h2 id="welcome-title">{{welcome_empty_title}}</h2>
-          <p id="welcome-text">{{welcome_default}}</p>
-          <div class="buttons">
-            <button class="btn primary" id="welcome-btn">{{add_spec}}</button>
-          </div>
-        </div>
-        <section class="chat-box" id="sign-box" hidden>
-          <div class="chat-head">
-            <h3>{{sign_heading}}</h3>
-            <span class="chip" id="sign-state"></span>
-          </div>
-          <p class="help">{{sign_help}}</p>
-          <details id="summary-doc" open>
-            <summary>{{summary_label}}</summary>
-            <pre class="doc-text" id="summary-text"></pre>
-          </details>
-          <details>
-            <summary>.verid/research.md</summary>
-            <pre class="doc-text" id="research-text"></pre>
-          </details>
-          <details>
-            <summary>.verid/design.md</summary>
-            <pre class="doc-text" id="design-text"></pre>
-          </details>
-          <div class="chat-actions">
-            <button class="btn primary" id="sign-btn">{{sign_btn}}</button>
-          </div>
-        </section>
-        <div class="chat-box" id="chat-box" hidden>
-          <div class="chat-head">
-            <h3>{{chat_heading}}</h3>
-            <label class="chat-provider" for="chat-station"
-              >{{chat_station}}
-              <select id="chat-station"></select></label
-            ><label class="chat-provider"
-              >Provider
-              <select id="chat-provider"></select
-            ></label>
-          </div>
-          <div
-            class="chat-log"
-            id="chat-log"
-            role="log"
-            aria-live="polite"
-            aria-label="{{chat_log_aria}}"
-          ></div>
-          <textarea
-            id="chat-input"
-            aria-label="{{chat_input_aria}}"
-            placeholder="{{chat_placeholder}}"
-          ></textarea>
-          <div class="chat-actions">
-            <span class="chat-note" id="chat-note"></span
-            ><button class="btn" id="chat-stop" disabled>{{chat_stop}}</button
-            ><button class="btn primary" id="chat-send">{{chat_send}}</button>
-          </div>
-        </div>
-        <div class="toolbar">
-          <div class="tabs" role="group" aria-label="{{filter_aria}}">
-            <button class="tab active" data-filter="all">
-              {{filter_all}} <span id="total-count">0</span></button
-            ><button class="tab" data-filter="active">{{filter_active}}</button
-            ><button class="tab" data-filter="done">{{filter_done}}</button>
-          </div>
-          <label class="search"
-            ><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
-              <circle cx="10" cy="10" r="6" />
-              <path d="m15 15 5 5" /></svg
-            ><input id="search" placeholder="{{search_placeholder}}" aria-label="{{search_aria}}"
-          /></label>
-        </div>
-        <div class="summary">
-          <strong id="completion">{{completion}}</strong>
-          <div class="progress-track"><div class="progress-fill" id="progress"></div></div>
-          <span id="cycle">{{loading_kitchen}}</span>
-        </div>
-        <div class="columns" id="columns" aria-label="{{columns_aria}}">
-          <div class="loading">{{loading_tasks}}</div>
-        </div>
-        <footer class="footer">
-          <span
-            ><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
-              <path d="m12 3 8 4v6c0 5-8 8-8 8s-8-3-8-8V7z" />
-              <path d="m8 12 3 3 5-6" /></svg
-            ><strong id="drive-footer">{{footer_human}}</strong> {{footer_chef}}</span
-          ><span id="connection" role="status">{{connection_auto}}</span>
-        </footer>
       </main>
     </div>
     <dialog id="task-dialog" aria-labelledby="task-title">
@@ -340,6 +294,16 @@
       <div class="dialog-footer">
         <button class="btn" data-close="docs-dialog">{{close}}</button>
       </div>
+    </dialog>
+    <dialog id="run-dialog" aria-labelledby="run-title">
+      <form method="dialog">
+        <div class="dialog-head"><h2 id="run-title">{{run_warn_title}}</h2></div>
+        <div class="dialog-body"><p id="run-text"></p></div>
+        <div class="dialog-footer">
+          <button class="btn" value="cancel">{{run_cancel}}</button
+          ><button class="btn primary" value="go">{{run_go}}</button>
+        </div>
+      </form>
     </dialog>
     <div class="toast" id="toast" role="alert"></div>
     <!--scripts-->

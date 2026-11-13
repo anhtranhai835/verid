@@ -12,6 +12,7 @@ let chatStation = "",
   taskId = null,
   docKind = "spec",
   busy = false,
+  dragId = null,
   timer;
 const columns = ["backlog", "selected", "progress", "review", "done"].map((k) => [
   k,
@@ -109,6 +110,11 @@ function render() {
   const auto = board.drive === "auto";
   $("sign-box").hidden = !auto;
   $("chat-box").hidden = !auto;
+  $("tab-chat").hidden = !auto;
+  $("tab-sign").hidden = !auto;
+  $("tab-chat").classList.toggle("live", !!chat?.running);
+  if ($("tab-" + $("work").dataset.tab)?.hidden) showTab("kanban");
+  $("drag-hint").textContent = auto ? L.drag_hint : L.drag_hint_human;
   if (auto) {
     const d = board.documents;
     $("summary-doc").hidden = !d.summary.trim();
@@ -149,6 +155,8 @@ function render() {
   const notes = [];
   if (board.notice) notes.push(board.notice);
   if (board.drive === "auto" && !board.notice) notes.push(L.note_auto);
+  const cooking = board.tasks.filter((t) => t.column === "progress").length;
+  if (cooking > 1) notes.push(fmt("warn_parallel", { count: cooking }));
   if (board.halted) notes.push(fmt("halted", { reason: board.halted }));
   if (board.planError) notes.push(fmt("plan_error", { detail: board.planError }));
   if (board.active && board.tasks.some((t) => t.needsReapproval)) notes.push(L.note_reapprove);
@@ -295,8 +303,47 @@ function render() {
       );
       card.append(bottom);
       card.onclick = () => openTask(task.id);
+      card.draggable = columns.some(([target]) => dropAction(task, target));
+      card.ondragstart = (e) => {
+        dragId = task.id;
+        e.dataTransfer.setData("text/plain", task.id);
+        e.dataTransfer.effectAllowed = "move";
+        card.classList.add("dragging");
+        root
+          .querySelectorAll(".column")
+          .forEach((col) =>
+            col.classList.toggle("drop-ok", !!dropAction(task, col.dataset.column)),
+          );
+      };
+      card.ondragend = () => {
+        dragId = null;
+        card.classList.remove("dragging");
+        root
+          .querySelectorAll(".column")
+          .forEach((col) => col.classList.remove("drop-ok", "drop-over"));
+      };
       section.append(card);
     }
+    section.ondragover = (e) => {
+      if (
+        !dropAction(
+          board.tasks.find((t) => t.id === dragId),
+          key,
+        )
+      )
+        return;
+      e.preventDefault();
+      section.classList.add("drop-over");
+    };
+    section.ondragleave = (e) => {
+      if (!section.contains(e.relatedTarget)) section.classList.remove("drop-over");
+    };
+    section.ondrop = (e) => {
+      e.preventDefault();
+      const id = dragId || e.dataTransfer.getData("text/plain");
+      section.classList.remove("drop-over");
+      drop(id, key);
+    };
     if (!items.length)
       section.append(node("div", "column-empty", query || filter !== "all" ? L.no_match : empty));
     root.append(section);
@@ -310,6 +357,56 @@ function render() {
   }
 }
 
+// Where a card may go by drag. No-brain: into Cooking starts an AI run. Big-brain: picking a
+// ticket selects it, and Done serves a ticket that passed review.
+function dropAction(task, column) {
+  if (!task || task.column === column || busy) return null;
+  if (board.drive === "auto")
+    return column === "progress" && (task.column === "backlog" || task.column === "selected")
+      ? "run"
+      : null;
+  if (column === "selected" && task.column === "backlog" && !task.reason) return "select";
+  if (column === "done" && task.canServe) return "serve";
+  return null;
+}
+async function drop(id, column) {
+  const task = board.tasks.find((t) => t.id === id);
+  const action = dropAction(task, column);
+  if (action === "run") return runTask(task);
+  if (action === "select") {
+    taskId = id;
+    await selectTask(id);
+    openTask(id);
+  } else if (action === "serve" && (await act("serve", { task: id }))) toast(L.toast_served);
+}
+function confirmRun(count) {
+  $("run-text").textContent = fmt("run_warn_text", { count });
+  $("run-dialog").returnValue = "";
+  $("run-dialog").showModal();
+  return new Promise((resolve) =>
+    $("run-dialog").addEventListener("close", () => resolve($("run-dialog").returnValue === "go"), {
+      once: true,
+    }),
+  );
+}
+async function runTask(task) {
+  // Each run is its own AI session reading its own context: warn before a second one starts.
+  const live = Math.max(
+    board.tasks.filter((t) => t.column === "progress").length,
+    chat?.running ? 1 : 0,
+  );
+  if (live > 0 && !(await confirmRun(live))) return;
+  try {
+    if (window.Notification?.permission === "default") Notification.requestPermission();
+  } catch {}
+  if (!chat) await refreshChat();
+  const provider = $("chat-provider").value || chat?.providers[0] || "";
+  const result = await act("run", { task: task.id, provider });
+  if (!result) return;
+  toast(fmt("toast_run", { id: task.id }));
+  chat = null;
+  refreshChat();
+}
 function openTask(id) {
   mockupView = false;
   mockupKey = "";
@@ -549,7 +646,8 @@ $("chat-station").onchange = () => {
 $("chat-send").onclick = sendChat;
 $("chat-stop").onclick = stopChat;
 $("chat-input").onkeydown = (e) => {
-  if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+  // Enter sends, Shift+Enter breaks the line; never while an input method is composing a letter.
+  if (e.key === "Enter" && !e.shiftKey && !e.isComposing && e.keyCode !== 229) {
     e.preventDefault();
     sendChat();
   }
@@ -614,9 +712,38 @@ $("search").oninput = (e) => {
   query = e.target.value.trim().toLocaleLowerCase();
   render();
 };
+function showTab(name) {
+  $("work").dataset.tab = name;
+  document.querySelectorAll("[data-tab-btn]").forEach((b) => {
+    const on = b.dataset.tabBtn === name;
+    b.classList.toggle("active", on);
+    b.setAttribute("aria-selected", String(on));
+  });
+  if (name === "chat") $("chat-input").focus({ preventScroll: true });
+}
+document
+  .querySelectorAll("[data-tab-btn]")
+  .forEach((b) => (b.onclick = () => showTab(b.dataset.tabBtn)));
+function showView(view) {
+  document.body.dataset.view = view;
+  document
+    .querySelectorAll("button[data-view]")
+    .forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.view === view)));
+  try {
+    localStorage.setItem("verid-view", view);
+  } catch {}
+}
+document
+  .querySelectorAll("button[data-view]")
+  .forEach((b) => (b.onclick = () => showView(b.dataset.view)));
+let savedView = "split";
+try {
+  savedView = localStorage.getItem("verid-view") || "split";
+} catch {}
+showView($("kitchen") ? savedView : "work");
 refresh();
 setInterval(async () => {
-  if (!busy && !$("docs-dialog").open) {
+  if (!busy && !dragId && !$("docs-dialog").open) {
     await refresh();
     if ($("task-dialog").open) renderTask();
   }

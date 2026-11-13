@@ -398,6 +398,10 @@ export function boardChat(
   };
 }
 
+/** What a station's own session is told to do: its one module, inside its Boundary. */
+export const stationBrief = (module: string) =>
+  `Run verid context ${module}. Complete only this module using verid menu, TDD, taste and independent review. Stay inside Boundary. Stop after it is served; integration belongs to the developer.`;
+
 /** A bounded process pool; each worktree keeps its own provider ID, transcript and stop button. */
 export function stationBoardChat(project: string, spawner: Spawner = spawnLaunch) {
   type Chat = ReturnType<typeof boardChat>;
@@ -486,7 +490,7 @@ export function stationBoardChat(project: string, spawner: Spawner = spawnLaunch
         await send(record.module, {
           task: null,
           provider: selectedProvider,
-          text: `Run verid context ${record.module}. Complete only this module using verid menu, TDD, taste and independent review. Stay inside Boundary. Stop after it is served; integration belongs to the developer.`,
+          text: stationBrief(record.module),
         });
       }
     } finally {
