@@ -234,9 +234,10 @@ npm run test:coverage
 
 ## Ghi nhận
 
-Workflow đóng gói trong verid tham khảo
-[superpowers](https://github.com/obra/superpowers) và
-[andrej-karpathy-skills](https://github.com/forrestchang/andrej-karpathy-skills).
+Workflow và các skill đóng gói trong verid tham khảo
+[superpowers](https://github.com/obra/superpowers),
+[andrej-karpathy-skills](https://github.com/forrestchang/andrej-karpathy-skills) và
+[ClaudeKit Skills](https://github.com/anhtranhai835/claudekit-skills).
 Nguồn ghi nhận chi tiết nằm trong license của từng skill.
 
 ## Giấy phép

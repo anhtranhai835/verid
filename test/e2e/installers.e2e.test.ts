@@ -37,7 +37,15 @@ function runFile(command: string, args: string[], env: NodeJS.ProcessEnv, cwd: s
   const err = join(cwd, "stderr.txt");
   const fds = [openSync(join(cwd, "stdin.txt"), "w+"), openSync(out, "w"), openSync(err, "w")];
   try {
-    const r = spawnSync(command, args, { cwd, env, stdio: fds, windowsHide: true, timeout: 15000 });
+    // Windows shell startup and the installer's nested shims can exceed 15 s under CI load.
+    // Keep the subprocess bounded, with room below Vitest's 90 s Windows test timeout.
+    const r = spawnSync(command, args, {
+      cwd,
+      env,
+      stdio: fds,
+      windowsHide: true,
+      timeout: process.platform === "win32" ? 60_000 : 15_000,
+    });
     return {
       code: r.status,
       error: r.error?.message,
@@ -299,7 +307,7 @@ const runInteractive = (shell: Installer, folder: string, home = posix(dir)) => 
 for (const shell of shells)
   describe.skipIf(!shell.available)(shell.name, () => {
     // Each table starts several powershell.exe processes; startup slows under full-suite load.
-    const tableTimeout = shell.posix ? 20_000 : 60_000;
+    const tableTimeout = shell.posix ? 20_000 : 90_000;
     beforeEach(() => {
       for (const name of ["node", "npm", "gh", "claude", "verid"]) shell.stub(name);
     });

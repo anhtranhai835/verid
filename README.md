@@ -236,9 +236,10 @@ omits installer tests.
 
 ## Credits
 
-verid's bundled workflows draw on
-[superpowers](https://github.com/obra/superpowers) and
-[andrej-karpathy-skills](https://github.com/forrestchang/andrej-karpathy-skills).
+verid's bundled workflows and skills draw on
+[superpowers](https://github.com/obra/superpowers),
+[andrej-karpathy-skills](https://github.com/forrestchang/andrej-karpathy-skills) and
+[ClaudeKit Skills](https://github.com/anhtranhai835/claudekit-skills).
 See each bundled skill's license for attribution.
 
 ## License
