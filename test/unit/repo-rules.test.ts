@@ -324,6 +324,8 @@ describe("repo rules", () => {
     });
 
     // A renamed repo keeps redirecting, so a stale name only shows up as drift between files.
+    // Other repositories of the same owner that the files link to on purpose, such as a credit.
+    const linked = new Set(["claudekit-skills"]);
     it("names one GitHub repository everywhere", () => {
       const repo = /anhtranhai835\/([\w.-]+?)(?:\.git)?$/.exec(pkg.repository.url)?.[1];
       expect(repo).toBe("verid");
@@ -339,7 +341,7 @@ describe("repo rules", () => {
       ];
       const other = files.flatMap((file) =>
         [...readFileSync(join(root, file), "utf8").matchAll(/anhtranhai835\/([\w-]+)/g)]
-          .filter((m) => m[1] !== repo)
+          .filter((m) => m[1] !== repo && !linked.has(m[1] ?? ""))
           .map((m) => `${file}: ${m[0]}`),
       );
       expect(other).toEqual([]);
