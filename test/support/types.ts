@@ -10,7 +10,7 @@ export interface Run {
 
 export type GitResult = SpawnSyncReturns<string>;
 
-export interface ProjectFiles {
+interface ProjectFiles {
   readonly root: string;
   readonly dir: string;
   readonly stateFile: string;
@@ -50,7 +50,7 @@ export interface ProjectOptions {
   provider?: string;
   payload?: Payload;
   cliEnv?: NodeJS.ProcessEnv | (() => NodeJS.ProcessEnv);
-  manifestPreset?: "plain" | "codex" | "review" | "antigravity";
+  manifestPreset?: "plain" | "codex" | "review";
   hookEnv?: NodeJS.ProcessEnv | (() => NodeJS.ProcessEnv);
   approved?: boolean;
 }

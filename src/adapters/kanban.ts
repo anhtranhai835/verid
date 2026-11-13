@@ -83,7 +83,7 @@ function snapshotOf(project: string, manifest: Manifest, state: State) {
     (file) => !textOf(join(project, ".verid", file)).trim(),
   );
   const views = plan?.ok
-    ? facts && facts.plan?.ok
+    ? facts?.plan?.ok
       ? autoModules(facts.plan.modules, facts.plan.hashes, state.modules, facts.evidence)
       : planViews(project, plan, state)
     : [];

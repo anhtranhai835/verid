@@ -521,7 +521,7 @@ describe("renderManifest", () => {
         "# verid manifest: only the developer edits this file. Commit it with the project.",
         "schemaVersion: 1",
         'mode: "prep" # prep | recipe | remix',
-        'providers: ["claude-code"] # claude-code | codex | antigravity',
+        'providers: ["claude-code"] # claude-code | codex',
         "architecture: ddd # ddd | clean | layered | none",
         "allowed_skills: [] # additional exact names or prefix:*; verid:* is known by default",
         "allowed_agents: [] # roles are known by default",
@@ -555,7 +555,7 @@ describe("renderManifest", () => {
   it("maps verid's own agents to the roles, which read back", () => {
     const repo = { path: ".", source_globs: ["**"], test_globs: ["test/**"] };
     const text = renderManifest("prep", repo, DEFAULT_ROLES);
-    expect(text.split("\n").filter((l) => /^(roles:|  [a-z]+: \[)/.test(l))).toEqual([
+    expect(text.split("\n").filter((l) => /^(roles:| {2}[a-z]+: \[)/.test(l))).toEqual([
       "roles: # agent types Claude Code reports, from the verid plugin; any agent can fill a role",
       '  reviewer: ["verid:reviewer"]',
       '  tester: ["verid:tester"]',

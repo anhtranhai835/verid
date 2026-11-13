@@ -3,7 +3,7 @@ import { accessSync, constants, existsSync, readFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const CODEX_HOOK_EVENTS = [
+const CODEX_HOOK_EVENTS = [
   "PreToolUse",
   "UserPromptSubmit",
   "Stop",
@@ -18,7 +18,7 @@ export function installationRoot(): string {
     ? join(folder, "..", "..")
     : join(folder, "..");
 }
-export const isRepoRuntime = (): boolean =>
+const isRepoRuntime = (): boolean =>
   basename(dirname(fileURLToPath(import.meta.url))) === "hooks" &&
   basename(installationRoot()) === ".verid";
 export const contentRoot = (): string =>

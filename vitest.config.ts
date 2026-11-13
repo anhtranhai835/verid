@@ -5,6 +5,8 @@ export default defineConfig({
     // Tests simulate developer terminals; explicit agent-guard cases supply their own markers.
     env: { CLAUDECODE: "", CODEX_THREAD_ID: "", CODEX_SESSION_ID: "", CODEX_TOOL_CALL_ID: "" },
     include: ["test/**/*.test.ts"],
+    // The board embeds its stylesheets as text (`?raw`); by default Vitest empties every CSS import.
+    css: true,
     // Windows e2e cases launch several CLI/Git processes and clean up their files.
     // Allow for scheduler/filesystem stalls; runner deadlines are asserted separately.
     testTimeout: process.platform === "win32" ? 90_000 : 20_000,

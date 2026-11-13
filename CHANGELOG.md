@@ -7,6 +7,17 @@ tags `1.0.0` and `1.2.0` keep their names.
 
 ## [Unreleased]
 
+### Removed
+
+- The Antigravity provider: `--provider antigravity`, `verid setup-antigravity` and the plugin in
+  `plugin/antigravity`. A manifest that lists `antigravity` under `providers` no longer loads;
+  remove the entry and run `verid cook` again. Claude Code and Codex are unchanged.
+
+### Fixed
+
+- A `|` in an acceptance criterion no longer splits its row of the scaffolded trace table: it is
+  written as `\|`.
+
 ## [2.1.0] - 2026-11-12
 
 ### Added

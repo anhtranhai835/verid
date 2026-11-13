@@ -3,7 +3,6 @@ import type { ErrorCode } from "../core/errors.js";
 import type { Provider } from "../core/manifest.js";
 import { bilingual } from "./i18n.js";
 import { projectDir as claudeProjectDir, type FileAction, type PreToolUse } from "./claude-code.js";
-import { antigravityHost } from "./antigravity.js";
 import { CODEX_TOOLS, codexAction, codexOutput, codexPayload, codexProject } from "./codex.js";
 import { VeridError } from "./state-store.js";
 
@@ -14,7 +13,7 @@ export interface Result {
 }
 
 /** A tool call as the rules judge it, when the host's tools are not Claude Code's. */
-export interface HostAction {
+interface HostAction {
   action: Action;
   /** What the call writes or reads beyond the action itself. */
   files: FileAction[];
@@ -76,7 +75,7 @@ export const claudeHost: Host = {
 // Events Codex sends that verid has nothing to do with.
 const CODEX_IGNORED = new Set(["PostToolUse", "SessionEnd"]);
 
-export const codexHost: Host = {
+const codexHost: Host = {
   id: "codex",
   singleWriter: true,
   // Codex has no attended-input signal: a prompt never opens an exception there.
@@ -99,17 +98,12 @@ export function hostFor(args: readonly string[]): { host: Host; error?: VeridErr
   const bad = (host: Host) => ({
     host,
     error: new VeridError("VERID_BURNT_PAYLOAD", {
-      detail: "expected --provider claude-code|codex|antigravity",
+      detail: "expected --provider claude-code|codex",
     }),
   });
   if (args.length === 0) return { host: claudeHost };
   if (args[0] !== "--provider") return bad(claudeHost);
   if (args[1] === "codex") return args.length === 2 ? { host: codexHost } : bad(codexHost);
   if (args[1] === "claude-code") return args.length === 2 ? { host: claudeHost } : bad(claudeHost);
-  if (args[1] === "antigravity") {
-    const event = args[2] === "--event" && args.length === 4 ? args[3] : undefined;
-    const host = antigravityHost(event);
-    return event ? { host } : bad(host);
-  }
   return bad(claudeHost);
 }

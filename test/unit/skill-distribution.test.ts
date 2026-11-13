@@ -32,9 +32,6 @@ describe("self-contained verid skills", () => {
       "before order",
     ])
       expect(section).toContain(term);
-    expect(read("plugin/antigravity/skills/verid-router/SKILL.md")).toContain(
-      "<SKILLS_ROOT>/modules/SKILL.md",
-    );
     expect(read("plugin/agents/ui-ux-designer.md")).toContain("ui/mockups/choice.json");
     expect(read("plugin/templates/module/ui/brief.md")).toContain("## Mockup choice");
   });
@@ -76,20 +73,6 @@ describe("self-contained verid skills", () => {
           const instructions = renderInstructions(parsed.manifest, provider, skillsRoot);
           expect(instructions).toContain(`${skillsRoot}/../templates/skill-routing.md`);
         }
-  });
-
-  it("reaches every distributed skill on Antigravity through a wrapper or the router", () => {
-    const router = read("plugin/antigravity/skills/verid-router/SKILL.md");
-    const wrapped = readdirSync(join(root, "plugin/antigravity/skills"));
-    const routed = new Set([...router.matchAll(/<SKILLS_ROOT>\/([\w-]+)\//g)].map((m) => m[1]));
-    for (const name of routed)
-      expect(existsSync(join(root, "plugin/skills", name!, "SKILL.md")), name).toBe(true);
-    const skills = readdirSync(join(root, "plugin/skills")).filter((name) =>
-      existsSync(join(root, "plugin/skills", name, "SKILL.md")),
-    );
-    expect(
-      skills.filter((name) => !routed.has(name) && !wrapped.includes(`verid-${name}`)),
-    ).toEqual([]);
   });
 
   it("keeps skill script tests and coverage artifacts out of distributed resources", () => {
@@ -172,7 +155,6 @@ describe("self-contained verid skills", () => {
     const summary = read("plugin/skills/design/references/summary.md");
     for (const text of [".verid/summary.md", "verid order", "plain language"])
       expect(summary, text).toContain(text);
-    expect(read("plugin/antigravity/skills/verid-design/SKILL.md")).toContain(".verid/summary.md");
   });
 
   it("has BA read the developer's documents and write an EARS spec that plans trace", () => {
@@ -296,7 +278,6 @@ describe("self-contained verid skills", () => {
     const findings = read("plugin/skills/build/references/review-findings.md");
     for (const text of ["failing test", "The developer decides", "verid menu --commits --file"])
       expect(findings, text).toContain(text);
-    expect(read("plugin/antigravity/skills/verid-build/SKILL.md")).toContain("`Tried`");
   });
 
   it("keeps the rarely used edge-case modes out of the always-read skill", () => {
@@ -323,7 +304,7 @@ describe("self-contained verid skills", () => {
   });
 
   it("proposes a full, quick or fix module by the size of the work; the developer runs it", () => {
-    for (const file of ["plugin/skills/ba/SKILL.md", "plugin/antigravity/skills/verid-ba/SKILL.md"])
+    for (const file of ["plugin/skills/ba/SKILL.md"])
       for (const text of [
         "`verid module <name>`",
         "`verid module <name> --quick`",
@@ -331,10 +312,7 @@ describe("self-contained verid skills", () => {
         "debugging",
       ])
         expect(read(file), `${file}: ${text}`).toContain(text);
-    for (const file of [
-      "plugin/skills/onboard/SKILL.md",
-      "plugin/antigravity/skills/verid-onboard/SKILL.md",
-    ])
+    for (const file of ["plugin/skills/onboard/SKILL.md"])
       expect(read(file), file).toContain("`--quick` or `--fix`");
     for (const [path, lines] of [
       ["quick", 40],
@@ -352,10 +330,7 @@ describe("self-contained verid skills", () => {
   });
 
   it("fills a served module's release record without pushing or opening a pull request", () => {
-    for (const file of [
-      "plugin/skills/release/SKILL.md",
-      "plugin/antigravity/skills/verid-release/SKILL.md",
-    ]) {
+    for (const file of ["plugin/skills/release/SKILL.md"]) {
       const text = read(file);
       expect(text.split("\n").length, file).toBeLessThan(60);
       for (const phrase of ["verid serve", "release/release-plan.md", "rollback", "never push"])
@@ -365,10 +340,7 @@ describe("self-contained verid skills", () => {
   });
 
   it("drives a read-only legacy rewrite through the adapter commands and leaves the signature to the developer", () => {
-    for (const file of [
-      "plugin/skills/reheat/SKILL.md",
-      "plugin/antigravity/skills/verid-reheat/SKILL.md",
-    ]) {
+    for (const file of ["plugin/skills/reheat/SKILL.md"]) {
       const text = read(file);
       expect(text.split("\n").length, file).toBeLessThan(60);
       for (const phrase of [
@@ -417,11 +389,7 @@ describe("self-contained verid skills", () => {
   it("states the board and drive rules once per context", () => {
     const sentence = "the developer arranges the priority queue";
     expect(read("plugin/templates/workflow.md")).toContain(sentence);
-    for (const file of [
-      "plugin/skills/modules/SKILL.md",
-      "plugin/templates/skill-routing.md",
-      "plugin/antigravity/skills/verid-router/SKILL.md",
-    ])
+    for (const file of ["plugin/skills/modules/SKILL.md", "plugin/templates/skill-routing.md"])
       expect(read(file), file).not.toContain(sentence);
   });
 

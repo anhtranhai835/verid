@@ -10,7 +10,7 @@ verid cook --mode prep --resources repo --provider codex --lang vi --yes
 | -------------------------------------------- | --------------------------------------------------------------------------------------------- |
 | `--mode`                                     | `prep`, `recipe`, `remix` hoặc `reheat`.                                                      |
 | `--resources`                                | `installed` hoặc `repo`.                                                                      |
-| `--provider`                                 | `claude-code`, `codex` hoặc `antigravity`; lặp flag để chọn nhiều.                            |
+| `--provider`                                 | `claude-code` hoặc `codex`; lặp flag để chọn nhiều.                                           |
 | `--drive`                                    | `big-brain` hoặc `no-brain` cho prep/recipe (`human`, `ai`, `auto` là tên cũ).                |
 | `--architecture`                             | `ddd`, `clean`, `layered` hoặc `none`.                                                        |
 | `--layout`                                   | `monorepo` hoặc `workspace`; bỏ trống để tự nhận diện.                                        |

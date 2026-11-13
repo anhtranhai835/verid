@@ -38,7 +38,7 @@ evidence and checks approvals; hooks refuse writes that skip an approval or a fa
 
 ## Quick start
 
-Needs Node.js 22 or later, Git, and Claude Code or Codex. Other ways to install, and Codex and Antigravity setup, are in [installation](docs/installation.md).
+Needs Node.js 22 or later, Git, and Claude Code or Codex. Other ways to install, and Codex setup, are in [installation](docs/installation.md).
 
 To try verid on a small project first, follow [examples/slugify](examples/slugify/README.md).
 
@@ -123,7 +123,6 @@ project root. The `verid` shorthand below also works with an optional global ins
 | `verid garnish`                        | Start a refactor-only session.                                                |
 | `verid halt [reason]` / `verid resume` | Pause agent tool use or resume it.                                            |
 | `verid setup-codex`                    | Set up the installed reviewer in the Codex user config.                       |
-| `verid setup-antigravity`              | Install or update verid's Antigravity plugin for this user.                   |
 
 Cook, upgrade, plugin, stock, order, serve, garnish, halt and resume are developer commands,
 run in your own terminal. Agents use taste, menu, peek and doctor. In signed no-brain
@@ -213,7 +212,7 @@ are in the [hook rule reference](docs/hook-reference.md).
 
 ## Docs
 
-- [Install and set up](docs/installation.md): install options, Codex and Antigravity setup, upgrading, migrating from 1.x.
+- [Install and set up](docs/installation.md): install options, Codex setup, upgrading, migrating from 1.x.
 - [Cook reference](docs/cook-reference.md): flags, preview, modes and drive.
 - [Modules and board](docs/modules-and-board.md): dossiers, the browser board, TDD states.
 - [Providers and protection](docs/providers-and-protection.md): agents and skills, the `.verid/` tree, working with a teammate.
@@ -225,13 +224,15 @@ are in the [hook rule reference](docs/hook-reference.md).
 ```sh
 npm ci
 npm run typecheck
+npm run lint && npm run deadcode
 npx prettier --check .
 npm test
 npm run test:coverage
 ```
 
-[CI](.github/workflows/ci.yml): typecheck, format, all tests with coverage floors on Windows per PR;
-on `main` and releases also Ubuntu (Node 22, 24) and macOS. `npm test` omits installer tests.
+[CI](.github/workflows/ci.yml) per PR: typecheck, lint (Biome), dead code (knip), format, and all tests
+on Windows (with coverage floors) and Ubuntu; before a release also Node 24 and macOS. `npm test`
+omits installer tests.
 
 ## Credits
 

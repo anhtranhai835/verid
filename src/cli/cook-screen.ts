@@ -34,7 +34,8 @@ import { languageOf, VeridError } from "../adapters/state-store.js";
 import { ARCHITECTURES } from "../core/rules.js";
 import { checkWorkspaceRoot, detectLayout } from "../adapters/workspace.js";
 import { ask, select, type Io } from "../adapters/terminal.js";
-import { planCook, projectFacts, servedLine, setupDoneLine, manifestUpgradeLines } from "./init.js";
+import { planCook, servedLine, setupDoneLine } from "./init.js";
+import { manifestUpgradeLines, projectFacts } from "./cook/manifest.js";
 import type { CliResult } from "./test.js";
 import { restorePlugins } from "../adapters/plugin-store.js";
 
@@ -59,8 +60,6 @@ const PROVIDER_CHOICES = [
   { label: "Claude Code", providers: ["claude-code"] },
   { label: "Codex", providers: ["codex"] },
   { label: "Claude Code + Codex", providers: ["claude-code", "codex"] },
-  { label: "Antigravity", providers: ["antigravity"] },
-  { label: "Claude Code + Antigravity", providers: ["claude-code", "antigravity"] },
 ] as const;
 
 /**
@@ -477,7 +476,7 @@ export async function interactiveCook(
 }
 
 /** The provider whose command is installed, Claude Code first; Claude Code when neither is. */
-export const installedProviders = (project: string): Provider[] =>
+const installedProviders = (project: string): Provider[] =>
   !launchable("claude", project) && launchable("codex", project) ? ["codex"] : ["claude-code"];
 
 const layoutOf = (repo: Repo) => ({

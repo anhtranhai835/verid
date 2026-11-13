@@ -104,7 +104,7 @@ export function changedServed(
     .map(([name]) => name);
 }
 
-export type StuckReason =
+type StuckReason =
   | "blocked"
   | "research_changed"
   | "design_changed"
@@ -116,7 +116,7 @@ export type StuckReason =
   | "no_progress"
   | "reheat_gate";
 
-export type AutoPlanRead =
+type AutoPlanRead =
   | { ok: true; modules: PlanModule[]; hashes: Record<string, string> }
   | { ok: false; detail: string }
   | null; // no plan.md

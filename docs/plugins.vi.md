@@ -40,7 +40,7 @@ bất kỳ bước nào thì không đăng ký; tác động ngoài thư mục c
 
 Đường dẫn tài nguyên tương đối trong gói, không chứa liên kết. CLI chép tài nguyên vào
 `.verid/skills/`, `.verid/agents/` với tiền tố `<plugin>-`; Claude nhận bản skill/agent
-native, Codex và Antigravity nhận skill trong `.agents/skills/`. Agent Markdown còn ở
+native, Codex nhận skill trong `.agents/skills/`. Agent Markdown còn ở
 project để host sử dụng theo khả năng của nó. Không ghi đè tài nguyên khác. Plugin được
 bật tự thêm tên tài nguyên vào danh sách dispatch; không sửa manifest hoặc gán vai trò
 ghi. Developer phải tự sửa `roles` trong manifest nếu cần; gate TDD và vai trò vẫn áp dụng.

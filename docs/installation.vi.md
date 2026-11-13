@@ -104,19 +104,6 @@ lực approval sau khi sửa spec module. Kiểm tra offline với Codex CLI `0.
 cũng xác nhận input mà model nhìn thấy có chỉ dẫn project và skills repo.
 Xem [ghi chú kiểm chứng](modular-cook.md#dùng-với-codex).
 
-## Thiết lập Antigravity
-
-1. Chạy `verid setup-antigravity` một lần trên mỗi máy, và chạy lại sau mỗi lần cập nhật
-   verid. Lệnh cài plugin vào `~/.gemini/config/plugins/verid/`. Khởi động lại Antigravity.
-2. Chạy cook với `--provider antigravity` (thêm `--provider claude-code` nếu dùng cả hai).
-3. Chạy `verid doctor` và xử lý các phát hiện.
-4. Để main viết test/code; gọi `verid-reviewer` (và `verid-security`) bằng
-   `invoke_subagent` để review. Gõ `/verid peek`, `/verid tip`, `/verid confirm` trong chat.
-
-Lõi verid tự đọc payload hook của Antigravity, nên cùng một bộ luật, cổng TDD và ràng buộc
-review áp dụng như trên Claude Code và Codex. Định dạng payload chưa được đối chiếu với
-fixture ghi lại từ Antigravity thật. Xem [ghi chú tích hợp](antigravity-integration.vi.md).
-
 ## Nâng cấp
 
 Với tài nguyên repo, `node .verid/verid.mjs cook --yes` nối lại phiên bản đã commit

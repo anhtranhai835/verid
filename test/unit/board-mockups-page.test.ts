@@ -1,7 +1,7 @@
 import { runInNewContext } from "node:vm";
 import { describe, expect, it, vi } from "vitest";
 import { messages } from "../../src/adapters/i18n.js";
-import { MOCKUP_JS } from "../../src/cli/board-mockups-page.js";
+import MOCKUP_JS from "../../src/cli/board-ui/mockups.client.js?raw";
 
 // A small DOM double lets these tests execute the shipped browser code and its async handlers.
 function mockupUi(lang: "en" | "vi" = "en") {

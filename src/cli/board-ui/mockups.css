@@ -1,0 +1,163 @@
+.task-view-tabs {
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 24px;
+}
+.task-view-tabs .btn,
+#mockup-panel .btn {
+  min-height: 44px;
+  font-size: 13px;
+  white-space: normal;
+  line-height: 1.5;
+}
+.task-view-tabs .btn[aria-selected="true"] {
+  background: #ebe5d6;
+  color: #39352e;
+  border-color: #877f72;
+  box-shadow: inset 0 -2px var(--accent);
+}
+.task-view-tabs .btn:hover:not(:disabled),
+#mockup-panel .btn:hover:not(:disabled) {
+  background: #f2e9d7;
+  border-color: #877f72;
+}
+.task-view-tabs .btn:active:not(:disabled),
+#mockup-panel .btn:active:not(:disabled) {
+  background: #ebe5d6;
+}
+.task-view-tabs .btn:focus-visible,
+#task-details:focus-visible,
+#mockup-panel:focus-visible,
+#mockup-panel :focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+}
+#mockup-panel {
+  min-width: 0;
+  color: #39352e;
+}
+#mockup-panel .mockup-intro,
+#mockup-panel .mockup-empty {
+  font-size: 14px;
+  line-height: 1.6;
+  color: #6e5e48;
+  margin: 0 0 24px;
+}
+#mockup-panel .mockup-option {
+  border-top: 1px solid var(--border);
+  padding-top: 24px;
+  margin-top: 24px;
+  min-width: 0;
+}
+#mockup-panel .mockup-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+#mockup-panel h3 {
+  font-size: 16px;
+  line-height: 1.5;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0;
+  margin: 0;
+  color: #39352e;
+  overflow-wrap: anywhere;
+}
+#mockup-panel .mockup-selected {
+  font-size: 13px;
+  line-height: 1.5;
+  color: #4d513b;
+  font-weight: 600;
+}
+#mockup-panel .mockup-option[data-selected="true"] h3 {
+  color: #7d4935;
+}
+#mockup-panel .mockup-preview {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-height: 360px;
+  background: #fffcf5;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  margin-bottom: 16px;
+}
+#mockup-panel iframe {
+  display: block;
+  width: 100%;
+  height: 360px;
+  border: 0;
+  border-radius: 5px;
+  grid-area: 1/1;
+  min-width: 0;
+  background: #fff;
+}
+#mockup-panel .mockup-placeholder {
+  grid-area: 1/1;
+  align-self: center;
+  justify-self: center;
+  padding: 24px;
+  text-align: center;
+  max-width: 100%;
+}
+#mockup-panel .mockup-load-status,
+#mockup-panel .mockup-save-status {
+  font-size: 14px;
+  line-height: 1.6;
+  color: #6e5e48;
+  overflow-wrap: anywhere;
+  margin: 0 0 12px;
+  white-space: pre-wrap;
+}
+#mockup-panel [data-error="true"] {
+  color: #9c4a34;
+}
+#mockup-panel label {
+  display: block;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #39352e;
+  margin: 0 0 12px;
+}
+#mockup-panel input {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  min-height: 48px;
+  margin-top: 8px;
+  padding: 10px 12px;
+  font-size: 16px;
+  line-height: 1.5;
+  border: 1px solid #877f72;
+  border-radius: 5px;
+  background: #fffcf5;
+  color: #39352e;
+}
+#mockup-panel input:disabled {
+  opacity: 1;
+  color: #6e5e48;
+}
+#mockup-panel .mockup-save-status {
+  margin: 12px 0 0;
+}
+@media (max-width: 700px) {
+  .task-view-tabs .btn {
+    flex: 1;
+  }
+  #mockup-panel .mockup-option > .btn {
+    width: 100%;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .task-view-tabs .btn,
+  #mockup-panel *,
+  #mockup-panel *::before,
+  #mockup-panel *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}

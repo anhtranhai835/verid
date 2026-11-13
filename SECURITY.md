@@ -9,7 +9,7 @@ Only the latest major version receives security fixes. Today that is 2.x.
 The repository is private, so its issues are visible only to people with access. Open an issue
 titled `Security: <short summary>`. Do not post the details anywhere outside this repository.
 
-Include the verid version, the provider (Claude Code, Codex or Antigravity), and the smallest
+Include the verid version, the provider (Claude Code or Codex), and the smallest
 steps that reproduce the problem.
 
 ## In scope
@@ -22,4 +22,4 @@ steps that reproduce the problem.
 ## Out of scope
 
 - A developer who disables or uninstalls verid's hooks on their own machine.
-- Bugs in Claude Code, Codex or Antigravity themselves; report those to their vendors.
+- Bugs in Claude Code or Codex themselves; report those to their vendors.

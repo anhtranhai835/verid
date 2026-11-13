@@ -1,7 +1,7 @@
 # Parallel stations
 
 A station gives one independent module a Git worktree, branch, TDD cycle and fresh
-provider session. Claude Code, Codex and Antigravity use the same gates. Stations
+provider session. Claude Code and Codex use the same gates. Stations
 currently require a prep or recipe project at the root of one Git repository, with
 `repos.path: .`. Multi-repository workspaces are not supported.
 
@@ -35,8 +35,7 @@ verid station list
 
 Open a fresh provider session at each printed path, typically
 `../<project>.stations/<module>`, on `feat/<module>`. On Codex, trust the worktree
-and its hooks through the provider's usual UI. Antigravity must open that worktree
-as its workspace. Run `verid doctor` there before starting. Keep each writer and
+and its hooks through the provider's usual UI. Run `verid doctor` there before starting. Keep each writer and
 reviewer inside its station; dispatch into worktrees from one parent conversation
 is not supported yet.
 

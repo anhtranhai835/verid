@@ -1,7 +1,7 @@
 # Station song song
 
 Mỗi station là một worktree, nhánh `feat/<module>`, vòng TDD và session provider
-riêng cho một module độc lập. Hỗ trợ Claude Code, Codex, Antigravity; chỉ dành cho
+riêng cho một module độc lập. Hỗ trợ Claude Code và Codex; chỉ dành cho
 prep/recipe đặt tại gốc một Git repo với `repos.path: .`, chưa hỗ trợ workspace
 nhiều repo.
 
@@ -34,7 +34,7 @@ verid station list
 
 Mở session provider mới ở từng đường dẫn được in, thường là
 `../<project>.stations/<module>`. Codex cần trust worktree và hook qua UI của
-provider; Antigravity mở đúng worktree làm workspace. Chạy `verid doctor` trước
+provider. Chạy `verid doctor` trước
 khi làm. Bản đầu chưa hỗ trợ main dispatch subagent sang worktree khác.
 
 Station chỉ chép approval của đúng module; evidence, review và session bắt đầu

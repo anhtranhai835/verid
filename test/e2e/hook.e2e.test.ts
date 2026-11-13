@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { verifyAuditChain } from "../../src/adapters/audit-log.js";
 import { runHook } from "./in-process.js";
-import { type Payload } from "./helpers.js";
+import type { Payload } from "./helpers.js";
 
 let project: string;
 let stateFile: string;

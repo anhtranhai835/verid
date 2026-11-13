@@ -204,14 +204,14 @@ it("provides a conditional Mockup tab with isolated frames and a note in both dr
       expect(() => new Script(html.split("<script>")[1]!.split("</script>")[0]!)).not.toThrow();
       expect(html).toContain('id="mockup-tab"');
       expect(html).toContain('role="tablist"');
-      expect(html).toContain('role="tab" aria-controls="mockup-panel"');
-      expect(html).toContain('id="mockup-panel" role="tabpanel" aria-labelledby="mockup-tab"');
+      expect(html).toMatch(/role="tab"\s+aria-controls="mockup-panel"/);
+      expect(html).toMatch(/id="mockup-panel"\s+role="tabpanel"\s+aria-labelledby="mockup-tab"/);
       for (const label of lang === "vi"
         ? ["Chi tiết", "Ghi chú (không bắt buộc)", "Phương án đã chọn", "Đang tải bản xem trước"]
         : ["Details", "Note (optional)", "Selected option", "Loading preview"])
         expect(html).toContain(label);
       expect(html).toContain("task.mockups.files.length");
-      expect(html).toContain("setAttribute('sandbox','allow-scripts')");
+      expect(html).toContain('setAttribute("sandbox", "allow-scripts")');
       expect(html).not.toContain("allow-same-origin");
       expect(html).toContain("mockup-choice");
       expect(html).toContain("mockup-token");

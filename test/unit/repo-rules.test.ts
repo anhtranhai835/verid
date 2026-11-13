@@ -313,11 +313,12 @@ describe("repo rules", () => {
     const json = (file: string) => JSON.parse(readFileSync(join(root, file), "utf8"));
     const pkg = json("package.json") as { version: string; repository: { url: string } };
 
-    it("keeps the three version files on one version", () => {
+    it("keeps the two version files on one version", () => {
       const versions = Object.fromEntries(
-        ["package.json", "plugin/.claude-plugin/plugin.json", "plugin/antigravity/plugin.json"].map(
-          (file) => [file, json(file).version],
-        ),
+        ["package.json", "plugin/.claude-plugin/plugin.json"].map((file) => [
+          file,
+          json(file).version,
+        ]),
       );
       expect(new Set(Object.values(versions)).size, JSON.stringify(versions)).toBe(1);
     });
@@ -334,7 +335,6 @@ describe("repo rules", () => {
         "README.vi.md",
         ".claude-plugin/marketplace.json",
         "plugin/.claude-plugin/plugin.json",
-        "plugin/antigravity/plugin.json",
         ...filesUnder("docs").map(rel),
       ];
       const other = files.flatMap((file) =>

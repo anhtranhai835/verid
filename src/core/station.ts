@@ -2,8 +2,6 @@ import type { PlanModule } from "./plan.js";
 import type { ErrorCode } from "./errors.js";
 import { matchesGlob } from "./glob.js";
 
-export const STATION_LIMIT = 3;
-
 /** Module names come from the plan, so "constructor" must not find Object.prototype. */
 export const ownEntry = <T>(map: Readonly<Record<string, T>>, key: string): T | undefined =>
   Object.hasOwn(map, key) ? map[key] : undefined;
@@ -20,10 +18,10 @@ export function boundariesOverlap(a: readonly string[], b: readonly string[]): b
   );
 }
 
-export function validBoundary(glob: string): boolean {
+function validBoundary(glob: string): boolean {
   return (
     glob.length > 0 &&
-    !/[\\:\s\[\]{}!\0]/.test(glob) &&
+    !/[\\:\s[\]{}!\0]/.test(glob) &&
     !glob.startsWith("/") &&
     glob.split("/").every((part) => part !== "" && part !== "." && part !== "..") &&
     !/^(?:\.verid|\.git|\.claude|\.codex|\.agents)(?:\/|$)/i.test(glob)

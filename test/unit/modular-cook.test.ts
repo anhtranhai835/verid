@@ -168,7 +168,7 @@ it("fills requirements and the AC table from the plan section and spec, and has 
     .filter((line) => /^\| (REQ|SEC)-/.test(line));
   expect(rows).toEqual([
     "| REQ-1 | AC-1 | unit |  | sign in works (REQ-1) |",
-    "| SEC-1 | AC-2 | e2e |  | secrets are hashed \| stored (SEC-1) |",
+    "| SEC-1 | AC-2 | e2e |  | secrets are hashed \\| stored (SEC-1) |",
   ]);
   expect(existsSync(join(project, dossier("identity"), "README.md"))).toBe(false);
 });

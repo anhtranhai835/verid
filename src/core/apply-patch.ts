@@ -46,7 +46,7 @@ export function parseApplyPatch(patch: string): PatchTargets {
         if (hunkHeader && hunkLines === 0) return invalid();
         hunkHeader = true;
         hunkLines = 0;
-      } else if (/^[ +\-]/.test(content)) {
+      } else if (/^[ +-]/.test(content)) {
         hunkLines++;
       } else if (content === "*** End of File" && hunkLines > 0) {
         ended = true;

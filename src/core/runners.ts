@@ -10,7 +10,7 @@ export interface FolderFacts {
   texts: Readonly<Record<string, string>>;
 }
 
-export type RunnerName =
+type RunnerName =
   | "vitest"
   | "jest"
   | "playwright"

@@ -8,7 +8,7 @@ AC. Any of these failing exits 1.
 
 It does not replace the hooks. TDD evidence, approvals and review results live in
 `.verid/.state/`, which is never committed, so CI cannot see them. It also skips what belongs to
-one machine: hook wiring, installed plugins and agents, and Codex or Antigravity trust.
+one machine: hook wiring, installed plugins and agents, and Codex trust.
 
 ## GitHub Actions
 

@@ -30,8 +30,8 @@ import { ask, type Io } from "./terminal.js";
 import { bilingual } from "./i18n.js";
 import { runPluginCommand } from "./plugin-process.js";
 
-export const pluginsFile = (project: string) => join(project, ".verid/plugins.json");
-export const pluginFolder = (project: string, name: string) => {
+const pluginsFile = (project: string) => join(project, ".verid/plugins.json");
+const pluginFolder = (project: string, name: string) => {
   pluginNameSchema.parse(name);
   checkSetupPath(project, `.verid/.plugins/${name}`);
   return join(project, ".verid/.plugins", name);
@@ -60,7 +60,7 @@ function writePlugins(project: string, value: Plugins): void {
   }
 }
 
-export function readPluginManifest(folder: string): PluginManifest {
+function readPluginManifest(folder: string): PluginManifest {
   checkSetupPath(folder, "verid-plugin.json");
   const path = join(folder, "verid-plugin.json");
   try {
@@ -75,7 +75,7 @@ function packageFiles(folder: string): ResourceFile[] {
     .map((file) => ({ ...file, rel: file.rel.slice(1) }))
     .sort((a, b) => (a.rel < b.rel ? -1 : a.rel > b.rel ? 1 : 0));
 }
-export function pluginIntegrity(folder: string): string {
+function pluginIntegrity(folder: string): string {
   const hash = createHash("sha256");
   for (const file of packageFiles(folder))
     hash.update(file.rel).update("\0").update(file.content).update("\0");
@@ -117,10 +117,7 @@ export function pluginEnvironment(
   };
 }
 
-export async function missingRequirements(
-  manifest: PluginManifest,
-  cwd: string,
-): Promise<string[]> {
+async function missingRequirements(manifest: PluginManifest, cwd: string): Promise<string[]> {
   const missing: string[] = [];
   for (const requirement of manifest.requires) {
     const result = await runPluginCommand(`${requirement.bin} --version`, cwd, {}, "", 10_000);
@@ -185,7 +182,7 @@ function resources(
       files.push({ rel: `.verid/skills/${name}${file.rel}`, content });
       if (providers.includes("claude-code"))
         files.push({ rel: `.claude/skills/${name}${file.rel}`, content });
-      if (providers.includes("codex") || providers.includes("antigravity"))
+      if (providers.includes("codex"))
         files.push({ rel: `.agents/skills/${name}${file.rel}`, content });
     }
   }

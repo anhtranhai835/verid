@@ -59,7 +59,7 @@ external side effects of setup cannot be rolled back.
 `skills` lists directories containing `SKILL.md`; `agents` lists Markdown definitions
 with frontmatter. Relative paths must stay inside the package; links are rejected.
 Resources are copied under `.verid/skills/` and `.verid/agents/` with the prefix
-`<plugin>-`. Claude receives native skill/agent copies; Codex and Antigravity receive
+`<plugin>-`. Claude receives native skill/agent copies; Codex receives
 local `.agents/skills/` entries. Markdown agents remain available as project resources;
 their native dispatch depends on the host. Existing files belonging to other resources
 are never overwritten. Registered enabled resources are automatically included in the

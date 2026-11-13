@@ -6,10 +6,10 @@ import {
   withLock,
   writeState,
   readState,
-  statePaths,
+  type statePaths,
   VeridError,
 } from "../adapters/state-store.js";
-import { type State } from "../core/state.js";
+import type { State } from "../core/state.js";
 import { appendAudit } from "../adapters/audit-log.js";
 import { readPlan, servedSections, planViews, autoFactsOf } from "../adapters/plan-file.js";
 import { openModule } from "../core/plan.js";

@@ -39,7 +39,7 @@ export interface PromptContext {
   newCode: string;
 }
 
-export type PromptOutcome =
+type PromptOutcome =
   | { kind: "pass" }
   | { kind: "block"; key: ErrorCode | MessageKey; params: Record<string, string> }
   | { kind: "context"; key: MessageKey; params: Record<string, string> };

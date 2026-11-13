@@ -295,7 +295,7 @@ it("keeps a plated station unchanged while another station records a new failure
   expect(state(b)).toEqual(green);
 });
 
-it("keeps station boundaries on native Codex and Antigravity payloads", async () => {
+it("keeps station boundaries on native Codex payloads", async () => {
   const a = await open("identity");
   const codex = await runHook(
     JSON.stringify({
@@ -316,19 +316,6 @@ it("keeps station boundaries on native Codex and Antigravity payloads", async ()
     ["--provider", "codex"],
   );
   expect(codex.stdout).toContain("VERID_BURNT_STATION_WRITE");
-  const antigravity = await runHook(
-    JSON.stringify({
-      conversationId: "native-agy",
-      workspacePaths: [a],
-      toolCall: {
-        name: "write_to_file",
-        args: { TargetFile: join(a, "src/billing/value.ts"), CodeContent: "value" },
-      },
-    }),
-    {},
-    ["--provider", "antigravity", "--event", "PreToolUse"],
-  );
-  expect(antigravity.stdout + antigravity.stderr).toContain("VERID_BURNT_STATION_WRITE");
 });
 
 it("rewires the committed pinned runtime and keeps its station gates", async () => {

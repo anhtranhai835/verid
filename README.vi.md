@@ -38,7 +38,7 @@ và kiểm tra approval; hook từ chối các lần ghi bỏ qua approval hoặ
 
 ## Bắt đầu nhanh
 
-Cần Node.js 22 trở lên, Git, và Claude Code hoặc Codex. Các cách cài khác, cùng thiết lập Codex và Antigravity, nằm ở [cài đặt](docs/installation.vi.md).
+Cần Node.js 22 trở lên, Git, và Claude Code hoặc Codex. Các cách cài khác, cùng thiết lập Codex, nằm ở [cài đặt](docs/installation.vi.md).
 
 Muốn thử verid trên một project nhỏ trước, làm theo [examples/slugify](examples/slugify/README.md).
 
@@ -123,7 +123,6 @@ Cách viết gọn `verid` bên dưới dùng được khi chọn cài global.
 | `verid garnish`                       | Bắt đầu phiên chỉ refactor.                                                    |
 | `verid halt [lý-do]` / `verid resume` | Dừng lệnh gọi tool của agent hoặc tiếp tục.                                    |
 | `verid setup-codex`                   | Thiết lập reviewer đã cài trong config Codex của user.                         |
-| `verid setup-antigravity`             | Cài hoặc cập nhật plugin Antigravity của verid cho user này.                   |
 
 Cook, upgrade, plugin, stock, order, serve, garnish, halt và resume do developer chạy ở
 terminal của mình. Agent dùng taste, menu, peek và doctor. Với no-brain drive đã ký,
@@ -213,7 +212,7 @@ không chặn: doctor và menu hiển thị chúng. Mã rule và cách override 
 
 ## Tài liệu
 
-- [Cài đặt và thiết lập](docs/installation.vi.md): các cách cài, thiết lập Codex và Antigravity, nâng cấp, chuyển từ 1.x.
+- [Cài đặt và thiết lập](docs/installation.vi.md): các cách cài, thiết lập Codex, nâng cấp, chuyển từ 1.x.
 - [Tham chiếu cook](docs/cook-reference.vi.md): flags, xem trước, mode và drive.
 - [Module và board](docs/modules-and-board.vi.md): hồ sơ module, board trên trình duyệt, các trạng thái TDD.
 - [Provider và bảo vệ](docs/providers-and-protection.vi.md): agents và skills, cây `.verid/`, làm việc cùng thành viên mới.

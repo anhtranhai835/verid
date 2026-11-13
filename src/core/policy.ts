@@ -132,11 +132,10 @@ function decideFile(
         [a.path, a.written ?? a.path].some((p) =>
           (ctx.protectedTranscriptDirs ?? []).some((dir) => isUnder(p, dir)),
         ) ||
-        [a.path, a.written ?? a.path].some(
-          (p) =>
-            /(?:^|\/)\.codex\/(?:sessions(?:\/|$)|history\.jsonl$|sqlite(?:\/|$)|[^/]*\.(?:sqlite|db)(?:-(?:wal|shm))?$)/.test(
-              slashPath(p),
-            ) || ANTIGRAVITY_TRANSCRIPT.test(slashPath(p)),
+        [a.path, a.written ?? a.path].some((p) =>
+          /(?:^|\/)\.codex\/(?:sessions(?:\/|$)|history\.jsonl$|sqlite(?:\/|$)|[^/]*\.(?:sqlite|db)(?:-(?:wal|shm))?$)/.test(
+            slashPath(p),
+          ),
         ),
     ],
     // Rewriting either one switches verid off: settings register its hooks (or set
@@ -244,7 +243,7 @@ const NESTED_CODEX = /(^|[\s;&|(`'"\\/])codex(\.exe|\.cmd|\.ps1)?(?=$|[\s;&|)`'"
 // `/verid tip` can allow those commands.
 const CLAUDECODE_VAR = /\bclaudecode\b/;
 const DEVELOPER_COMMAND =
-  /(?:\bverid(?:@[^\s"'\\/]*)?(?:\.(?:cmd|ps1|exe|mjs))?|\bcli(?:\.js)?)["']?\s+(?:--\s+)?(?:cook|upgrade|setup-codex|setup-antigravity|garnish|stock|order|serve|halt|resume|board|station)\b/;
+  /(?:\bverid(?:@[^\s"'\\/]*)?(?:\.(?:cmd|ps1|exe|mjs))?|\bcli(?:\.js)?)["']?\s+(?:--\s+)?(?:cook|upgrade|setup-codex|garnish|stock|order|serve|halt|resume|board|station)\b/;
 // The agent's Bash inherits CLAUDE_CODE_SESSION_ATTENDED, so a `/verid tip` piped into the hook
 // would hand it the confirmation code. A copy or a path built at run time still gets through.
 const VERID_HOOK = /\bdist[\\/]+hook\b|\bhook\.js\b/;
@@ -279,7 +278,6 @@ const BASH_RULES: [RuleCode, string, (command: string, ctx: PolicyContext) => bo
       /\.codex[\\/](?:sessions(?:[\\/]|$)|history\.jsonl|sqlite(?:[\\/]|$)|[^\s'"/\\]*\.(?:sqlite|db)\b)/.test(
         c,
       ) ||
-      /\.system_generated\b|\.gemini[\\/]antigravity[\\/]conversations\b/.test(c) ||
       (ctx.protectedTranscriptDirs ?? []).some((p) => c.includes(slashPath(p))) ||
       configMentions(c, ctx, /^projects/),
   ],
@@ -452,11 +450,6 @@ function dangerousCommand(command: string): string | null {
 }
 
 const unquote = (command: string) => command.replace(/\\(.)|["']/gs, "$1");
-
-// Antigravity keeps each conversation's transcript and logs beside its artifacts; the agent may
-// write its own artifacts, never a conversation's logs.
-const ANTIGRAVITY_TRANSCRIPT =
-  /(?:^|\/)\.gemini\/antigravity\/(?:brain\/[^/]+\/\.system_generated(?:\/|$)|conversations(?:\/|$))/;
 
 // MCP tools have no fixed schema: keys ending like these hold paths, and a tool whose name says
 // it changes files writes them. Anything else an MCP tool touches is not seen (known limits).

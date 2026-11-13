@@ -114,10 +114,10 @@ export const DEFAULT_TIMEOUT_SEC = 100;
 
 export const MODES = ["prep", "recipe", "remix", "reheat"] as const;
 export type Mode = (typeof MODES)[number];
-export const PROVIDERS = ["claude-code", "codex", "antigravity"] as const;
+export const PROVIDERS = ["claude-code", "codex"] as const;
 export type Provider = (typeof PROVIDERS)[number];
 /** Hosts whose main thread writes tests and code: subagents are only the read-only roles. */
-export const SINGLE_WRITER_PROVIDERS: readonly Provider[] = ["codex", "antigravity"];
+const SINGLE_WRITER_PROVIDERS: readonly Provider[] = ["codex"];
 /** Every provider is a single-writer host: messages name main for the writing roles. */
 export const singleWriterOnly = (providers: readonly Provider[] | undefined): boolean =>
   !!providers?.length && providers.every((p) => SINGLE_WRITER_PROVIDERS.includes(p));
@@ -275,7 +275,7 @@ const manifestSchema = z
       error: "must be prep, recipe or remix (or reheat to rewrite a legacy system)",
     }),
     providers: z._default(
-      z.array(z.enum(PROVIDERS, { error: "must be claude-code, codex or antigravity" })).check(
+      z.array(z.enum(PROVIDERS, { error: "must be claude-code or codex" })).check(
         z.minLength(1, nonEmpty),
         z.refine((values) => new Set(values).size === values.length, {
           error: "must not repeat a provider",
@@ -435,7 +435,7 @@ export function resourceRoles(roles: Roles, resources?: string): Roles {
 
 /**
  * Keep Claude mappings while registering each host's own read-only agents: Codex's user-layer
- * reviewer, and the reviewer and security agents of verid's Antigravity plugin.
+ * reviewer.
  */
 export function providerRoles(
   roles: Roles | undefined,
@@ -445,12 +445,6 @@ export function providerRoles(
   let mapped = roles;
   if (providers.includes("codex"))
     mapped = { ...mapped, reviewer: add(mapped?.reviewer, "verid_reviewer") };
-  if (providers.includes("antigravity"))
-    mapped = {
-      ...mapped,
-      reviewer: add(mapped?.reviewer, "verid-reviewer"),
-      ...(mapped?.security ? { security: add(mapped.security, "verid-security") } : {}),
-    };
   return mapped;
 }
 

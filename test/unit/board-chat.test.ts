@@ -111,13 +111,6 @@ describe("board chat launches", () => {
     expect(next.args.slice(-2)).toEqual(["thread-1", "-"]);
   });
 
-  it("passes Antigravity's prompt as the last argv entry, sandboxed with accept-edits", () => {
-    const launch = launchFor("antigravity", "hello & bye", "conv-9", project);
-    expect(launch.stdin).toBeNull();
-    expect(launch.args.slice(-2)).toEqual(["-p", "hello & bye"]);
-    expect(launch.args).toEqual(expect.arrayContaining(["--sandbox", "accept-edits", "conv-9"]));
-  });
-
   it("refuses unsafe session IDs and cmd.exe metacharacters", () => {
     expect(() => launchFor("codex", "x", "a b; rm", project)).toThrow();
     expect(windowsArgs(["-p", "C:\\a b\\s.json", "sandbox_mode=workspace-write"])).toEqual([

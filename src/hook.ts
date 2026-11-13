@@ -5,7 +5,7 @@ import { preToolUse } from "./hook/pre-tool-use.js";
 import { preToolUseSchema, userPromptSchema, lifecycleSchema } from "./adapters/claude-code.js";
 import { userPrompt, lifecycle } from "./hook/lifecycle.js";
 import { VeridError, languageOf, statePaths } from "./adapters/state-store.js";
-import { type ErrorCode } from "./core/errors.js";
+import type { ErrorCode } from "./core/errors.js";
 import { subagentStart, subagentStop } from "./hook/review.js";
 import { stationSessionProblem } from "./adapters/project.js";
 

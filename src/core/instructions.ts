@@ -74,7 +74,6 @@ export function instructionBlocks(
 const PROVIDER_LABELS: Record<Provider, string> = {
   "claude-code": "Claude Code",
   codex: "Codex",
-  antigravity: "Antigravity",
 };
 
 /**
@@ -122,9 +121,8 @@ export function renderInstructions(
   const skill = (name: string): string => `${skillsRoot.replaceAll("\\", "/")}/${name}/SKILL.md`;
   const routing = `${skillsRoot.replaceAll("\\", "/")}/../templates/skill-routing.md`;
   const codex = provider === "codex";
-  // Codex and Antigravity: the main agent writes; skills are read by path.
+  // Codex: the main agent writes; skills are read by path.
   const single = provider !== "claude-code";
-  const antigravity = provider === "antigravity";
   const extras =
     [...(manifest.allowed_skills ?? []), ...(manifest.allowed_agents ?? [])].length > 0;
   const rendered = [
@@ -134,15 +132,11 @@ export function renderInstructions(
     "### Rules",
     codex
       ? "- Codex hooks enforce TDD, gates and protected files as strictly as the host allows; run verid doctor and trust the hooks in /hooks."
-      : antigravity
-        ? "- Antigravity hooks enforce TDD (RAW → COOKING → PLATED), module approval and protected files; verid doctor checks the plugin."
-        : "- Claude Code hooks enforce TDD (RAW → COOKING → PLATED), module approval, roles and protected files.",
+      : "- Claude Code hooks enforce TDD (RAW → COOKING → PLATED), module approval, roles and protected files.",
     "- Never bypass a denial; follow its reason.",
     codex
       ? "- Only the developer edits the manifest; /verid tip and /verid confirm have no effect on Codex; exceptions require Claude Code."
-      : antigravity
-        ? "- Only the developer edits the manifest or opens exceptions with /verid tip and /verid confirm typed in the Antigravity chat."
-        : "- Only the developer edits the manifest or opens exceptions with /verid tip and /verid confirm.",
+      : "- Only the developer edits the manifest or opens exceptions with /verid tip and /verid confirm.",
     manifest.resources === "repo"
       ? "- Read skills and agents from .verid/skills/ and .verid/agents/ in this repo. Local verid-<name> entries route there; calls written verid:<name> in those files mean verid-<name> here. Resolve supporting files relative to the repo copy."
       : single
@@ -186,15 +180,8 @@ export function renderInstructions(
           `- Plan: verid:plan → ${skill("plan")}.`,
           `- Build: verid:build → ${skill("build")}; the main agent writes tests and code under the TDD gate.`,
           `- TDD: verid:tdd → ${skill("tdd")}.`,
-          ...(antigravity
-            ? [
-                `- Review/serve: verid:review → ${skill("review")}; invoke_subagent verid-reviewer${manifest.roles?.security ? ", then verid-security," : ""} with module/AC identifiers, plan/design paths and .verid/review/work.md from verid menu --commits --file; its final line is Verdict: pass or Verdict: fail. Reviewer mappings: ${agents("reviewer")}.`,
-                "- Antigravity runs the verid-* agents; verid:* agents are Claude Code plugin entries.",
-              ]
-            : [
-                `- Review/serve: verid:review → ${skill("review")}; spawn verid_reviewer, agent_type and fork_turns: "none"; send module/ACs, plan/design and .verid/review/work.md (verid menu --commits --file). Reviewer mappings: ${agents("reviewer")}.`,
-                "- Codex spawns configured agents only; verid:* agents are Claude Code plugin entries.",
-              ]),
+          `- Review/serve: verid:review → ${skill("review")}; spawn verid_reviewer, agent_type and fork_turns: "none"; send module/ACs, plan/design and .verid/review/work.md (verid menu --commits --file). Reviewer mappings: ${agents("reviewer")}.`,
+          "- Codex spawns configured agents only; verid:* agents are Claude Code plugin entries.",
         ]
       : [
           "- Research, then spec: verid:ba in the main conversation.",

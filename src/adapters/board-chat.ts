@@ -50,7 +50,7 @@ export const CLAUDE_ALLOW = [
   "Bash(git commit:*)",
 ];
 
-export function claudeSettingsFile(project: string): string {
+function claudeSettingsFile(project: string): string {
   const file = join(project, ".verid", ".state", "board-claude-settings.json");
   mkdirSync(join(project, ".verid", ".state"), { recursive: true });
   writeFileSync(
@@ -83,32 +83,13 @@ export function launchFor(
       ],
       stdin: prompt,
     };
-  if (provider === "codex") {
-    const options = ["--json", "-c", "sandbox_mode=workspace-write", "-c", "approval_policy=never"];
-    return {
-      command: "codex",
-      args: resume
-        ? ["exec", "resume", ...options, resume, "-"]
-        : ["exec", ...options, "--skip-git-repo-check", "-"],
-      stdin: prompt,
-    };
-  }
-  // agy.exe is a real executable: spawned without a shell, its argv is passed as is.
+  const options = ["--json", "-c", "sandbox_mode=workspace-write", "-c", "approval_policy=never"];
   return {
-    command: "agy",
-    args: [
-      "--output-format",
-      "stream-json",
-      "--mode",
-      "accept-edits",
-      "--sandbox",
-      "--print-timeout",
-      "60m",
-      ...(resume ? ["--conversation", resume] : []),
-      "-p",
-      prompt,
-    ],
-    stdin: null,
+    command: "codex",
+    args: resume
+      ? ["exec", "resume", ...options, resume, "-"]
+      : ["exec", ...options, "--skip-git-repo-check", "-"],
+    stdin: prompt,
   };
 }
 
@@ -178,7 +159,7 @@ export function readEvent(line: string): {
   } else if (
     !["system", "user", "thread.started", "turn.started", "turn.completed"].includes(type)
   ) {
-    // Antigravity, or a shape not known yet: show the text it carries, if any.
+    // A shape not known yet: show the text it carries, if any.
     const message = obj(event.message);
     const text =
       str(event.text) ?? str(event.content) ?? str(message?.text) ?? str(message?.content);
@@ -234,10 +215,10 @@ export function windowsArgs(args: readonly string[], lang: Lang = systemLanguage
 
 export type Spawner = (launch: Launch, cwd: string) => ChildProcess;
 
-export const spawnLaunch: Spawner = (launch, cwd) => {
+const spawnLaunch: Spawner = (launch, cwd) => {
   const win = process.platform === "win32";
-  // claude and codex are .cmd shims on Windows, which need cmd.exe; agy is an .exe.
-  const shell = win && launch.command !== "agy";
+  // claude and codex are .cmd shims on Windows, which need cmd.exe.
+  const shell = win;
   return spawn(
     launch.command,
     shell ? windowsArgs(launch.args, languageOf(cwd) ?? systemLanguage()) : launch.args,
@@ -280,7 +261,7 @@ export function boardChat(
   /** The bound session of the selected task, as provider and provider-side ID. */
   const bound = (): { provider: Provider; id: string } | null => {
     const session = readState(statePaths(project)).kanban.active?.session ?? null;
-    const match = session === null ? null : /^(claude-code|codex|antigravity):(.+)$/.exec(session);
+    const match = session === null ? null : /^(claude-code|codex):(.+)$/.exec(session);
     return match ? { provider: match[1] as Provider, id: match[2]! } : null;
   };
 
@@ -484,7 +465,7 @@ export function stationBoardChat(project: string, spawner: Spawner = spawnLaunch
     pumping = true;
     try {
       const manifest = await loadManifest(project, { readOnly: true });
-      if (!manifest || manifest.drive !== "auto" || (manifest.stations ?? 1) === 1) return;
+      if (manifest?.drive !== "auto" || (manifest.stations ?? 1) === 1) return;
       scheduleStations(project, manifest);
       const state = readState(statePaths(project));
       if (state.halted) return;

@@ -140,10 +140,7 @@ export function codexAction(p: PreToolUse): CodexAction {
  * What a shell command plainly writes, read both as sh and as PowerShell: a host's shell tool
  * runs either, depending on the machine. What neither reader can follow is `unsupported`.
  */
-export function shellFiles(
-  command: string,
-  cwd: string,
-): { files: FileAction[]; unsupported?: string } {
+function shellFiles(command: string, cwd: string): { files: FileAction[]; unsupported?: string } {
   const ps = powershellWriteTargets(command);
   return {
     files: [

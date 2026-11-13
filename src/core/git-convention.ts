@@ -7,7 +7,7 @@ export interface RepoFacts {
   heads: readonly string[];
 }
 /** Work branches start with one of these, then a slash and a name. */
-export const WORK_PREFIXES = ["feat", "fix", "chore", "docs", "refactor", "test"] as const;
+const WORK_PREFIXES = ["feat", "fix", "chore", "docs", "refactor", "test"] as const;
 const WORK_BRANCH = new RegExp(`^(?:${WORK_PREFIXES.join("|")})/.+$`);
 
 export const isWorkBranch = (name: string): boolean => WORK_BRANCH.test(name);

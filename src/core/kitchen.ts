@@ -7,7 +7,7 @@ export const ROLES = ["head_chef", "sous_chef", "cook", "taster", "inspector", "
 export type Role = (typeof ROLES)[number];
 /** Where a task's plate stands on the pass: a ticket, the TDD state while it cooks, or served. */
 export const STATIONS = ["order", "RAW", "COOKING", "PLATED", "served"] as const;
-export type Station = (typeof STATIONS)[number];
+type Station = (typeof STATIONS)[number];
 
 export interface KitchenInput {
   /** null when the drive has no plan to follow (remix): the board's notice says why. */

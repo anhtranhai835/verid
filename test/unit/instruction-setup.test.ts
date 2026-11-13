@@ -4,7 +4,8 @@ import { lstatSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, it, vi } from "vitest";
 
-import { manifestUpgradeLines, planCook, setupDoneLine } from "../../src/cli/init.js";
+import { planCook, setupDoneLine } from "../../src/cli/init.js";
+import { manifestUpgradeLines } from "../../src/cli/cook/manifest.js";
 import { setupPreview } from "../../src/core/setup-plan.js";
 
 vi.mock("node:fs", async (importOriginal) => {
