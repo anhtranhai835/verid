@@ -1103,26 +1103,54 @@ select:focus-visible {
 body:not(:has(#kitchen)) .view-btn:not([data-view="work"]) {
   display: none;
 }
+/*
+ * Overview: the room and the chat on the left, the Kanban on the right, all in one screen.
+ * Room, work and chat views each show one of them alone.
+ */
 .layout {
   display: grid;
-  gap: 22px;
+  gap: 18px;
   align-items: start;
 }
 body[data-view="split"]:has(#kitchen) .layout {
-  grid-template-columns: minmax(380px, 5fr) minmax(0, 7fr);
+  grid-template-columns: minmax(340px, 5fr) minmax(0, 7fr);
+  grid-template-areas:
+    "scene work"
+    "chat work";
+  grid-template-rows: auto 1fr;
 }
 body[data-view="split"] .kitchen {
-  position: sticky;
-  top: 16px;
+  grid-area: scene;
 }
-body[data-view="scene"] .pane-work,
-body[data-view="work"] .kitchen {
+body[data-view="split"] .pane-work {
+  grid-area: work;
+}
+body[data-view="split"] .pane-chat {
+  grid-area: chat;
+  align-self: stretch;
+}
+body[data-view="split"] .pane-chat .chat-log {
+  height: max(120px, calc(100vh - 770px));
+}
+body[data-view="split"] .k-head p {
   display: none;
 }
-body[data-view="scene"] .kitchen {
+body[data-view="scene"] .pane-work,
+body[data-view="scene"] .pane-chat,
+body[data-view="work"] .kitchen,
+body[data-view="work"] .pane-chat,
+body[data-view="chat"] .kitchen,
+body[data-view="chat"] .pane-work {
+  display: none;
+}
+body[data-view="scene"] .kitchen,
+body[data-view="chat"] .pane-chat {
   max-width: 1100px;
   width: 100%;
   margin: 0 auto;
+}
+body[data-view="chat"] .pane-chat .chat-log {
+  height: calc(100vh - 300px);
 }
 body[data-view="split"] .columns {
   grid-template-columns: repeat(5, minmax(168px, 1fr));
@@ -1175,12 +1203,8 @@ body[data-view="split"] .columns {
   display: none;
 }
 .pane-work[data-tab="kanban"] [data-panel="kanban"],
-.pane-work[data-tab="chat"] [data-panel="chat"]:not([hidden]),
 .pane-work[data-tab="sign"] [data-panel="sign"]:not([hidden]) {
   display: block;
-}
-.pane-work[data-tab="chat"] .chat-log {
-  min-height: 52vh;
 }
 .drag-hint {
   margin: 0 0 12px;
@@ -1210,11 +1234,9 @@ body[data-view="split"] .columns {
 .btn:active:not(:disabled) {
   transform: translateY(1px);
 }
-@media (max-width: 1200px) {
+@media (max-width: 760px) {
   body[data-view="split"]:has(#kitchen) .layout {
     grid-template-columns: minmax(0, 1fr);
-  }
-  body[data-view="split"] .kitchen {
-    position: static;
+    grid-template-areas: "scene" "chat" "work";
   }
 }

@@ -254,7 +254,8 @@ main {
 .columns {
   gap: 12px;
 }
-.column {
+.column,
+.column[data-column] {
   background: var(--surface-1);
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -499,4 +500,276 @@ body[data-view="split"] .pass {
 }
 .lane {
   background: var(--bg);
+}
+
+/* The chat dock: a web terminal with one tab per session. */
+.pane-chat {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+  background: #0f0c0a;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.term-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--surface-1);
+  border-bottom: 1px solid var(--line);
+}
+.term-bar h3 {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text);
+}
+.term-bar .chat-provider {
+  margin-left: auto;
+}
+.term-lights {
+  display: flex;
+  gap: 6px;
+}
+.term-lights i {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--red);
+}
+.term-lights i:nth-child(2) {
+  background: var(--amber);
+}
+.term-lights i:nth-child(3) {
+  background: var(--teal);
+}
+.term-tabs {
+  display: flex;
+  align-items: stretch;
+  background: var(--surface-1);
+  border-bottom: 1px solid var(--line);
+  overflow-x: auto;
+}
+.chat-tabs {
+  display: flex;
+}
+.term-tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 12px;
+  font:
+    12px/1 ui-monospace,
+    "Cascadia Code",
+    Consolas,
+    monospace;
+  color: var(--text-3);
+  background: transparent;
+  border-right: 1px solid var(--line);
+  white-space: nowrap;
+}
+.term-tab:hover {
+  color: var(--text);
+  background: var(--surface-2);
+}
+.term-tab.active {
+  color: var(--text);
+  background: #0f0c0a;
+  box-shadow: inset 0 2px 0 var(--amber);
+}
+.term-close {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  color: var(--text-3);
+}
+.term-close:hover {
+  background: var(--surface-3);
+  color: var(--text);
+}
+.live-dot.on {
+  display: inline-block;
+  margin: 0;
+}
+.term-new {
+  min-width: 40px;
+  font-size: 18px;
+  color: var(--text-2);
+  background: transparent;
+}
+.term-new:hover {
+  color: var(--amber);
+  background: var(--surface-2);
+}
+.pane-chat .chat-log {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: #0f0c0a;
+  padding: 14px 16px;
+  font:
+    13px/1.6 ui-monospace,
+    "Cascadia Code",
+    Consolas,
+    monospace;
+}
+.pane-chat .chat-line {
+  max-width: 100%;
+  padding: 2px 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  align-self: stretch;
+}
+.pane-chat .chat-line.you {
+  color: var(--amber);
+}
+.pane-chat .chat-line.you::before {
+  content: "> ";
+  color: var(--text-3);
+}
+.pane-chat .chat-line.ai {
+  color: var(--text);
+}
+.pane-chat .chat-line.tool {
+  color: var(--teal);
+  padding-left: 10px;
+  border-left: 2px solid var(--line-strong);
+}
+.pane-chat .chat-line.error {
+  color: #f2a08d;
+  background: transparent;
+}
+.pane-chat .chat-line.info {
+  color: var(--text-3);
+  align-self: stretch;
+  text-align: left;
+  font-size: 11px;
+}
+.term-input {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 16px 0;
+  border-top: 1px solid var(--line);
+  background: #0f0c0a;
+}
+.term-prompt {
+  color: var(--amber);
+  font:
+    600 14px/1.6 ui-monospace,
+    "Cascadia Code",
+    Consolas,
+    monospace;
+  padding-top: 6px;
+}
+.pane-chat #chat-input {
+  min-height: 44px;
+  border: 0;
+  padding: 6px 0;
+  background: transparent;
+  font:
+    13px/1.6 ui-monospace,
+    "Cascadia Code",
+    Consolas,
+    monospace;
+  resize: none;
+}
+.pane-chat #chat-input:focus {
+  outline: none;
+}
+.pane-chat .term-input:focus-within {
+  box-shadow: inset 0 1px 0 var(--teal);
+}
+.pane-chat .chat-actions {
+  margin: 0;
+  padding: 8px 16px 12px;
+  background: #0f0c0a;
+}
+
+/* Documents for the chat: attach button, chips for each file, and the drop zone. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+.term-input {
+  position: relative;
+}
+.term-attach {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  margin-top: 2px;
+  border-radius: var(--radius-sm);
+  color: var(--text-2);
+  cursor: pointer;
+}
+.term-attach:hover,
+.term-attach:focus-within {
+  background: var(--surface-2);
+  color: var(--amber);
+}
+.term-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 16px;
+  background: #0f0c0a;
+}
+.term-files:not(:empty) {
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+.term-file {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 4px 4px 4px 10px;
+  font:
+    12px/1.3 ui-monospace,
+    "Cascadia Code",
+    Consolas,
+    monospace;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+}
+.term-file > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.term-file.pending {
+  padding-right: 10px;
+  color: var(--text-3);
+}
+.term-file .term-close {
+  background: transparent;
+  cursor: pointer;
+}
+.term-drop-hint {
+  display: none;
+  position: absolute;
+  inset: 4px;
+  margin: 0;
+  place-items: center;
+  font-size: 13px;
+  color: var(--amber);
+  background: #0f0c0ae6;
+  border: 2px dashed var(--amber);
+  border-radius: var(--radius-sm);
+  pointer-events: none;
+}
+.pane-chat.dropping .term-drop-hint {
+  display: grid;
 }

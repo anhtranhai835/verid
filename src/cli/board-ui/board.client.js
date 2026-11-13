@@ -86,33 +86,12 @@ async function act(action, extra = {}) {
 }
 function render() {
   if (!board) return;
-  const conversation = $("chat-station");
-  if (conversation) {
-    const names = board.tasks.filter((t) => t.station).map((t) => t.id);
-    const signature = names.join(",");
-    if (conversation.dataset.list !== signature) {
-      conversation.replaceChildren(
-        ...["", ...names].map((id) => {
-          const option = node("option", "", id || L.chat_primary);
-          option.value = id;
-          return option;
-        }),
-      );
-      conversation.dataset.list = signature;
-      if (!names.includes(chatStation)) {
-        chatStation = "";
-        chat = null;
-      }
-      conversation.value = chatStation;
-    }
-  }
+  renderChatTabs();
   for (const paint of afterRender) paint();
   const auto = board.drive === "auto";
   $("sign-box").hidden = !auto;
   $("chat-box").hidden = !auto;
-  $("tab-chat").hidden = !auto;
   $("tab-sign").hidden = !auto;
-  $("tab-chat").classList.toggle("live", !!chat?.running);
   if ($("tab-" + $("work").dataset.tab)?.hidden) showTab("kanban");
   $("drag-hint").textContent = auto ? L.drag_hint : L.drag_hint_human;
   if (auto) {
@@ -599,10 +578,94 @@ function renderChat() {
     : chat.locked
       ? L.chat_locked
       : L.chat_rules;
+  renderChatTabs();
 }
+// Documents for the chat: each file is saved under .verid/uploads and its path rides along with
+// the next message, so the AI opens it with its own tools.
+let attachments = [];
+const MAX_UPLOAD_MB = 25;
+function renderFiles() {
+  $("chat-files").replaceChildren(
+    ...attachments.map((file) => {
+      const chip = node("span", "term-file" + (file.path ? "" : " pending"));
+      chip.append(
+        node("span", "", file.path ? file.name : fmt("chat_uploading", { name: file.name })),
+      );
+      if (file.path) {
+        const remove = node("button", "term-close", "\u00d7");
+        remove.setAttribute("aria-label", fmt("chat_remove", { name: file.name }));
+        remove.onclick = () => {
+          attachments = attachments.filter((f) => f !== file);
+          renderFiles();
+        };
+        chip.append(remove);
+      }
+      return chip;
+    }),
+  );
+}
+async function uploadFiles(files) {
+  for (const f of files) {
+    if (f.size > MAX_UPLOAD_MB * 1024 * 1024) {
+      toast(fmt("err_upload_large", { mb: MAX_UPLOAD_MB }), true);
+      continue;
+    }
+    const file = { name: f.name || "file", path: "" };
+    attachments.push(file);
+    renderFiles();
+    try {
+      const res = await fetch("/api/upload?name=" + encodeURIComponent(file.name), {
+        method: "POST",
+        headers: { "Content-Type": "application/octet-stream" },
+        body: f,
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || L.err_action);
+      file.path = result.path;
+      toast(fmt("chat_uploaded", { name: file.name }));
+    } catch (error) {
+      attachments = attachments.filter((a) => a !== file);
+      toast(error.message, true);
+    }
+    renderFiles();
+  }
+}
+$("chat-file").onchange = (e) => {
+  uploadFiles([...e.target.files]);
+  e.target.value = "";
+};
+$("chat-input").addEventListener("paste", (e) => {
+  const files = [...(e.clipboardData?.files || [])];
+  if (!files.length) return;
+  e.preventDefault();
+  uploadFiles(files);
+});
+const hasFiles = (e) => [...(e.dataTransfer?.types || [])].includes("Files");
+$("chat-box").addEventListener("dragover", (e) => {
+  if (!hasFiles(e)) return;
+  e.preventDefault();
+  $("chat-box").classList.add("dropping");
+});
+$("chat-box").addEventListener("dragleave", (e) => {
+  if (!$("chat-box").contains(e.relatedTarget)) $("chat-box").classList.remove("dropping");
+});
+$("chat-box").addEventListener("drop", (e) => {
+  if (!hasFiles(e)) return;
+  e.preventDefault();
+  $("chat-box").classList.remove("dropping");
+  uploadFiles([...e.dataTransfer.files]);
+});
 async function sendChat() {
   const requested = chatStation;
-  const text = $("chat-input").value;
+  if (attachments.some((f) => !f.path)) return;
+  const ready = attachments.map((f) => f.path);
+  const typed = $("chat-input").value;
+  const text = ready.length
+    ? (typed.trim() ? typed + "\n\n" : "") +
+      L.chat_files +
+      "\n" +
+      ready.map((path) => "- " + path).join("\n")
+    : typed;
   if (!text.trim()) {
     toast(L.chat_type_first, true);
     return;
@@ -619,6 +682,8 @@ async function sendChat() {
     if (requested !== chatStation) return;
     chat = received;
     $("chat-input").value = "";
+    attachments = [];
+    renderFiles();
     renderChat();
   } catch (error) {
     toast(error.message, true);
@@ -636,22 +701,99 @@ async function stopChat() {
     toast(error.message, true);
   }
 }
-$("chat-station").onchange = () => {
+// Chat sessions as terminal tabs: the drive's main session, each station's, and free chats the
+// developer opens with + (kept in this browser; the server keeps their transcripts while it runs).
+let freeChats = [];
+try {
+  freeChats = JSON.parse(localStorage.getItem("verid-chats") || "[]").filter((k) =>
+    /^chat:[a-z0-9]{1,16}$/.test(k),
+  );
+} catch {}
+const saveChats = () => {
+  try {
+    localStorage.setItem("verid-chats", JSON.stringify(freeChats));
+  } catch {}
+};
+function chatSessions() {
+  const stations = board ? board.tasks.filter((t) => t.station).map((t) => t.id) : [];
+  return ["", ...stations, ...freeChats];
+}
+function chatLabel(key) {
+  if (!key) return L.chat_main;
+  if (key.startsWith("chat:")) return fmt("chat_free", { n: freeChats.indexOf(key) + 2 });
+  return key;
+}
+function switchChat(key) {
+  if (key === chatStation) return;
   chatDrafts.set(chatStation, $("chat-input").value);
-  chatStation = $("chat-station").value;
-  $("chat-input").value = chatDrafts.get(chatStation) || "";
+  chatStation = key;
+  $("chat-input").value = chatDrafts.get(key) || "";
   chat = null;
+  $("chat-log").replaceChildren();
+  renderChatTabs();
   refreshChat();
+  $("chat-input").focus({ preventScroll: true });
+}
+function renderChatTabs() {
+  const sessions = chatSessions();
+  if (!sessions.includes(chatStation)) {
+    chatStation = "";
+    chat = null;
+  }
+  $("chat-tabs").replaceChildren(
+    ...sessions.map((key) => {
+      const tab = node("button", "term-tab" + (key === chatStation ? " active" : ""));
+      tab.setAttribute("role", "tab");
+      tab.setAttribute("aria-selected", String(key === chatStation));
+      tab.append(node("span", "", chatLabel(key)));
+      if (key === chatStation && chat?.running) tab.append(node("i", "live-dot on"));
+      tab.onclick = () => switchChat(key);
+      if (key.startsWith("chat:")) {
+        const close = node("span", "term-close", "\u00d7");
+        close.setAttribute("role", "button");
+        close.setAttribute("aria-label", fmt("chat_close", { name: chatLabel(key) }));
+        close.onclick = (e) => {
+          e.stopPropagation();
+          closeChat(key);
+        };
+        tab.append(close);
+      }
+      return tab;
+    }),
+  );
+}
+async function closeChat(key) {
+  try {
+    await request("/api/action", { action: "chat-stop", station: key });
+  } catch {}
+  freeChats = freeChats.filter((k) => k !== key);
+  chatDrafts.delete(key);
+  saveChats();
+  if (chatStation === key) switchChat("");
+  else renderChatTabs();
+}
+$("chat-new").onclick = () => {
+  const key = "chat:" + Date.now().toString(36);
+  freeChats.push(key);
+  saveChats();
+  switchChat(key);
 };
 $("chat-send").onclick = sendChat;
 $("chat-stop").onclick = stopChat;
+let sendAfterCompose = false;
 $("chat-input").onkeydown = (e) => {
-  // Enter sends, Shift+Enter breaks the line; never while an input method is composing a letter.
-  if (e.key === "Enter" && !e.shiftKey && !e.isComposing && e.keyCode !== 229) {
-    e.preventDefault();
-    sendChat();
-  }
+  if (e.key !== "Enter" || e.shiftKey) return;
+  e.preventDefault();
+  // Windows' Vietnamese keyboards report every key as composing (keyCode 229): Enter then ends
+  // the word first, and the message goes once the word is in the box.
+  if (e.isComposing) sendAfterCompose = true;
+  else sendChat();
 };
+$("chat-input").addEventListener("compositionend", () => {
+  if (!sendAfterCompose) return;
+  sendAfterCompose = false;
+  setTimeout(sendChat, 0);
+});
 setInterval(() => {
   if (!$("chat-box").hidden) refreshChat();
 }, 1500);
@@ -719,7 +861,6 @@ function showTab(name) {
     b.classList.toggle("active", on);
     b.setAttribute("aria-selected", String(on));
   });
-  if (name === "chat") $("chat-input").focus({ preventScroll: true });
 }
 document
   .querySelectorAll("[data-tab-btn]")

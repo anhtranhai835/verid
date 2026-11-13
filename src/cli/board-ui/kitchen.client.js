@@ -59,4 +59,9 @@ function renderKitchen() {
   });
 }
 afterRender.push(renderKitchen);
-$("waiter-answer").onclick = () => showTab("chat");
+$("waiter-answer").onclick = (e) => {
+  e.preventDefault();
+  if (document.body.dataset.view === "scene" || document.body.dataset.view === "work")
+    showView("split");
+  $("chat-input").focus();
+};

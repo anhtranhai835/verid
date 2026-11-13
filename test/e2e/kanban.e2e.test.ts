@@ -523,6 +523,48 @@ it("chats on the no-brain board in one queue session: new session first, then th
   expect(launches[1]!.args).toContain("t-1");
 });
 
+it("saves a chat upload under .verid/uploads only for the board's own page", async () => {
+  noBrain();
+  split();
+  server = await startBoard(project, runCli);
+  const upload = (headers: Record<string, string>) =>
+    fetch(`${server!.origin}/api/upload?name=${encodeURIComponent("../notes.md")}`, {
+      method: "POST",
+      headers,
+      body: "# Notes",
+    });
+  const auth = { Authorization: `Bearer ${server.token}`, Origin: server.origin };
+  expect((await upload({ Origin: server.origin })).status).toBe(401);
+  expect((await upload({ ...auth, Origin: "http://evil.example" })).status).toBe(403);
+  const saved = await upload(auth);
+  expect(saved.status).toBe(200);
+  expect((await saved.json()).path).toBe(".verid/uploads/notes.md");
+  expect(t.read(".verid/uploads/notes.md")).toBe("# Notes");
+});
+
+it("runs free chat sessions side by side, each with its own transcript", async () => {
+  noBrain();
+  split();
+  const launches: Launch[] = [];
+  server = await startBoard(project, runCli, 0, fakeChat(launches));
+  const { post, get } = api(server);
+  const chat = (station: string, text: string) =>
+    post({ action: "chat", station, text, provider: "codex" });
+  expect((await chat("chat:a", "first")).status).toBe(200);
+  expect((await chat("chat:b", "second")).status).toBe(200);
+  expect((await chat("not-a-chat", "x")).status).toBe(400);
+  const lines = async (station: string) => {
+    for (let i = 0; i < 100; i++) {
+      const status = await (await get(`/api/chat?station=${station}`)).json();
+      if (!status.running) return status.lines.map((l: { text: string }) => l.text);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+  };
+  expect(await lines("chat:a")).toContain("got first");
+  expect(await lines("chat:b")).toContain("got second");
+  expect(await lines("chat:a")).not.toContain("got second");
+});
+
 it("starts the AI on a card dragged into Cooking, and refuses a card that is not on the board", async () => {
   noBrain();
   split();

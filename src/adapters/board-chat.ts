@@ -402,7 +402,17 @@ export function boardChat(
 export const stationBrief = (module: string) =>
   `Run verid context ${module}. Complete only this module using verid menu, TDD, taste and independent review. Stay inside Boundary. Stop after it is served; integration belongs to the developer.`;
 
-/** A bounded process pool; each worktree keeps its own provider ID, transcript and stop button. */
+/** A free chat the developer opens beside the drive's session, like another terminal tab. */
+const FREE_CHAT = /^chat:[a-z0-9]{1,16}$/;
+const isFree = (name: string | null) => name !== null && FREE_CHAT.test(name);
+// ponytail: fixed caps for free chats (4 running, 16 kept); a manifest setting when someone needs more.
+const FREE_RUNNING = 4;
+const FREE_KEPT = 16;
+
+/**
+ * A bounded process pool; each worktree keeps its own provider ID, transcript and stop button.
+ * Free chats (`chat:<id>`) run in the project itself, in their own pool beside the stations'.
+ */
 export function stationBoardChat(project: string, spawner: Spawner = spawnLaunch) {
   type Chat = ReturnType<typeof boardChat>;
   const chats = new Map<string, { root: string; generation: string; chat: Chat }>();
@@ -415,9 +425,13 @@ export function stationBoardChat(project: string, spawner: Spawner = spawnLaunch
     t(languageOf(project) ?? systemLanguage(), `board.${key}`, params);
   const keyOf = (name: string | null) => name ?? "";
   const get = (name: string | null, forLaunch = false): Chat => {
-    const record = name === null ? null : ownEntry(readState(statePaths(project)).stations, name);
-    if (name !== null && (!record || (forLaunch && record.stage !== "open")))
+    const free = isFree(name);
+    const record =
+      name === null || free ? null : ownEntry(readState(statePaths(project)).stations, name);
+    if (name !== null && !free && (!record || (forLaunch && record.stage !== "open")))
       throw new Error(say("err_station_open"));
+    if (free && !chats.has(name!) && [...chats.keys()].filter(isFree).length >= FREE_KEPT)
+      throw new Error(say("err_chat_sessions", { count: String(FREE_RUNNING) }));
     const root = record?.path ?? project;
     const key = keyOf(name);
     const existing = chats.get(key);
@@ -444,7 +458,9 @@ export function stationBoardChat(project: string, spawner: Spawner = spawnLaunch
       });
     return chats.get(key)!.chat;
   };
-  const running = () => [...chats.values()].filter(({ chat }) => chat.running()).length;
+  const running = (free = false) =>
+    [...chats].filter(([key, { chat }]) => isFree(key) === free && chat.running()).length +
+    [...launching].filter((key) => isFree(key) === free).length;
   async function send(
     name: string | null,
     input: { task: string | null; text: string; provider: string },
@@ -452,14 +468,17 @@ export function stationBoardChat(project: string, spawner: Spawner = spawnLaunch
     const manifest = await loadManifest(project, { readOnly: true });
     const chat = get(name, true);
     const key = keyOf(name);
-    if (launching.has(key) || running() + launching.size >= (manifest?.stations ?? 1))
+    if (isFree(name)) {
+      if (launching.has(key) || running(true) >= FREE_RUNNING)
+        throw new Error(say("err_chat_sessions", { count: String(FREE_RUNNING) }));
+    } else if (launching.has(key) || running() >= (manifest?.stations ?? 1))
       throw new Error(say("err_station_limit"));
     launching.add(key);
     selectedProvider = input.provider;
     stopped = false;
     try {
       await chat.send(input);
-      if (name) started.add(name);
+      if (name && !isFree(name)) started.add(name);
     } finally {
       launching.delete(key);
     }
@@ -474,7 +493,7 @@ export function stationBoardChat(project: string, spawner: Spawner = spawnLaunch
       const state = readState(statePaths(project));
       if (state.halted) return;
       for (const record of Object.values(state.stations)) {
-        if (running() + launching.size >= (manifest.stations ?? 1)) break;
+        if (running() >= (manifest.stations ?? 1)) break;
         if (record.stage !== "open" || started.has(record.module)) continue;
         const local = readState(statePaths(record.path));
         const phase = autoPhase(

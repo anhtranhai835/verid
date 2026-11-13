@@ -11,6 +11,7 @@ import { boardSnapshot, moveTask, saveBoardDocument, taskPrompt } from "../adapt
 import { loadManifest } from "../adapters/manifest.js";
 import { boardHtml } from "./board-page.js";
 import { chooseMockup, mockupFile } from "../adapters/board-mockups.js";
+import { MAX_UPLOAD, saveUpload } from "../adapters/board-uploads.js";
 import type { CliResult } from "./test.js";
 
 /**
@@ -121,6 +122,23 @@ export async function startBoard(project: string, command: Command, port = 0, sp
       return (await loadManifest(project, { readOnly: true }))?.drive === "auto"
         ? send(res, 200, await chat.status(url.searchParams.get("station")))
         : send(res, 409, { error: say(project, "err_no_chat") });
+    if (req.method === "POST" && url.pathname === "/api/upload") {
+      // A file for the chat: raw bytes, its name in the query; the AI reads it by the path we return.
+      if (req.headers.origin !== origin) return send(res, 403, { error: "Invalid origin" });
+      const chunks: Buffer[] = [];
+      let size = 0;
+      for await (const chunk of req) {
+        size += (chunk as Buffer).length;
+        if (size > MAX_UPLOAD)
+          return send(res, 413, {
+            error: say(project, "err_upload_large", { mb: String(MAX_UPLOAD / 1024 / 1024) }),
+          });
+        chunks.push(chunk as Buffer);
+      }
+      return send(res, 200, {
+        path: saveUpload(project, url.searchParams.get("name") ?? "", Buffer.concat(chunks)),
+      });
+    }
     if (req.method !== "POST" || url.pathname !== "/api/action")
       return send(res, 404, { error: "Not found" });
     if (req.headers.origin !== origin || req.headers["content-type"] !== "application/json")
@@ -261,7 +279,8 @@ export async function startBoard(project: string, command: Command, port = 0, sp
     });
   });
   server.on("close", () => chat.stopAll());
-  server.requestTimeout = 15_000;
+  // Long enough for the largest upload on a slow disk; reads and actions answer in milliseconds.
+  server.requestTimeout = 120_000;
   server.headersTimeout = 10_000;
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
