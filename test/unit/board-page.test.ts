@@ -47,8 +47,9 @@ describe("no-brain kitchen", () => {
     for (const station of ["order", "RAW", "COOKING", "PLATED", "served"])
       expect(html).toContain(`data-station="${station}"`);
     expect(html).toContain("prefers-reduced-motion");
-    // Sprites are pictures for the eye; screen readers get each role's name and state as text.
-    expect(html).toMatch(/<svg[^>]*class="sprite"[^>]*aria-hidden="true"/);
+    // Each crew member is a cut of the art for the eye; screen readers get the name and state.
+    expect(html).toMatch(/class="crop" aria-hidden="true"/);
+    expect(html).toContain("--art:url(data:image/webp;base64,");
   });
 
   it("speaks Vietnamese in a Vietnamese project", () => {
@@ -61,7 +62,7 @@ describe("no-brain kitchen", () => {
     for (const html of [boardHtml("en", "human"), boardHtml("en")]) {
       expect(html).not.toContain('id="kitchen"');
       expect(html).not.toContain("data-role=");
-      expect(html).not.toContain('class="sprite"');
+      expect(html).not.toContain('class="crop"');
     }
   });
 

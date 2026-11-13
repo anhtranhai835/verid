@@ -66,7 +66,7 @@ export async function startBoard(project: string, command: Command, port = 0, sp
     res.setHeader("Referrer-Policy", "no-referrer");
     res.setHeader(
       "Content-Security-Policy",
-      "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
+      "default-src 'self'; img-src 'self' data:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
     );
     if (req.headers.host !== new URL(origin).host) return send(res, 403, { error: "Invalid host" });
     const url = new URL(req.url ?? "/", origin);
