@@ -6,11 +6,12 @@ import { parseArgs } from "node:util";
 import { inAgentShell } from "../adapters/agent-environment.js";
 import { systemLanguage, t } from "../adapters/i18n.js";
 import { languageOf } from "../adapters/state-store.js";
-import { stationBoardChat, type Spawner } from "../adapters/board-chat.js";
+import { stationBoardChat, stationBrief, type Spawner } from "../adapters/board-chat.js";
 import { boardSnapshot, moveTask, saveBoardDocument, taskPrompt } from "../adapters/kanban.js";
 import { loadManifest } from "../adapters/manifest.js";
 import { boardHtml } from "./board-page.js";
 import { chooseMockup, mockupFile } from "../adapters/board-mockups.js";
+import { MAX_UPLOAD, saveUpload } from "../adapters/board-uploads.js";
 import type { CliResult } from "./test.js";
 
 /**
@@ -121,6 +122,23 @@ export async function startBoard(project: string, command: Command, port = 0, sp
       return (await loadManifest(project, { readOnly: true }))?.drive === "auto"
         ? send(res, 200, await chat.status(url.searchParams.get("station")))
         : send(res, 409, { error: say(project, "err_no_chat") });
+    if (req.method === "POST" && url.pathname === "/api/upload") {
+      // A file for the chat: raw bytes, its name in the query; the AI reads it by the path we return.
+      if (req.headers.origin !== origin) return send(res, 403, { error: "Invalid origin" });
+      const chunks: Buffer[] = [];
+      let size = 0;
+      for await (const chunk of req) {
+        size += (chunk as Buffer).length;
+        if (size > MAX_UPLOAD)
+          return send(res, 413, {
+            error: say(project, "err_upload_large", { mb: String(MAX_UPLOAD / 1024 / 1024) }),
+          });
+        chunks.push(chunk as Buffer);
+      }
+      return send(res, 200, {
+        path: saveUpload(project, url.searchParams.get("name") ?? "", Buffer.concat(chunks)),
+      });
+    }
     if (req.method !== "POST" || url.pathname !== "/api/action")
       return send(res, 404, { error: "Not found" });
     if (req.headers.origin !== origin || req.headers["content-type"] !== "application/json")
@@ -172,6 +190,23 @@ export async function startBoard(project: string, command: Command, port = 0, sp
         provider: typeof input.provider === "string" ? input.provider : "",
       });
       return send(res, 200, await chat.status(station));
+    }
+    if (input.action === "run") {
+      // A card dragged into Cooking: its station's session works it, else the drive's one session
+      // is asked to take it next. The signed plan's order and every hook still decide what runs.
+      if (snapshot.drive !== "auto") return send(res, 409, { error: say(project, "err_no_chat") });
+      const task = snapshot.tasks.find((item) => item.id === input.task);
+      if (!task || task.column === "done")
+        return send(res, 409, { error: say(project, "err_run_task") });
+      const own = task.station && !task.station.served && !task.station.unavailable;
+      await chat.send(own ? task.id : null, {
+        task: null,
+        provider: typeof input.provider === "string" ? input.provider : "",
+        text: own
+          ? stationBrief(task.id)
+          : `Continue the verid no-brain drive. The developer asks for module ${task.id} next: run verid context ${task.id} and work on it if the signed plan's order allows it; otherwise say which module must come first and go on in that order.`,
+      });
+      return send(res, 200, await boardSnapshot(project));
     }
     if (input.revision !== snapshot.revision)
       return send(res, 409, { error: say(project, "err_stale") });
@@ -244,7 +279,8 @@ export async function startBoard(project: string, command: Command, port = 0, sp
     });
   });
   server.on("close", () => chat.stopAll());
-  server.requestTimeout = 15_000;
+  // Long enough for the largest upload on a slow disk; reads and actions answer in milliseconds.
+  server.requestTimeout = 120_000;
   server.headersTimeout = 10_000;
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);

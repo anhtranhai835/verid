@@ -78,17 +78,6 @@ aside {
   margin: 48px 14px 16px;
   color: #a79b83;
 }
-.nav {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 14px;
-  border-radius: 8px;
-  font-size: 13px;
-  background: #4c493c;
-  color: #fff4dc;
-  border: 1px solid #625a47;
-}
 .aside-bottom {
   margin-top: auto;
   padding: 18px 12px;
@@ -153,33 +142,6 @@ main {
   padding: 32px 36px 22px;
   max-width: 1800px;
   margin: auto;
-}
-.eyebrow {
-  margin: 0 0 10px;
-}
-.title-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 20px;
-  position: relative;
-  min-height: 185px;
-  padding-bottom: 8px;
-}
-h1 {
-  font-size: 29px;
-  line-height: 1.25;
-  margin: 0;
-  font-weight: 680;
-  font:
-    500 44px/1.12 Georgia,
-    "Times New Roman",
-    serif;
-  letter-spacing: -1.2px;
-  color: #35362c;
-}
-.subtitle {
-  margin: 10px 0 0;
 }
 .buttons {
   display: flex;
@@ -668,11 +630,6 @@ dialog::backdrop {
   .step-note {
     display: none;
   }
-  .title-row {
-    gap: 17px;
-    flex-direction: row;
-    align-items: center;
-  }
 }
 @media (max-width: 700px) {
   aside {
@@ -747,31 +704,6 @@ dialog::backdrop {
   font-size: 8px;
   letter-spacing: 2.4px;
 }
-.kitchen-note {
-  margin: 40px 10px 0;
-  padding: 18px 12px;
-  border: 1px solid #6c614b;
-  border-radius: 3px;
-  transform: rotate(-3deg);
-  text-align: center;
-  background: #3c392f;
-}
-.kitchen-note .label {
-  font-size: 8px;
-  color: #d4b782;
-  letter-spacing: 1.4px;
-}
-.kitchen-note p {
-  font:
-    italic 21px/1.4 Georgia,
-    serif;
-  color: #f4e9cf;
-  margin: 12px 0 5px;
-}
-.kitchen-note small {
-  font-size: 9px;
-  color: #b9aa8b;
-}
 .topbar::before {
   content: "";
   position: absolute;
@@ -784,28 +716,6 @@ dialog::backdrop {
 main {
   padding-top: 30px;
 }
-.eyebrow {
-  font-size: 9px;
-  letter-spacing: 2.7px;
-  color: #ae563a;
-}
-.title-copy {
-  max-width: 650px;
-}
-h1 em {
-  color: #ad472f;
-  font-weight: 500;
-}
-.subtitle {
-  color: #8c806d;
-  font-size: 12px;
-  line-height: 1.85;
-  max-width: 525px;
-  margin-top: 13px;
-}
-.hero-buttons {
-  margin-top: 19px;
-}
 .btn.primary {
   background: #b7472e;
   border-color: #b7472e;
@@ -817,41 +727,6 @@ h1 em {
 }
 .btn:disabled {
   opacity: 0.5;
-}
-.chef-corner {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  margin: 0 6px 0 20px;
-  flex-shrink: 0;
-}
-.chef-mascot {
-  width: 155px;
-  height: 166px;
-  overflow: visible;
-}
-.chef-says {
-  max-width: 123px;
-  transform: rotate(5deg);
-  padding: 13px 11px;
-  background: #fffdf5;
-  border: 1px solid #e0d4bc;
-  border-radius: 13px 13px 13px 0;
-  box-shadow: 2px 3px 0 #e8dfcd;
-}
-.chef-says strong {
-  display: block;
-  color: #ad472f;
-  font:
-    italic 21px Georgia,
-    serif;
-  margin-bottom: 6px;
-}
-.chef-says span {
-  display: block;
-  color: #8b7a60;
-  font-size: 10px;
-  line-height: 1.7;
 }
 .steps {
   background: #fffdf7;
@@ -1158,16 +1033,6 @@ select:focus-visible {
   outline-offset: 2px;
 }
 @media (min-width: 1600px) {
-  h1 {
-    font-size: 49px;
-  }
-  .chef-mascot {
-    width: 170px;
-    height: 182px;
-  }
-  .chef-says {
-    margin-right: 30px;
-  }
   .column {
     min-height: 460px;
   }
@@ -1175,22 +1040,6 @@ select:focus-visible {
 @media (max-width: 1150px) {
   .topbar::before {
     left: 170px;
-  }
-  .title-copy {
-    max-width: 520px;
-  }
-  h1 {
-    font-size: 38px;
-  }
-  .chef-corner {
-    margin-left: 0;
-  }
-  .chef-mascot {
-    width: 115px;
-    height: 140px;
-  }
-  .chef-says {
-    display: none;
   }
   .columns {
     grid-template-columns: repeat(5, 215px);
@@ -1200,50 +1049,9 @@ select:focus-visible {
   .topbar::before {
     left: 0;
   }
-  .title-row {
-    min-height: 0;
-    align-items: flex-start;
-    gap: 0;
-  }
-  h1 {
-    font-size: 36px;
-    line-height: 1.1;
-    max-width: 270px;
-  }
-  .title-copy {
-    position: relative;
-    z-index: 1;
-    width: 100%;
-  }
-  .subtitle {
-    max-width: 248px;
-    font-size: 11px;
-  }
-  .chef-corner {
-    position: absolute;
-    right: -8px;
-    top: 35px;
-    margin: 0;
-    z-index: 0;
-  }
-  .chef-mascot {
-    width: 100px;
-    height: 112px;
-  }
-  .hero-buttons {
-    gap: 7px;
-    margin-top: 20px;
-  }
-  .hero-buttons .btn {
-    padding: 10px 11px;
-    font-size: 10px;
-  }
   .steps {
     padding: 13px 11px;
     gap: 8px;
-  }
-  .eyebrow {
-    font-size: 8px;
   }
   .columns {
     grid-template-columns: repeat(5, 245px);
@@ -1257,5 +1065,178 @@ select:focus-visible {
   }
   .column-empty {
     font-size: 12px;
+  }
+}
+
+/* The menu: overview (room beside the work), the room alone, or the work alone. */
+.views {
+  display: grid;
+  gap: 6px;
+  margin-top: 26px;
+}
+.view-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 12px;
+  border-radius: 7px;
+  font-size: 13px;
+  text-align: left;
+  background: transparent;
+  color: #d0c7b7;
+  border: 1px solid transparent;
+  transition:
+    background 0.15s,
+    transform 0.1s;
+}
+.view-btn:hover {
+  background: #3d3a31;
+}
+.view-btn:active {
+  transform: translateY(1px);
+}
+.view-btn[aria-pressed="true"] {
+  background: #4c493c;
+  color: #fff4dc;
+  border-color: #625a47;
+}
+body:not(:has(#kitchen)) .view-btn:not([data-view="work"]) {
+  display: none;
+}
+/*
+ * Overview: the room and the chat on the left, the Kanban on the right, all in one screen.
+ * Room, work and chat views each show one of them alone.
+ */
+.layout {
+  display: grid;
+  gap: 18px;
+  align-items: start;
+}
+body[data-view="split"]:has(#kitchen) .layout {
+  grid-template-columns: minmax(340px, 5fr) minmax(0, 7fr);
+  grid-template-areas:
+    "scene work"
+    "chat work";
+  grid-template-rows: auto 1fr;
+}
+body[data-view="split"] .kitchen {
+  grid-area: scene;
+}
+body[data-view="split"] .pane-work {
+  grid-area: work;
+}
+body[data-view="split"] .pane-chat {
+  grid-area: chat;
+  align-self: stretch;
+}
+body[data-view="split"] .pane-chat .chat-log {
+  height: max(120px, calc(100vh - 770px));
+}
+body[data-view="split"] .k-head p {
+  display: none;
+}
+body[data-view="scene"] .pane-work,
+body[data-view="scene"] .pane-chat,
+body[data-view="work"] .kitchen,
+body[data-view="work"] .pane-chat,
+body[data-view="chat"] .kitchen,
+body[data-view="chat"] .pane-work {
+  display: none;
+}
+body[data-view="scene"] .kitchen,
+body[data-view="chat"] .pane-chat {
+  max-width: 1100px;
+  width: 100%;
+  margin: 0 auto;
+}
+body[data-view="chat"] .pane-chat .chat-log {
+  height: calc(100vh - 300px);
+}
+body[data-view="split"] .columns {
+  grid-template-columns: repeat(5, minmax(168px, 1fr));
+}
+.work-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e7decf;
+}
+.work-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 8px;
+  background: #ebe5d6;
+}
+.work-tabs .tab {
+  font-size: 13px;
+  padding: 8px 14px;
+  position: relative;
+}
+.work-tabs .tab.active {
+  background: #fffdf7;
+  color: #7d4935;
+  box-shadow: 0 1px 0 #d9ccb2;
+}
+.live-dot {
+  display: none;
+  width: 7px;
+  height: 7px;
+  margin-left: 7px;
+  border-radius: 50%;
+  background: #e08a2c;
+  animation: live 1s steps(2) infinite;
+}
+.tab.live .live-dot {
+  display: inline-block;
+}
+@keyframes live {
+  50% {
+    opacity: 0.3;
+  }
+}
+.pane-work[data-tab] .work-panel {
+  display: none;
+}
+.pane-work[data-tab="kanban"] [data-panel="kanban"],
+.pane-work[data-tab="sign"] [data-panel="sign"]:not([hidden]) {
+  display: block;
+}
+.drag-hint {
+  margin: 0 0 12px;
+  font-size: 12px;
+  color: #8f8066;
+}
+.card[draggable="true"] {
+  cursor: grab;
+}
+.card.dragging {
+  opacity: 0.45;
+  cursor: grabbing;
+}
+.column.drop-ok {
+  outline: 2px dashed #c98a55;
+  outline-offset: -4px;
+}
+.column.drop-over {
+  background: #f6e3cf;
+  outline-color: #b7472e;
+}
+.btn {
+  transition:
+    background 0.15s,
+    transform 0.1s;
+}
+.btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+@media (max-width: 760px) {
+  body[data-view="split"]:has(#kitchen) .layout {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "scene" "chat" "work";
   }
 }
