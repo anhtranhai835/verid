@@ -8,7 +8,7 @@ import boardJs from "./board-ui/board.client.js?raw";
 import kitchenJs from "./board-ui/kitchen.client.js?raw";
 import mockupsJs from "./board-ui/mockups.client.js?raw";
 
-const escape = (text: string) =>
+const escapeHtml = (text: string) =>
   text.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 
 // Last in the page's styles, so no rule above shows what the script has hidden.
@@ -23,7 +23,7 @@ const HIDDEN = "[hidden]{display:none!important}";
  */
 export function boardHtml(lang: Lang, drive: "human" | "auto" = "human"): string {
   const s = (key: string, params: Record<string, string> = {}) =>
-    escape(t(lang, `board.${key}`, params));
+    escapeHtml(t(lang, `board.${key}`, params));
   const auto = drive === "auto";
   const filled: Record<string, string> = {
     lang,

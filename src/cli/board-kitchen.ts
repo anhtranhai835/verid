@@ -47,7 +47,7 @@ const FIXED: Record<string, string> = {
 };
 
 /** One sprite: each run of a colour in a row is one rect, so the SVG stays small. */
-export function sprite(role: string): string {
+function sprite(role: string): string {
   const { hat, coat, accent } = CREW[role]!;
   const colour: Record<string, string> = { ...FIXED, c: coat, a: accent };
   const rows = [...HATS[hat]!, ...BODY];

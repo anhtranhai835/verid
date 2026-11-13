@@ -31,7 +31,7 @@ import { statusText } from "../core/reheat.js";
 import type { State } from "../core/state.js";
 import { cycleHint, cycleLabel } from "../core/tdd.js";
 import { checkedRepos } from "./architecture.js";
-import { type Work } from "./git.js";
+import type { Work } from "./git.js";
 import { bilingual } from "./i18n.js";
 import { auditLines } from "./rule-audit.js";
 import { errno, readFileHash } from "./state-store.js";
@@ -64,7 +64,7 @@ export const designMissing = (project: string, mode: Mode): boolean =>
 export const readDesignHash = (project: string): string | null => readFileHash(designFile(project));
 
 /** What the modules' phases are judged on: the last run's passing ACs, and the design now. */
-export const evidenceOf = (project: string, state: State): Evidence => ({
+const evidenceOf = (project: string, state: State): Evidence => ({
   passedAcs: state.tdd.passed_acs,
   passedE2eAcs: state.tdd.passed_e2e_acs,
   designHash: readDesignHash(project),
@@ -338,7 +338,7 @@ export function autoFactsOf(
 }
 
 /** Last checker results, advisory only; no filesystem snapshot or module signature is required. */
-export function architectureOf(manifest: Manifest, state: State): ArchitectureProblem[] {
+function architectureOf(manifest: Manifest, state: State): ArchitectureProblem[] {
   return architectureProblems(
     checkedRepos(manifest).map(({ repo }) => ({ repo: repo.path })),
     state.architecture,

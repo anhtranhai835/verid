@@ -39,7 +39,7 @@ import { uncoveredAcs } from "../core/plan.js";
 export type Station = State["stations"][string];
 const invalid = (detail: string) => new VeridError("VERID_BURNT_STATION_INVALID", { detail });
 
-export function stationGit(project: string, args: string[]): string {
+function stationGit(project: string, args: string[]): string {
   const result = runGit(project, args);
   if (result.status !== 0 || result.error)
     throw invalid(result.stderr || result.error?.message || args.join(" "));

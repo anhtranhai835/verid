@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { type Dirent, existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { MODULE_INPUTS } from "../core/plan.js";
 import { parityProblem, unitStatus, type UnitStatus } from "../core/reheat.js";
@@ -26,7 +26,7 @@ const read = (file: string): Buffer | null => {
 
 /** Every file below a folder, relative with `/` and sorted; none when it is not there. */
 export function filesBelow(folder: string, prefix = ""): string[] {
-  let entries;
+  let entries: Dirent[];
   try {
     entries = readdirSync(join(folder, prefix), { withFileTypes: true });
   } catch (error) {

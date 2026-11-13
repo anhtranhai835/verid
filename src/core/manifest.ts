@@ -117,7 +117,7 @@ export type Mode = (typeof MODES)[number];
 export const PROVIDERS = ["claude-code", "codex"] as const;
 export type Provider = (typeof PROVIDERS)[number];
 /** Hosts whose main thread writes tests and code: subagents are only the read-only roles. */
-export const SINGLE_WRITER_PROVIDERS: readonly Provider[] = ["codex"];
+const SINGLE_WRITER_PROVIDERS: readonly Provider[] = ["codex"];
 /** Every provider is a single-writer host: messages name main for the writing roles. */
 export const singleWriterOnly = (providers: readonly Provider[] | undefined): boolean =>
   !!providers?.length && providers.every((p) => SINGLE_WRITER_PROVIDERS.includes(p));

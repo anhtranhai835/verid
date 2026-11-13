@@ -50,7 +50,7 @@ export const CLAUDE_ALLOW = [
   "Bash(git commit:*)",
 ];
 
-export function claudeSettingsFile(project: string): string {
+function claudeSettingsFile(project: string): string {
   const file = join(project, ".verid", ".state", "board-claude-settings.json");
   mkdirSync(join(project, ".verid", ".state"), { recursive: true });
   writeFileSync(
@@ -215,7 +215,7 @@ export function windowsArgs(args: readonly string[], lang: Lang = systemLanguage
 
 export type Spawner = (launch: Launch, cwd: string) => ChildProcess;
 
-export const spawnLaunch: Spawner = (launch, cwd) => {
+const spawnLaunch: Spawner = (launch, cwd) => {
   const win = process.platform === "win32";
   // claude and codex are .cmd shims on Windows, which need cmd.exe.
   const shell = win;
@@ -465,7 +465,7 @@ export function stationBoardChat(project: string, spawner: Spawner = spawnLaunch
     pumping = true;
     try {
       const manifest = await loadManifest(project, { readOnly: true });
-      if (!manifest || manifest.drive !== "auto" || (manifest.stations ?? 1) === 1) return;
+      if (manifest?.drive !== "auto" || (manifest.stations ?? 1) === 1) return;
       scheduleStations(project, manifest);
       const state = readState(statePaths(project));
       if (state.halted) return;

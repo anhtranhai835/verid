@@ -1,6 +1,6 @@
 import type * as z from "zod/mini";
-import { userPromptSchema, lifecycleSchema } from "../adapters/claude-code.js";
-import { type Result } from "../adapters/host.js";
+import type { userPromptSchema, lifecycleSchema } from "../adapters/claude-code.js";
+import type { Result } from "../adapters/host.js";
 import * as shared from "./shared.js";
 import { parseVeridPrompt, handlePrompt } from "../core/override.js";
 import {
@@ -26,9 +26,9 @@ import { appendAudit } from "../adapters/audit-log.js";
 import { ERROR_CODES } from "../core/errors.js";
 import { planned, taskSessions, type Roles, type Manifest } from "../core/manifest.js";
 import { claimTaskSession, taskSessionProblem, type TaskProblem } from "../core/kanban.js";
-import { type Cycle } from "../core/tdd.js";
+import type { Cycle } from "../core/tdd.js";
 import { openModule } from "../core/plan.js";
-import { type State } from "../core/state.js";
+import type { State } from "../core/state.js";
 import { join } from "node:path";
 import {
   autoPhase,
@@ -144,7 +144,7 @@ export async function lifecycle(
     const ownership = stationSessionProblem(project, shared.sessionKey(p.session_id), true);
     if (ownership) return shared.deny("VERID_BURNT_STATION_SESSION", { target: ownership });
   }
-  let taskContext: string[] = [];
+  const taskContext: string[] = [];
   if (planned(manifest))
     taskContext.push(
       "verid: module dossiers in .verid/artifacts/03-modules/<name> are required before order. Read .verid/workflow.md; use verid board for priorities.",
@@ -295,7 +295,7 @@ export async function lifecycle(
         : []),
       ...(manifest.drive === "auto" ? [bilingual("drive.auto", {})] : []),
       standing[0]!,
-      ...standing.filter((text) => /(?:^|\n)  iteration /.test(text)),
+      ...standing.filter((text) => /(?:^|\n) {2}iteration /.test(text)),
       bilingual("session.menu", {}),
       ...log,
       next,

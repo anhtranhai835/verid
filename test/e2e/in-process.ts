@@ -52,7 +52,9 @@ async function captured(
       stderr: texts[1] + (r.stderr ?? ""),
     };
   } finally {
-    streams.forEach((stream, i) => (stream.write = writes[i]!));
+    streams.forEach((stream, i) => {
+      stream.write = writes[i]!;
+    });
   }
 }
 

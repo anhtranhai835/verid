@@ -1,0 +1,6 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": ["src/hook-entry.ts", "src/cli/entry.ts", "scripts/*.mjs"],
+  "project": ["src/**/*.ts", "scripts/**/*.mjs", "test/**/*.ts"],
+  "ignoreBinaries": ["net.exe"]
+}

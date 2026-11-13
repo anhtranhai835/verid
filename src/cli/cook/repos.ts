@@ -16,7 +16,7 @@ import {
   checkWorkspaceRoot,
   cloneMarkerFile,
   cloneMissingRepo,
-  detectLayout,
+  type detectLayout,
   initWorkspaceGit,
   validateRepoPaths,
 } from "../../adapters/workspace.js";
@@ -102,7 +102,7 @@ export function planRepos(
 }
 
 /** Which test runners verid sees now, as `vitest, maven (api)`, or that it sees none yet. */
-export function runnersNote(runners: readonly Runner[]): string {
+function runnersNote(runners: readonly Runner[]): string {
   const names = runners.map((r) => (r.dir === "." ? r.name : `${r.name} (${r.dir})`)).join(", ");
   return names ? bilingual("cook.runners", { runners: names }) : bilingual("cook.no_runner", {});
 }

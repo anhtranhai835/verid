@@ -31,7 +31,7 @@ export const autoManifest = (testCmd?: string) =>
     '  coder: ["verid:coder"]',
   ]);
 
-export const SRC_TEST = '    source_globs: ["src/**"]\n    test_globs: ["test/**"]';
+const SRC_TEST = '    source_globs: ["src/**"]\n    test_globs: ["test/**"]';
 
 export const architectureManifest = (
   check: Record<string, unknown> | null,

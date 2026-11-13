@@ -91,8 +91,8 @@ export function parityProblem(text: string): string | null {
   return null;
 }
 
-export type GateState = "none" | "pass" | "fail" | "stale";
-export type ParityState = "none" | "unsigned" | "signed";
+type GateState = "none" | "pass" | "fail" | "stale";
+type ParityState = "none" | "unsigned" | "signed";
 export interface UnitStatus {
   extracted: boolean;
   gate: GateState;

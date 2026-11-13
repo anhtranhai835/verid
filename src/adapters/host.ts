@@ -13,7 +13,7 @@ export interface Result {
 }
 
 /** A tool call as the rules judge it, when the host's tools are not Claude Code's. */
-export interface HostAction {
+interface HostAction {
   action: Action;
   /** What the call writes or reads beyond the action itself. */
   files: FileAction[];
@@ -75,7 +75,7 @@ export const claudeHost: Host = {
 // Events Codex sends that verid has nothing to do with.
 const CODEX_IGNORED = new Set(["PostToolUse", "SessionEnd"]);
 
-export const codexHost: Host = {
+const codexHost: Host = {
   id: "codex",
   singleWriter: true,
   // Codex has no attended-input signal: a prompt never opens an exception there.

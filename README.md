@@ -224,13 +224,15 @@ are in the [hook rule reference](docs/hook-reference.md).
 ```sh
 npm ci
 npm run typecheck
+npm run lint && npm run deadcode
 npx prettier --check .
 npm test
 npm run test:coverage
 ```
 
-[CI](.github/workflows/ci.yml): typecheck, format, all tests with coverage floors on Windows per PR;
-on `main` and releases also Ubuntu (Node 22, 24) and macOS. `npm test` omits installer tests.
+[CI](.github/workflows/ci.yml) per PR: typecheck, lint (Biome), dead code (knip), format, and all tests
+on Windows (with coverage floors) and Ubuntu; before a release also Node 24 and macOS. `npm test`
+omits installer tests.
 
 ## Credits
 

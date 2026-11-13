@@ -28,7 +28,7 @@ import { readState, statePaths, VeridError, withLock, writeState } from "./state
 import { checkSetupPath } from "./workspace.js";
 
 /** Everything a reheat command needs to run the adapter: the manifest, the legacy folder, the plugin. */
-export interface ReheatContext {
+interface ReheatContext {
   manifest: Manifest;
   legacyRoot: string;
   plugin: { name: string; folder: string; adapter: PluginAdapter; env: NodeJS.ProcessEnv };
@@ -38,7 +38,7 @@ export interface ReheatContext {
  * The manifest of a reheat project, its read-only legacy repo and the one enabled plugin that
  * declares an adapter. The plugin must still be the package the developer approved.
  */
-export async function reheatContext(project: string): Promise<ReheatContext> {
+async function reheatContext(project: string): Promise<ReheatContext> {
   const manifest = await loadManifest(project);
   if (!manifest)
     throw new VeridError("VERID_BURNT_MANIFEST_MISSING", { path: manifestFile(project) });

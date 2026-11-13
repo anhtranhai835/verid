@@ -62,7 +62,7 @@ function seed(project: string, name: string) {
   });
   const rows = acs.map(
     (a) =>
-      `| ${citedIds(a.line).join(", ")} | ${a.code} | ${a.level} |  | ${a.text.replaceAll("|", "\|")} |`,
+      `| ${citedIds(a.line).join(", ")} | ${a.code} | ${a.level} |  | ${a.text.replaceAll("|", "\\|")} |`,
   );
   return { requirements, rows };
 }

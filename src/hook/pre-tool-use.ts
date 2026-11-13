@@ -1,7 +1,7 @@
 import type * as z from "zod/mini";
 import type { TaskProblem } from "../core/kanban.js";
 import {
-  preToolUseSchema,
+  type preToolUseSchema,
   toAction,
   type FileAction,
   bashWrites,
@@ -11,7 +11,7 @@ import {
   policyContext,
   inputHash,
 } from "../adapters/claude-code.js";
-import { type Result } from "../adapters/host.js";
+import type { Result } from "../adapters/host.js";
 import * as shared from "./shared.js";
 import {
   statePaths,

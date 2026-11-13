@@ -1,7 +1,7 @@
 import * as z from "zod/mini";
 import { safeCloneRemote } from "./manifest.js";
 
-export const PLUGIN_EVENTS = ["after-order", "on-state", "after-serve"] as const;
+const PLUGIN_EVENTS = ["after-order", "on-state", "after-serve"] as const;
 export type PluginEvent = (typeof PLUGIN_EVENTS)[number];
 const text = z.string().check(z.minLength(1));
 export const pluginNameSchema = text.check(

@@ -476,7 +476,7 @@ export async function interactiveCook(
 }
 
 /** The provider whose command is installed, Claude Code first; Claude Code when neither is. */
-export const installedProviders = (project: string): Provider[] =>
+const installedProviders = (project: string): Provider[] =>
   !launchable("claude", project) && launchable("codex", project) ? ["codex"] : ["claude-code"];
 
 const layoutOf = (repo: Repo) => ({

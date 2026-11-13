@@ -2,7 +2,7 @@ import type { ArchitectureResult } from "./state.js";
 
 export type ArchitectureStatus = ArchitectureResult["status"];
 
-export type ArchitectureCode =
+type ArchitectureCode =
   | "VERID_BURNT_ARCHITECTURE_FAILED"
   | "VERID_BURNT_ARCHITECTURE_STALE"
   | "VERID_BURNT_ARCHITECTURE_UNAVAILABLE";

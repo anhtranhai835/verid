@@ -77,7 +77,7 @@ export function launchable(command: string, cwd: string): boolean {
 }
 
 /** A check's status in a status line, which stays in English. */
-export const WORD: Record<ArchitectureProblem["code"], string> = {
+const WORD: Record<ArchitectureProblem["code"], string> = {
   VERID_BURNT_ARCHITECTURE_FAILED: "failed",
   VERID_BURNT_ARCHITECTURE_STALE: "stale",
   VERID_BURNT_ARCHITECTURE_UNAVAILABLE: "unavailable",

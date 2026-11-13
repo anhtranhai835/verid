@@ -555,7 +555,7 @@ describe("renderManifest", () => {
   it("maps verid's own agents to the roles, which read back", () => {
     const repo = { path: ".", source_globs: ["**"], test_globs: ["test/**"] };
     const text = renderManifest("prep", repo, DEFAULT_ROLES);
-    expect(text.split("\n").filter((l) => /^(roles:|  [a-z]+: \[)/.test(l))).toEqual([
+    expect(text.split("\n").filter((l) => /^(roles:| {2}[a-z]+: \[)/.test(l))).toEqual([
       "roles: # agent types Claude Code reports, from the verid plugin; any agent can fill a role",
       '  reviewer: ["verid:reviewer"]',
       '  tester: ["verid:tester"]',

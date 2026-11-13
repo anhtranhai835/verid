@@ -18,7 +18,7 @@ export const developerEnv = (...also: string[]): NodeJS.ProcessEnv =>
   );
 
 /** Real Claude Code hook stdin, recorded once, with {{CWD}}, {{HOME}} and {{SESSION_ID}} placeholders. */
-export const CLAUDE_FIXTURES = join(import.meta.dirname, "..", "fixtures", "claude-code");
+const CLAUDE_FIXTURES = join(import.meta.dirname, "..", "fixtures", "claude-code");
 
 export const FIXTURE_SESSION = "11111111-2222-3333-4444-555555555555";
 

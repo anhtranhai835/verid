@@ -28,7 +28,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { verifyAuditChain } from "../../src/adapters/audit-log.js";
 import { MODES } from "../../src/core/manifest.js";
 import { runCli } from "./in-process.js";
-import { type Payload } from "./helpers.js";
+import type { Payload } from "./helpers.js";
 
 // What verid's messages tell the agent to run: works without `npm link`.
 const VERID_CMD = `node "${CLI.replaceAll("\\", "/")}"`;

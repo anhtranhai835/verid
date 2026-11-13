@@ -1,8 +1,8 @@
 import type { Manifest } from "./manifest.js";
 import type { PolicyDecision, RuleCode } from "./errors.js";
 
-export const DEFAULT_ALLOWED_SKILLS = ["verid:*"] as const;
-export const DEFAULT_ALLOWED_AGENTS = [
+const DEFAULT_ALLOWED_SKILLS = ["verid:*"] as const;
+const DEFAULT_ALLOWED_AGENTS = [
   "verid:brainstormer",
   "verid:technical-researcher",
   "verid:code-simplifier",
@@ -17,7 +17,7 @@ export const skillAllowlist = (manifest?: DispatchManifest | null): string[] => 
   ...DEFAULT_ALLOWED_SKILLS,
   ...(manifest?.allowed_skills ?? []),
 ];
-export const agentAllowlist = (manifest?: DispatchManifest | null): string[] => [
+const agentAllowlist = (manifest?: DispatchManifest | null): string[] => [
   ...new Set([
     ...DEFAULT_ALLOWED_AGENTS.map((name) =>
       manifest?.resources === "repo" ? name.replace(/^verid:/, "verid-") : name,

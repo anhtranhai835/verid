@@ -10,7 +10,7 @@ export interface Run {
 
 export type GitResult = SpawnSyncReturns<string>;
 
-export interface ProjectFiles {
+interface ProjectFiles {
   readonly root: string;
   readonly dir: string;
   readonly stateFile: string;

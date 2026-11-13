@@ -3,7 +3,7 @@ import { basename, dirname, join } from "node:path";
 import type { PlannedFile } from "../../core/setup-plan.js";
 import type { Manifest, Provider } from "../../core/manifest.js";
 import { instructionBlocks, mergeInstructions } from "../../core/instructions.js";
-import { hasVeridHooks, withVeridHooks } from "../../adapters/claude-settings.js";
+import { hasVeridHooks, type withVeridHooks } from "../../adapters/claude-settings.js";
 import {
   codexHome,
   mergeCodexReviewer,

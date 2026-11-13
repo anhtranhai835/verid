@@ -37,7 +37,7 @@ export function workspaceGit(cwd: string, args: string[]) {
   });
 }
 
-export function insideGit(project: string): boolean {
+function insideGit(project: string): boolean {
   const result = workspaceGit(project, ["rev-parse", "--is-inside-work-tree"]);
   if (!result.error && result.status === 0) return result.stdout.trim() === "true";
   if (errno(result.error) === "ENOENT" || /not a git repository/i.test(result.stderr ?? ""))

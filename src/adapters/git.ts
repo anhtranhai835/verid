@@ -55,7 +55,7 @@ export const folderKey = (path: string): string => {
 };
 
 /** The top folder of the repository holding `folder`; null outside one; an error otherwise. */
-export function gitTop(folder: string, deadline = Infinity): string | null | { error: string } {
+function gitTop(folder: string, deadline = Infinity): string | null | { error: string } {
   const r = runBy(deadline, folder, ["rev-parse", "--show-toplevel"]);
   if (ok(r)) return resolve(r.stdout.trim());
   return NOT_A_REPO.test(r.stderr ?? "") ? null : { error: failure(r) };

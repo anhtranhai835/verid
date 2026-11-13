@@ -1,7 +1,7 @@
 import type * as z from "zod/mini";
-import { lifecycleSchema } from "../adapters/claude-code.js";
+import type { lifecycleSchema } from "../adapters/claude-code.js";
 import * as shared from "./shared.js";
-import { type Result } from "../adapters/host.js";
+import type { Result } from "../adapters/host.js";
 import { loadManifest } from "../adapters/manifest.js";
 import {
   statePaths,
@@ -17,7 +17,7 @@ import { taskSessions, planned, type Manifest } from "../core/manifest.js";
 import { kanbanSessionProblem, observe, statusLine, advance, tryClose } from "./lifecycle.js";
 import { subagentHold } from "../core/roles.js";
 import { bilingual } from "../adapters/i18n.js";
-import { type State } from "../core/state.js";
+import type { State } from "../core/state.js";
 import { autoPhase, coderRoundsAfter, parseVerdict } from "../core/auto.js";
 import { autoFactsOf } from "../adapters/plan-file.js";
 import { keyId } from "../core/tdd.js";

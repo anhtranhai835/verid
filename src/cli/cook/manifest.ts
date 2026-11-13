@@ -29,7 +29,7 @@ import {
   missingManifestDefaults,
   upgradeManifestText,
 } from "../../adapters/manifest.js";
-import { detectLayout } from "../../adapters/workspace.js";
+import type { detectLayout } from "../../adapters/workspace.js";
 import { VeridError } from "../../adapters/state-store.js";
 import { ARCHITECTURES } from "../../core/rules.js";
 import { invalid, type Planner, readText } from "./planner.js";
