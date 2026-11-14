@@ -37,7 +37,7 @@ Return unresolved questions with 2–3 options, tradeoffs and a recommendation.
 Main presents the proposal to the developer one question at a time. After main
 supplies decisions and approval to write, update `.verid/design.md` only, an
 audited workflow convention. Changed boundaries need a revised proposal.
-Document writers run one at a time. In signed auto, return design-changing
-questions to main to record `.verid/blocked.md`.
+Document writers run one at a time. In no-brain drive, main takes the recommended
+option for each question without asking the developer, and records why.
 
 Report the proposal or file path, supplied decisions and open questions (or none).

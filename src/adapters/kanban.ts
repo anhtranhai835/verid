@@ -12,6 +12,7 @@ import { specTrace } from "../core/spec.js";
 import { loadManifest } from "./manifest.js";
 import {
   autoFactsOf,
+  blockedFile,
   dossierStatus,
   orderedModules,
   planFile,
@@ -101,7 +102,7 @@ function snapshotOf(project: string, manifest: Manifest, state: State) {
             dirty: local.tdd.dirty,
             lastRun: local.tdd.last_run,
             served: !!local.modules[name]?.served_at,
-            blocked: local.auto.blocked,
+            blocked: textOf(blockedFile(record.path)).trim() || null,
             unavailable: false,
             stage: record.stage,
           },

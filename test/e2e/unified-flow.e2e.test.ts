@@ -182,7 +182,7 @@ it.each(["human", "ai"])(
             command: "*** Begin Patch\n*** Add File: src/blocked.ts\n+code\n*** End Patch",
           },
         });
-        expect(denied.stdout).toContain("VERID_BURNT_AUTO_NO_MODULE");
+        expect(denied.stdout).toContain("VERID_BURNT_TDD_NO_FAILING_TEST");
       }
     };
     await blocked("resolve the module draft before order");

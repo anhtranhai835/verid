@@ -628,8 +628,9 @@ it("draws the no-brain kitchen with the waiter explaining a real hook denial; bi
   const page = await (await fetch(server.origin)).text();
   expect(page).toContain('id="kitchen"');
   const { kitchen } = await boardSnapshot(project);
-  // Research and design are on the table, unsigned: the waiter has the floor.
-  expect(kitchen?.role).toBe("waiter");
+  // verid signed research and design at the hook itself: the head chef plans while the waiter
+  // explains the denial.
+  expect(kitchen?.role).toBe("head_chef");
   expect(kitchen?.waiter?.say).toContain(rule);
   expect(kitchen?.waiter?.next).toBeTruthy();
   expect(kitchen?.pass.length).toBeGreaterThan(0);

@@ -20,9 +20,8 @@ After main supplies decisions and approval to write, update `.verid/plan.md`
 only, an audited workflow convention. Document writers run one at a time.
 
 Mark unresolved questions in their affected module as verid:plan describes.
-In signed auto, main may answer within-design questions itself; questions
-changing the design or needing the developer go back to main for blocked.md,
-because you cannot record that block.
+In no-brain drive, main answers every question itself with the recommended option
+and records why; one that changes the design goes back to main to update the design.
 
 Report the proposal or written path, module order, supplied decisions and open
 questions (or none).

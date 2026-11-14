@@ -105,8 +105,8 @@ gate tiếp tục chờ tài liệu thật. `verid module` chỉ tạo bản nh�
    - AC-2: invalid credentials return the agreed generic error (REQ-2, SEC-1)
    ```
 
-4. Big-brain drive: developer chạy `verid order identity`. No-brain drive: developer chạy
-   `verid order` để ký research/spec/design rồi agent tiếp tục vòng no-brain hiện có.
+4. Big-brain drive: developer chạy `verid order identity`. No-brain drive: verid tự ký
+   research/spec/design rồi agent tiếp tục vòng no-brain hiện có, không chờ ai duyệt.
    Cả hai dùng hồ sơ module khi xét plan. Signature của module gồm section plan
    và sáu file BA/UI/spec/design/test-plan/security; thay đầu vào làm approval cũ
    hết hiệu lực. Review/release là đầu ra, không thay signature này.

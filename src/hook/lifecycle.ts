@@ -20,6 +20,9 @@ import {
   servedSections,
   planViews,
   autoFactsOf,
+  researchFile,
+  designFile,
+  specFile,
 } from "../adapters/plan-file.js";
 import { bilingual, veridName } from "../adapters/i18n.js";
 import { appendAudit } from "../adapters/audit-log.js";
@@ -42,7 +45,7 @@ import {
   closeReady,
 } from "../core/auto.js";
 import { auditWarnings, auditLines } from "../adapters/rule-audit.js";
-import { captureWork } from "../adapters/git.js";
+import { captureWork, gitTree, gitView } from "../adapters/git.js";
 import { randomInt } from "node:crypto";
 import { stationSessionProblem } from "../adapters/project.js";
 import { scheduleStations } from "../adapters/station.js";
@@ -339,9 +342,10 @@ export function kanbanSessionProblem(
 }
 
 /**
- * A signed auto drive closes ready modules and holds Stop until done or stuck.
- * Unsigned drives use human holds. Unchanged holds count toward LIMIT even with
- * stop_hook_active; waits do not count.
+ * A signed auto drive closes ready modules and holds Stop until done or blocked, so the agent
+ * follows the flow without a prompt. After LIMIT holds in a row with no progress it lets the agent
+ * stop, and locks nothing: the next prompt goes on. Unsigned drives use human holds. Unchanged
+ * holds count even with stop_hook_active; waits do not count.
  */
 function autoStop(
   p: z.infer<typeof lifecycleSchema>,
@@ -350,7 +354,7 @@ function autoStop(
   manifest: Manifest,
 ): Result | null {
   return withLock(paths, () => {
-    let state = readState(paths);
+    let state = signed(project, paths, readState(paths), manifest);
     if (state.auto.signed === null) return null;
     let facts = autoFactsOf(
       project,
@@ -360,7 +364,6 @@ function autoStop(
       manifest.stations,
     );
     const session = p.session_id;
-    state = latchBlocked(paths, state, facts.blockedFile, session);
     state = advance(project, paths, state, { ...facts, auto: state.auto }, manifest);
     facts = { ...facts, auto: state.auto };
     const before = autoPhase(facts);
@@ -375,7 +378,7 @@ function autoStop(
       manifest,
     );
     facts = { ...facts, auto: state.auto, approvals: state.modules };
-    let phase = autoPhase(facts);
+    const phase = autoPhase(facts);
     // A legacy unit that is ready except for the developer's signature on its parity record: the
     // drive waits for it and the agent may stop, as it does when stuck.
     const parityUnit =
@@ -385,6 +388,7 @@ function autoStop(
         ? phase.view.name
         : null;
 
+    let idle = false;
     if (!over(phase) && parityUnit === null) {
       const served = Object.entries(state.modules)
         .filter(([, a]) => a.served_at !== null)
@@ -399,12 +403,16 @@ function autoStop(
       state = { ...state, auto: { ...state.auto, ...stopHolds(state.auto, key) } };
       // Audit first, on either path: if it fails, state is untouched and the hold is not counted.
       if (state.auto.stop_holds >= LIMIT) {
-        appendAudit(paths.audit, { event: "auto_stuck", session, reason: "no_progress" });
-        phase = autoPhase({ ...facts, auto: state.auto });
+        appendAudit(paths.audit, { event: "auto_idle", session, reason: "no_progress" });
+        idle = true;
       }
     }
-    const step =
-      parityUnit === null
+    const step = idle
+      ? {
+          key: "auto.stuck.no_progress" as const,
+          params: { detail: String(state.auto.stop_holds) },
+        }
+      : parityUnit === null
         ? autoNextStep(
             phase,
             facts.researchHash !== null,
@@ -422,7 +430,7 @@ function autoStop(
       bilingual(step.key, { ...shared.mappedNames(manifest.roles), ...step.params }),
     ].join("\n");
     // The agent may stop, and the developer sees why.
-    if (over(phase) || parityUnit !== null) {
+    if (idle || over(phase) || parityUnit !== null) {
       writeState(paths, state);
       return { exit: 0, stdout: JSON.stringify({ systemMessage: lines }) };
     }
@@ -441,19 +449,60 @@ function autoStop(
 
 const over = (phase: AutoPhase): boolean => ["stuck", "done", "stations"].includes(phase.kind);
 
-export const toLatch = (state: State, blocked: string | null): blocked is string =>
-  blocked !== null && state.auto.signed !== null && state.auto.blocked === null;
+/**
+ * No-brain waits for no developer signature: verid signs research, spec and design itself once
+ * research and design exist, and again whenever one of them changes. A change sends the plan back
+ * to review and drops the reviews, as a developer's `verid order` does; the counters stay.
+ */
+export function selfSign(project: string, paths: StatePaths, manifest: Manifest): void {
+  withLock(paths, () => {
+    const state = readState(paths);
+    const next = signed(project, paths, state, manifest);
+    if (next !== state) writeState(paths, next);
+  });
+}
 
-/** Latch blocked.md until verid order resumes the drive; caller writes under the lock. */
-export function latchBlocked(
-  paths: StatePaths,
-  state: State,
-  blocked: string | null,
-  session: string,
-): State {
-  if (!toLatch(state, blocked)) return state;
-  appendAudit(paths.audit, { event: "auto_stuck", session, reason: "blocked" });
-  return { ...state, auto: { ...state.auto, blocked } };
+/** The state with research, spec and design signed as they are now; caller holds the lock. */
+function signed(project: string, paths: StatePaths, state: State, manifest: Manifest): State {
+  const research = readFileHash(researchFile(project));
+  const design = readFileHash(designFile(project));
+  const spec = readFileHash(specFile(project));
+  const before = state.auto.signed;
+  if (
+    research === null ||
+    design === null ||
+    (before?.research_sha256 === research &&
+      before.design_sha256 === design &&
+      before.spec_sha256 === spec)
+  )
+    return state;
+  // Audit first: if it fails, state is untouched and nothing was signed.
+  appendAudit(paths.audit, {
+    event: "auto_signed",
+    by: "verid",
+    research_sha256: research,
+    spec_sha256: spec,
+    design_sha256: design,
+  });
+  return {
+    ...state,
+    review: null,
+    security: null,
+    review_epoch: state.review_epoch + 1,
+    security_epoch: state.security_epoch + 1,
+    auto: {
+      ...state.auto,
+      signed: {
+        research_sha256: research,
+        spec_sha256: spec,
+        design_sha256: design,
+        at: new Date().toISOString(),
+        git: gitView(project) !== null,
+        git_repos: gitTree(project, manifest).presence,
+      },
+      plan_sha256: null,
+    },
+  };
 }
 
 /** Record Git bases for audit only; no branch writes or integration waits. */
@@ -483,7 +532,8 @@ export function advance(
 /** Observe an auto module without changing Git or holding an advisory warning. */
 export function observe(project: string, paths: StatePaths, manifest: Manifest): void {
   withLock(paths, () => {
-    const state = readState(paths);
+    const read = readState(paths);
+    const state = signed(project, paths, read, manifest);
     if (state.auto.signed === null) return;
     const facts = autoFactsOf(
       project,
@@ -493,7 +543,7 @@ export function observe(project: string, paths: StatePaths, manifest: Manifest):
       manifest.stations,
     );
     const moved = advance(project, paths, state, facts, manifest);
-    if (moved !== state) writeState(paths, moved);
+    if (moved !== read) writeState(paths, moved);
   });
 }
 
