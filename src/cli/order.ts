@@ -188,8 +188,9 @@ export async function approve(project: string, wanted: string | undefined): Prom
 }
 
 /**
- * `verid order` in an auto drive (developer only): sign the research and the design as they are
- * now, which starts the drive, and continue one that was stuck. The drive opens and serves the
+ * `verid order` in an auto drive (developer only, optional): verid signs research and design
+ * itself at the agent's hooks, so the drive never waits for this. The developer may still sign
+ * here, which also clears `.verid/blocked.md` and every counter. The drive opens and serves the
  * modules itself, so a module name is refused. Signing starts every loop over and drops the review
  * of the open module; the reviewed plan stands only if neither file changed since the last
  * signature. A served module whose section of the plan was edited since is reopened, and one the

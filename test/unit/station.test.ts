@@ -99,7 +99,7 @@ describe("station independence", () => {
     ).toBe(false);
   });
 
-  it("keeps the coordinator waiting while a station failure stays local", () => {
+  it("keeps the coordinator waiting while a station goes on past its failed rounds", () => {
     const plan = parsePlan(
       "## Module: identity\n- AC-1: works\n\n## Module: product\n- AC-9 (e2e): works\n",
     );
@@ -135,7 +135,7 @@ describe("station independence", () => {
         station: "identity",
         auto: { ...facts.auto, coder_rounds: { "AC-1": 3 } },
       }),
-    ).toMatchObject({ kind: "stuck", reason: "coder_rounds" });
+    ).toMatchObject({ kind: "module", view: { name: "identity" } });
     expect(autoPhase(facts)).toEqual({ kind: "stations" });
   });
 });

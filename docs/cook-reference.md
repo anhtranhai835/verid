@@ -51,7 +51,7 @@ a note. Confirmation applies the checked plan. Existing instruction text outside
 | `remix`  | Existing code           | Record the baseline with `verid stock`.                                               |
 | `reheat` | A legacy system         | Install an adapter, then `verid reheat inventory`. See [reheat mode](reheat-mode.md). |
 
-`big-brain` leaves order and serve to the developer. `no-brain` starts when the developer
-signs research, spec and design with `verid order`. It reviews the plan and works
-module by module. Questions that block progress go into `.verid/blocked.md`; the
-developer resolves them and resumes with `verid order`.
+`big-brain` leaves order and serve to the developer. `no-brain` needs no approval: verid
+signs research, spec and design itself once they exist, has the plan reviewed and works
+module by module. The agent answers open questions itself; only a blocker no agent can
+clear goes into `.verid/blocked.md`, and deleting that file resumes the drive.

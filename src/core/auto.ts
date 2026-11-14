@@ -15,7 +15,7 @@ import {
 import type { Roles } from "./manifest.js";
 import type { AutoState, State } from "./state.js";
 
-/** Every loop of an auto drive runs at most this many times before it is stuck. */
+/** Stop holds the agent this many times in a row with no progress, then lets it stop. */
 export const LIMIT = 3;
 
 export type Verdict = "pass" | "fail";
@@ -104,17 +104,7 @@ export function changedServed(
     .map(([name]) => name);
 }
 
-type StuckReason =
-  | "blocked"
-  | "research_changed"
-  | "design_changed"
-  | "served_changed"
-  | "plan_reviews"
-  | "coder_rounds"
-  | "module_reviews"
-  | "security_reviews"
-  | "no_progress"
-  | "reheat_gate";
+type StuckReason = "blocked" | "reheat_gate";
 
 type AutoPlanRead =
   | { ok: true; modules: PlanModule[]; hashes: Record<string, string> }
@@ -152,42 +142,17 @@ export type AutoPhase =
   | { kind: "module"; view: ModuleView }
   | { kind: "done" };
 
-type Stuck = Extract<AutoPhase, { kind: "stuck" }>;
-
 /**
- * Why the drive cannot go on without the developer, the first that applies. Research or design
- * changing, or a served module edited, means the approved ground moved under the run; a counter
- * at LIMIT means a loop that did not converge.
- */
-function stuck(f: AutoFacts): Stuck | null {
-  const { auto } = f;
-  const blocked = auto.blocked ?? f.blockedFile;
-  if (blocked !== null) return { kind: "stuck", reason: "blocked", detail: blocked };
-  const edited = f.plan?.ok ? changedServed(f.plan.hashes, f.approvals) : [];
-  if (edited[0] !== undefined)
-    return { kind: "stuck", reason: "served_changed", detail: edited[0] };
-  if (auto.plan_reviews >= LIMIT)
-    return { kind: "stuck", reason: "plan_reviews", detail: String(auto.plan_reviews) };
-  const ac = Object.entries(auto.coder_rounds).find(([, rounds]) => rounds >= LIMIT);
-  if (ac !== undefined) return { kind: "stuck", reason: "coder_rounds", detail: ac[0] };
-  if (auto.module_reviews >= LIMIT)
-    return { kind: "stuck", reason: "module_reviews", detail: String(auto.module_reviews) };
-  if (auto.security_reviews >= LIMIT)
-    return { kind: "stuck", reason: "security_reviews", detail: String(auto.security_reviews) };
-  if (auto.stop_holds >= LIMIT)
-    return { kind: "stuck", reason: "no_progress", detail: String(auto.stop_holds) };
-  return null;
-}
-
-/**
- * Where an auto drive stands, the first that applies: not signed by the developer; stuck; the
- * plan not yet written or passed by the reviewer (and unchanged since); a module to build; done.
+ * Where an auto drive stands, the first that applies: not signed yet (verid signs research and
+ * design itself once both exist); blocked by the agent's own `.verid/blocked.md`; the plan not yet
+ * written or passed by the reviewer (and unchanged since); a module to build; done. No count and
+ * no edit stops the drive: failed rounds and reviews only shape the next step, and a served
+ * module whose section changed opens again.
  */
 export function autoPhase(f: AutoFacts): AutoPhase {
   const { auto, plan } = f;
   if (auto.signed === null) return { kind: "unsigned" };
-  const halt = stuck(f);
-  if (halt !== null) return halt;
+  if (f.blockedFile !== null) return { kind: "stuck", reason: "blocked", detail: f.blockedFile };
   if (plan === null) return { kind: "plan", missing: true, problem: null };
   if (!plan.ok) return { kind: "plan", missing: false, problem: plan.detail };
   const problem = autoPlanProblem(plan.modules);
@@ -347,7 +312,7 @@ export function autoNextStep(
             ? "menu.spec"
             : !hasDesign
               ? "menu.design"
-              : "auto.sign",
+              : "auto.plan",
         params: {},
       };
     case "stuck":

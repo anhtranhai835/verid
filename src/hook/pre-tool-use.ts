@@ -23,25 +23,18 @@ import {
 } from "../adapters/state-store.js";
 import { appendAudit } from "../adapters/audit-log.js";
 import { loadManifest, tddLayouts } from "../adapters/manifest.js";
-import { taskSessions, planned, type Roles } from "../core/manifest.js";
+import { taskSessions, type Roles } from "../core/manifest.js";
 import { isUnder, decide } from "../core/policy.js";
-import {
-  fileRole,
-  type AutoLock,
-  decideTdd,
-  type TddDecision,
-  TDD_STRICTNESS,
-} from "../core/tdd.js";
+import { fileRole, decideTdd, type TddDecision, TDD_STRICTNESS } from "../core/tdd.js";
 import { relative, dirname, resolve, isAbsolute } from "node:path";
-import { kanbanSessionProblem, toLatch, latchBlocked } from "./lifecycle.js";
-import { researchMissing, specMissing, designMissing, autoFactsOf } from "../adapters/plan-file.js";
+import { kanbanSessionProblem, selfSign } from "./lifecycle.js";
+import { researchMissing, specMissing, designMissing } from "../adapters/plan-file.js";
 import { type PolicyDecision, type RuleCode, isOverridable } from "../core/errors.js";
 import { decideDispatch, decideAgentContext, decideKnownTool } from "../core/dispatch.js";
 import { decideInstructions } from "../adapters/instruction-protection.js";
 import { matchesGlob } from "../core/glob.js";
 import { roleAdvice, type Writer, ROLE_DOCUMENTS } from "../core/roles.js";
 import { consumeOverride, recordDenial } from "../core/override.js";
-import { autoPhase } from "../core/auto.js";
 import { withPluginDispatch } from "../adapters/plugin-store.js";
 import { stationPolicy } from "../adapters/station-policy.js";
 import { legacyPolicy } from "../adapters/legacy-policy.js";
@@ -366,45 +359,22 @@ async function tddGate(
   const manifest = writes.length > 0 ? await loadManifest(project) : null;
   if (!manifest) return { judge: () => undefined, names: {} };
   const { real, written } = tddLayouts(project, manifest);
-  // Code needs an approved, unserved, unchanged module. Remix has no plan; auto follows
-  // plan order and gets stuck when it needs the developer.
-  const facts =
-    manifest.drive === "auto"
-      ? autoFactsOf(
-          project,
-          state,
-          manifest.iterations !== undefined,
-          planned(manifest),
-          manifest.stations,
-        )
-      : null;
-  // A write is judged before it runs, so a Bash `rm .verid/blocked.md` latches the file first.
-  if (facts !== null && toLatch(state, facts.blockedFile))
-    withLock(paths, () =>
-      writeState(paths, latchBlocked(paths, readState(paths), facts.blockedFile, p.session_id)),
-    );
-  // A branch or a merge is looked for at Stop, SubagentStop and SessionStart only: never in a
-  // tool call, whose hook the host lets through once it runs out of time.
-  const auto = facts === null ? null : autoPhase(facts);
+  // Code needs an approved, unserved, unchanged module. Remix has no plan; no-brain waits for no
+  // approval: verid signs its research and design itself, and the cycle alone judges its writes.
+  const auto = manifest.drive === "auto";
+  if (auto) selfSign(project, paths, manifest);
   const planApproved =
-    manifest.mode === "remix" ||
-    (auto ? auto.kind === "module" : shared.hasOpenModule(project, state, manifest));
-  const lock: AutoLock | null = auto?.kind === "stuck" ? "VERID_BURNT_AUTO_STUCK" : null;
+    auto || manifest.mode === "remix" || shared.hasOpenModule(project, state, manifest);
   const who = {
     writer: shared.writerFor(p.agent_id, p.agent_type, manifest.roles),
     split: shared.splitFor(manifest.roles),
   };
-  const judge = (
-    approved: boolean,
-    by: (w: FileAction) => Who = () => who,
-    locked = lock,
-  ): Judged[] =>
+  const judge = (approved: boolean, by: (w: FileAction) => Who = () => who): Judged[] =>
     writes.flatMap((w) => {
       const asWritten = { ...w, path: writtenPath(resolve(p.cwd, w.display)) };
-      const drive = auto ? { lock: locked } : undefined;
       return [
-        { write: w, tdd: decideTdd(w, state.tdd, real, approved, by(w), drive) },
-        { write: w, tdd: decideTdd(asWritten, state.tdd, written, approved, by(w), drive) },
+        { write: w, tdd: decideTdd(w, state.tdd, real, approved, by(w)) },
+        { write: w, tdd: decideTdd(asWritten, state.tdd, written, approved, by(w)) },
       ];
     });
   const judged = judge(planApproved);
@@ -419,17 +389,10 @@ async function tddGate(
             j.tdd.code.startsWith("VERID_BURNT_ROLE_") &&
             lifted.has(j.tdd.code),
         );
-      const planLifted =
-        lifted.has("VERID_BURNT_PLAN_NOT_APPROVED") || lifted.has("VERID_BURNT_AUTO_NO_MODULE");
-      // Rejudge without the auto lock so frozen-test and reopen rules still apply.
-      const unlocked = lock !== null && lifted.has(lock);
-      const again = planLifted || unlocked || writes.some(roleLifted);
+      const planLifted = lifted.has("VERID_BURNT_PLAN_NOT_APPROVED");
+      const again = planLifted || writes.some(roleLifted);
       const base = again
-        ? judge(
-            planLifted || planApproved,
-            (w) => (roleLifted(w) ? ANYONE : who),
-            unlocked ? null : lock,
-          )
+        ? judge(planLifted || planApproved, (w) => (roleLifted(w) ? ANYONE : who))
         : judged;
       const harsh = harshest(base.map((j) => passed(j, lifted)));
       return harsh.tdd.kind === "allow" ? undefined : harsh;

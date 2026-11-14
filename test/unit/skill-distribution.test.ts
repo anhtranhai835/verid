@@ -150,10 +150,10 @@ describe("self-contained verid skills", () => {
     expect(existsSync(join(root, "plugin/agents/researcher.md"))).toBe(false);
   });
 
-  it("has a no-brain drive write a plain-language summary before the signature", () => {
+  it("has a no-brain drive write a plain-language summary and go on without waiting", () => {
     expect(read("plugin/skills/design/SKILL.md")).toContain("references/summary.md");
     const summary = read("plugin/skills/design/references/summary.md");
-    for (const text of [".verid/summary.md", "verid order", "plain language"])
+    for (const text of [".verid/summary.md", "Do not wait", "plain language"])
       expect(summary, text).toContain(text);
   });
 
@@ -259,7 +259,7 @@ describe("self-contained verid skills", () => {
 
   it("keeps drive- and layout-specific steps out of the always-read plan and build skills", () => {
     const rows = [
-      ["plan", "references/auto-drive.md", "## Auto drive", "a third failed or missing verdict"],
+      ["plan", "references/auto-drive.md", "## Auto drive", "nobody approves the plan"],
       ["build", "references/modes.md", "In remix mode", "Characterize untested behaviour"],
     ] as const;
     for (const [name, pointer, gone, moved] of rows) {

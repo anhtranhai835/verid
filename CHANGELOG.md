@@ -18,6 +18,9 @@ tags `1.0.0` and `1.2.0` keep their names.
 - `verid cook` asks for the provider right after the language on a new project, the one installed
   on this machine first and each choice saying whether its command was found, instead of picking
   Codex silently when `claude` is not on PATH.
+- `verid cook` on a new project asks every setting up front, in order, each defaulting to verid's
+  suggestion: provider, layout, resources, mode, drive, iterations, architecture and, when it sees
+  none, the test runner. The "Change settings" choice before Apply is gone.
 - On the no-brain board, only the crew member's own pixels move and glow while they work; the
   room behind them and their name tag stay still.
 

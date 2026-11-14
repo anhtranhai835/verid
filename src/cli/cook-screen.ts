@@ -64,7 +64,7 @@ const PROVIDER_CHOICES = [
 
 /**
  * `verid cook` in the developer's own terminal: the banner, the language, and for a new project
- * the mode and the test runner verid could not see, each picked with the arrow keys. Then the
+ * every setting in turn, each defaulting to verid's suggestion and picked with the arrow keys. Then the
  * plan, in cooking terms, and for a new manifest what it locks, in words with files of the
  * project as examples: every code file but the tests, so there is nothing to pick. Nothing is
  * written until the developer starts cooking; they can unlock folders first, and Ctrl+C cancels.
@@ -193,10 +193,9 @@ export async function interactiveCook(
       flags.upgrade = add === 0;
     }
   } else {
-    // The agent is the developer's pick, not a guess from PATH: the installed one is only the
-    // default. What else verid can see is shown in the plan; "Change settings" asks everything.
+    // Every setting is asked up front, each defaulting to what verid sees: the installed agent,
+    // the detected layout (a workspace verid cannot use falls back to monorepo), the mode.
     flags.providers = installedProviders(project);
-    if (!(await askProviders())) return cancelled();
     if (layout === "workspace")
       try {
         checkWorkspaceRoot(project);
@@ -204,9 +203,7 @@ export async function interactiveCook(
         if (!(error instanceof VeridError)) throw error;
         layout = "monorepo";
       }
-    flags.layout = layout;
-    repoPaths = layout === "workspace" ? (detected?.repos ?? []).map((repo) => repo.path) : ["."];
-    if (!(await askModeAndDrive())) return cancelled();
+    if (!(await askSettings())) return cancelled();
   }
 
   /** Why a typed legacy folder cannot be used, or null when it can. */
@@ -294,7 +291,7 @@ export async function interactiveCook(
     return true;
   }
 
-  /** Every setting of a new manifest, each defaulting to the current pick; false when cancelled. */
+  /** Every setting of a new manifest, each defaulting to verid's suggestion; false when cancelled. */
   async function askSettings(): Promise<boolean> {
     if (!(await askProviders())) return false;
     const children = detectLayout(project, "workspace").repos;
@@ -461,7 +458,6 @@ export async function interactiveCook(
     const options = [
       { label: say("cook.start") },
       ...(repo ? [{ label: say("cook.unlock") }] : []),
-      ...(manifest ? [] : [{ label: say("cook.change") }]),
       { label: say("cook.cancel") },
     ];
     const go = await select(io, say("cook.confirm"), options, 0, { y: 0, n: options.length - 1 });
@@ -475,10 +471,6 @@ export async function interactiveCook(
       layout = fresh.layout;
       providers = [...fresh.providers];
       break;
-    }
-    if (!manifest && go === options.length - 2) {
-      if (!(await askSettings())) return cancelled();
-      continue;
     }
     if (!(repo && go === 1)) return cancelled();
     codeDirs ??= topDirs(project).filter((d) => fileRole(`${d}/x`, layoutOf(repo)) === "code");

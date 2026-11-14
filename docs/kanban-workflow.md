@@ -86,10 +86,10 @@ The prompt goes to Claude Code and Codex on stdin, never on a command line. The
 first message opens the drive's session; later messages resume it, and its provider
 is fixed. **Stop** stops the run. The transcript and the session ID live in the board
 process only; a restarted board opens a new session, which no-brain drive allows.
-Every tool call still passes verid's hook. Before **Sign research & design** the
-board shows `.verid/summary.md` (when present), `research.md` and `design.md`; the
-button records the same signature as `verid order` and is refused while either file
-is missing.
+Every tool call still passes verid's hook. The board shows `.verid/summary.md` (when
+present), `research.md` and `design.md`. verid signs them itself at the agent's next hook,
+so nobody has to press **Sign research & design**; the button stays as an optional
+`verid order` and is refused while either file is missing.
 Unknown event shapes are shown as their text. Existing TDD, role and independent review rules apply. `serve` closes the selection and tells the agent to stop.
 No hook or UI operation automatically opens the next task.
 
@@ -116,6 +116,6 @@ when moving from an older version.
 
 ## Priority queue and no-brain drive
 
-Use the ↑/↓ buttons or Alt+↑/↓ on a focused pending card. The queue survives restarts in protected local state, without changing plan signatures or review approval. The current task and served tasks cannot move; product stays last. Big-brain drive shows the next pending task but permits any selection. No-brain drive hides selection; sign on the board (or with `verid order` in your terminal), then one AI session follows `verid menu`. Module dossiers must be complete before order in either drive. Splitting the spec creates those drafts and their Artifacts references; cards report missing files and unresolved clarifications.
+Use the ↑/↓ buttons or Alt+↑/↓ on a focused pending card. The queue survives restarts in protected local state, without changing plan signatures or review approval. The current task and served tasks cannot move; product stays last. Big-brain drive shows the next pending task but permits any selection. No-brain drive hides selection and waits for no signature: one AI session follows `verid menu`. Module dossiers must be complete before order in either drive. Splitting the spec creates those drafts and their Artifacts references; cards report missing files and unresolved clarifications.
 
 Remix keeps baseline behaviour; its board displays a no-task notice.

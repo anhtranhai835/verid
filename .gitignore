@@ -33,3 +33,8 @@ desktop.ini
 # python coverage artifacts
 .coverage
 __pycache__/
+
+# Generated local Graphify graph, caches and installer backups
+graphify-out/
+*.graphify-bak
+.codex/skills/graphify/.references.*.tmp/

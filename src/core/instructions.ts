@@ -167,7 +167,7 @@ export function renderInstructions(
           "- Templates: .verid/templates/; main records evidence; reviewers read only.",
           ...(manifest.drive === "auto"
             ? [
-                "- AI: developer sets priorities in verid board and signs with verid order. One session follows that queue through TDD/review/serve; current work stays first.",
+                "- AI: developer sets priorities in verid board; verid signs research/design itself. One session follows that queue through TDD/review/serve without asking; current work stays first.",
               ]
             : []),
         ]

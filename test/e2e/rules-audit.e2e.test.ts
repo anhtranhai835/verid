@@ -183,8 +183,6 @@ describe("rules and audit without relaxing TDD", () => {
       "## Module: calc\n- AC-1: adds\n## Module: product\n- AC-2 (e2e): works\n",
     );
     expect((await runCli(["order"], project)).code).toBe(0);
-    put(".verid/research.md", "updated research");
-    expect((await runCli(["doctor"], project)).stdout).toContain("RESEARCH_CHANGED");
     expect((await review()).code).toBe(0); // plan
     expect((await write("src/a.ts")).stderr).toContain("TDD_NO_FAILING_TEST");
     evidence();
@@ -194,6 +192,9 @@ describe("rules and audit without relaxing TDD", () => {
     const menu = await runCli(["menu"], project);
     expect(menu.stdout).toContain("product · cooking");
     expect(menu.stdout).not.toContain("squash-merge");
+    // Until a hook signs the change, doctor warns about it.
+    put(".verid/research.md", "updated research");
+    expect((await runCli(["doctor"], project)).stdout).toContain("RESEARCH_CHANGED");
   });
 
   it("keeps a closed auto module's history warnings visible after opening the next module", async () => {

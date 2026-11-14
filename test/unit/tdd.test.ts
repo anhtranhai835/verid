@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { isOverridable } from "../../src/core/errors.js";
 import type { Action } from "../../src/core/policy.js";
 import {
   e2eCases,
@@ -476,9 +475,8 @@ describe("decideTdd", () => {
       ["RAW", "browser/login.spec.ts", false, "VERID_BURNT_ROLE_CODER_ONLY"],
       ["COOKING", "browser/login.spec.ts", false, "VERID_BURNT_ROLE_CODER_ONLY"],
       ["RAW", "browser/unit.spec.ts", false, "VERID_BURNT_ROLE_CODER_ONLY"],
-      ["RAW", "journeys/login.py", "VERID_BURNT_AUTO_STUCK", "VERID_BURNT_AUTO_STUCK"],
     ] as const;
-    for (const [state, rel, stuck, want] of rows) {
+    for (const [state, rel, , want] of rows) {
       const path = `c:/proj/${rel}`;
       const d = decideTdd(
         { kind: "file", tool: "Write", access: "write", path, display: path },
@@ -486,7 +484,6 @@ describe("decideTdd", () => {
         layout,
         true,
         { writer: "qa", split: true },
-        { lock: stuck || null },
       );
       expect(d.kind === "deny" ? d.code : d.kind, `${state} ${rel}`).toBe(want);
     }
@@ -632,46 +629,6 @@ describe("decideTdd", () => {
       ["write a test", write("c:\\proj\\test\\a.test.ts"), "VERID_BURNT_TDD_TEST_FROZEN"],
     ]);
     decisions("PLATED", false, [["write src", src, "VERID_BURNT_PLAN_NOT_APPROVED"]]);
-  });
-
-  // An auto drive adds locks the human drive does not have: nothing but docs while it is stuck, while
-  // a closed module waits for its merge or while its branch cannot be prepared, and no production
-  // code while no module is open (tests stay writable, as with the plan gate).
-  it("in auto, locks code and tests while stuck, waiting or unprepared, and code with no open module", () => {
-    const at = (file: string, approved: boolean, auto?: Parameters<typeof decideTdd>[5]) => {
-      const d = decideTdd(
-        write(`c:\\proj\\${file}`),
-        { state: "COOKING", stub: false },
-        win,
-        approved,
-        undefined,
-        auto,
-      );
-      return d.kind === "deny" ? d.code : d.kind;
-    };
-    expect({
-      "stuck code": at("src/a.ts", true, { lock: "VERID_BURNT_AUTO_STUCK" }),
-      "stuck test": at("test/a.test.ts", true, { lock: "VERID_BURNT_AUTO_STUCK" }),
-      "stuck free": at("README.md", true, { lock: "VERID_BURNT_AUTO_STUCK" }),
-      "no module code": at("src/a.ts", false, { lock: null }),
-      "no module test": at("test/a.test.ts", false, { lock: null }),
-      "open code": at("src/a.ts", true, { lock: null }),
-      human: at("src/a.ts", false),
-    }).toEqual({
-      "stuck code": "VERID_BURNT_AUTO_STUCK",
-      "stuck test": "VERID_BURNT_AUTO_STUCK",
-      "stuck free": "allow",
-      "no module code": "VERID_BURNT_AUTO_NO_MODULE",
-      "no module test": "VERID_BURNT_TDD_TEST_FROZEN",
-      "open code": "code",
-      human: "VERID_BURNT_PLAN_NOT_APPROVED",
-    });
-    expect([
-      isOverridable("VERID_BURNT_AUTO_STUCK"),
-      isOverridable("VERID_BURNT_AUTO_NO_MODULE"),
-      isOverridable("VERID_BURNT_AUTO_WAITING_MERGE"),
-      isOverridable("VERID_BURNT_AUTO_BRANCH"),
-    ]).toEqual([true, true, true, false]);
   });
 
   // The stub step opens production code only for the stub; the plan gate still comes first.
