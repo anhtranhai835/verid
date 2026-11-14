@@ -72,10 +72,15 @@ jobs:
       - run: npm ci
       - run: npx prettier --check .
 
-  test:
-    name: All tests and coverage (Windows)
+  # The Windows suite is the slowest job, so it runs in three shards. The sequencer in
+  # vitest.config.ts gives installers, station, and doctor with tdd a shard each.
+  test-shard:
+    name: Windows tests, shard ${{ matrix.shard }}/3
     runs-on: windows-latest
     timeout-minutes: 30
+    strategy:
+      matrix:
+        shard: [1, 2, 3]
     steps:
       # Byte-exact checkout: the runner's default CRLF conversion would change hashed and
       # size-budgeted files.
@@ -88,9 +93,41 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      # Build, then unit, end-to-end and installer tests (install.ps1 and install.sh via Git
-      # Bash). Fails when coverage of src/ drops under the thresholds in vitest.config.ts.
-      - run: npm run test:coverage
+      - run: npm run build
+      # Unit, end-to-end and installer tests (install.ps1 and install.sh via Git Bash). The blob
+      # holds this shard's results and coverage for the merge job.
+      - run: npx vitest run --coverage --shard=${{ matrix.shard }}/3 --reporter=blob
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: vitest-blob-${{ matrix.shard }}
+          path: .vitest-reports/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 1
+
+  # Merges the shards' results and fails when coverage of src/ drops under the thresholds in
+  # vitest.config.ts. On Windows, because the blobs hold the shards' Windows source paths.
+  test:
+    name: All tests and coverage (Windows)
+    needs: test-shard
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: vitest-blob-*
+          path: .vitest-reports
+          merge-multiple: true
+      - run: npx vitest --merge-reports --coverage
 
   linux:
     name: All tests (Ubuntu), then the packed tarball
