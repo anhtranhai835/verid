@@ -48,7 +48,7 @@ To try verid on a small project first, follow [examples/slugify](examples/slugif
 gh api -H "Accept: application/vnd.github.raw" repos/anhtranhai835/verid/contents/install.sh | sh
 ```
 
-**2. Set the project up.** Press Enter at each question: the language, the mode (`prep` for an idea, `recipe` for existing specs, `remix` for existing code, `reheat` to rewrite a read-only legacy system) and, for prep and recipe, the drive (`big-brain`: you pick and approve each task; `no-brain`: you type the idea and the agent does the rest). Cook shows the provider, layout and test runner it found and the files it will write; "Change settings" changes the rest.
+**2. Set the project up.** Cook asks every setting in turn, each already set to its suggestion, so Enter alone accepts it: the language, the provider, the layout, where resources live, the mode (`prep` for an idea, `recipe` for existing specs, `remix` for existing code, `reheat` to rewrite a read-only legacy system), for prep and recipe the drive (`big-brain`: you pick and approve each task; `no-brain`: you type the idea and the agent does the rest) and iterations, the architecture, and the test runner when it sees none. Then it shows what it found and the files it will write, and asks to start.
 
 ```sh
 cd your-project

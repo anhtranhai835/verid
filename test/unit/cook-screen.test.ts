@@ -17,8 +17,6 @@ import { doctorCommand } from "../../src/cli/doctor.js";
 let project: string;
 /** Enter for every question this cook asks. */
 const enters = () => Array.from({ length: 12 }, () => ENTER);
-/** At the first Apply: "Change settings", after Start and Unlock folders. */
-const SETTINGS = "3" + ENTER;
 
 const t = developerProject("verid-cook-screen-", {
   cwd: () => project,
@@ -80,7 +78,6 @@ describe("interactiveCook: verid cook in the developer's terminal", () => {
           },
         ],
         ENTER,
-        SETTINGS,
       );
       expect((await interactiveCook(project, terminal.io, "en-US")).exit).toBe(0);
       expect(terminal.screen()).toContain(
@@ -106,8 +103,7 @@ describe("interactiveCook: verid cook in the developer's terminal", () => {
       put(`${name}/src/app.ts`);
       put(`${name}/package.json`, '{"devDependencies":{"vitest":"^5.0.0"}}');
     }
-    // A workspace has no folders to unlock, so "Change settings" is the second choice.
-    const terminal = scriptedTerminal(enters(), ENTER, ENTER, "1" + ENTER, ENTER, "2" + ENTER);
+    const terminal = scriptedTerminal(enters(), ENTER, ENTER, "1" + ENTER, ENTER);
     expect((await interactiveCook(project, terminal.io, "en-US")).exit).toBe(0);
     expect(terminal.screen()).toContain("api, web");
     expect(parse(manifest())).toMatchObject({
@@ -122,12 +118,11 @@ describe("interactiveCook: verid cook in the developer's terminal", () => {
   it("AC-4, AC-32: selects layout and repo resources without a workflow question", async () => {
     vitestProject();
     const terminal = scriptedTerminal(
-      [ENTER, "1" + ENTER, ENTER, "1" + ENTER, ...enters()],
-      [DOWN + ENTER, ENTER],
+      [ENTER, "1" + ENTER, ...enters()],
+      DOWN + ENTER,
       ENTER,
       ENTER,
       DOWN + ENTER,
-      SETTINGS,
     );
     const result = await interactiveCook(project, terminal.io, "en-US");
     expect(result.exit).toBe(0);
@@ -152,7 +147,7 @@ describe("interactiveCook: verid cook in the developer's terminal", () => {
     ];
     for (const [keys, architecture] of rows) {
       vitestProject();
-      const terminal = scriptedTerminal(enters(), ENTER, keys, ENTER, ENTER, SETTINGS);
+      const terminal = scriptedTerminal(enters(), ENTER, keys);
       expect((await interactiveCook(project, terminal.io, "en-US")).exit).toBe(0);
       expect(parse(manifest()).architecture).toBe(architecture);
       expect(readFileSync(join(project, ".verid/rules/architecture.md"), "utf8")).toContain(
@@ -201,30 +196,20 @@ describe("interactiveCook: verid cook in the developer's terminal", () => {
       },
     ];
     for (const row of rows) {
-      // Language, mode, drive, then in the settings mode, drive, iterations, the start date
-      // (once refused), the stove, and Apply.
-      const terminal = scriptedTerminal(
-        [
-          ENTER,
-          row.mode,
-          ENTER,
-          row.mode,
-          ENTER,
-          "2" + ENTER,
-          "2026-02-29\n",
-          row.answer,
-          ENTER,
-          () => {
-            expect(existsSync(join(project, ".verid"))).toBe(false);
-            return ENTER;
-          },
-        ],
+      // Language, mode, drive, iterations, the start date (once refused), the stove, and Apply.
+      const terminal = scriptedTerminal([
         ENTER,
+        row.mode,
         ENTER,
+        "2" + ENTER,
+        "2026-02-29\n",
+        row.answer,
         ENTER,
-        ENTER,
-        SETTINGS,
-      );
+        () => {
+          expect(existsSync(join(project, ".verid"))).toBe(false);
+          return ENTER;
+        },
+      ]);
       const result = await interactiveCook(
         project,
         terminal.io,
@@ -248,25 +233,16 @@ describe("interactiveCook: verid cook in the developer's terminal", () => {
 
   it("still cancels before writing when Ctrl+C is pressed at the start date", async () => {
     let terminal: ReturnType<typeof scriptedTerminal>;
-    terminal = scriptedTerminal(
-      [
-        ENTER,
-        ENTER,
-        ENTER,
-        ENTER,
-        ENTER,
-        DOWN + ENTER,
-        () => {
-          setImmediate(() => terminal.interrupt());
-          return "";
-        },
-      ],
+    terminal = scriptedTerminal([
       ENTER,
       ENTER,
       ENTER,
-      ENTER,
-      SETTINGS,
-    );
+      DOWN + ENTER,
+      () => {
+        setImmediate(() => terminal.interrupt());
+        return "";
+      },
+    ]);
     const result = await interactiveCook(
       project,
       terminal.io,
@@ -628,17 +604,23 @@ describe("interactiveCook: verid cook in the developer's terminal", () => {
     expect(t.screen()).toMatch(/🍽️ {2}Served! First run `.+ stock` here/);
   });
 
-  it("cooks an empty folder with Enter alone in five questions, showing what it found, and doctor passes", async () => {
+  it("cooks an empty folder with Enter alone, asking every setting before Apply, and doctor passes", async () => {
     const t = scriptedTerminal(Array.from({ length: 10 }, () => ENTER));
     expect((await interactiveCook(project, t.io, "en-US")).exit).toBe(0);
     const asked = new Set(t.screen().match(/^\? .*? \(↑\/↓/gm));
     expect([...asked]).toEqual([
       "? Chọn ngôn ngữ / Choose your language (↑/↓",
       "? Choose providers (↑/↓",
+      "? How are your repositories organized? (↑/↓",
+      "? Where should cook resources live? (↑/↓",
       "? What are we cooking today? (↑/↓",
       "? Who runs the kitchen? (↑/↓",
+      "? Plan in iterations? (↑/↓",
+      "? Project architecture (advisory rules) (↑/↓",
+      "? Stove (test runner) (↑/↓",
       "? Apply? (Y/n) (↑/↓",
     ]);
+    expect(t.screen()).not.toContain("Change settings");
     expect(t.screen()).toMatch(/^Found: Claude Code · monorepo · test runner: none yet$/m);
     expect(manifest()).toContain('mode: "prep"');
     expect(manifest()).not.toContain("drive:");
@@ -651,7 +633,8 @@ describe("interactiveCook: verid cook in the developer's terminal", () => {
     vitestProject();
     const again = scriptedTerminal(Array.from({ length: 10 }, () => ENTER));
     expect((await interactiveCook(project, again.io, "en-US")).exit).toBe(0);
-    expect(new Set(again.screen().match(/^\? .*? \(↑\/↓/gm)).size).toBeLessThanOrEqual(5);
+    // remix has no drive or iterations, and a runner it sees needs no question.
+    expect(new Set(again.screen().match(/^\? .*? \(↑\/↓/gm)).size).toBe(7);
     expect(again.screen()).toMatch(/^Found: Claude Code · monorepo · test runner: vitest$/m);
     // Doctor reads Claude Code's plugin record; use one of our own, not this machine's.
     const config = mkdtempSync(join(tmpdir(), "verid-claude-config-"));
@@ -698,8 +681,7 @@ describe("interactiveCook: verid cook in the developer's terminal", () => {
   });
 
   it("asks who runs the kitchen after prep and recipe, writes the pick, and skips it for remix", async () => {
-    // Iterations and the stove are asked only under "Change settings". Keys: language, mode,
-    // [drive], start; the Enters left over are never read.
+    // Keys: language, mode, [drive, iterations], the stove, start; the Enters left over are never read.
     const cases: { name: string; keys: string[] }[] = [
       { name: "prep, human", keys: [ENTER, ENTER, ENTER, ENTER, ENTER, ENTER] },
       { name: "prep, auto", keys: [ENTER, ENTER, DOWN, ENTER, ENTER, ENTER, ENTER] },
@@ -720,9 +702,9 @@ describe("interactiveCook: verid cook in the developer's terminal", () => {
       };
     }
     expect(results).toEqual({
-      "prep, human": { asked: true, iterations: false, hint: true, mode: "prep", drive: "human" },
-      "prep, auto": { asked: true, iterations: false, hint: true, mode: "prep", drive: "auto" },
-      "recipe, auto": { asked: true, iterations: false, hint: true, mode: "recipe", drive: "auto" },
+      "prep, human": { asked: true, iterations: true, hint: true, mode: "prep", drive: "human" },
+      "prep, auto": { asked: true, iterations: true, hint: true, mode: "prep", drive: "auto" },
+      "recipe, auto": { asked: true, iterations: true, hint: true, mode: "recipe", drive: "auto" },
       remix: { asked: false, iterations: false, hint: false, mode: "remix", drive: "human" },
     });
   });
@@ -748,8 +730,7 @@ describe("interactiveCook: verid cook in the developer's terminal", () => {
   });
 
   it("leaves the runner to verid when it sees none, and locks code written later in an empty folder", async () => {
-    // The stove is asked under "Change settings".
-    const t = scriptedTerminal(enters(), ENTER, ENTER, ENTER, ENTER, SETTINGS);
+    const t = scriptedTerminal(enters());
     await interactiveCook(project, t.io, "en-US");
     expect(manifest()).toContain('mode: "prep"');
     expect(manifest()).toContain("# test_cmd: verid finds the test runner");
@@ -791,28 +772,18 @@ describe("interactiveCook: verid cook in the developer's terminal", () => {
   });
 
   it("asks again for a command it cannot use, saying what it needs", async () => {
-    // Language, mode, drive, then in the settings mode, drive, iterations, then "Let verid find
-    // it later", "Type my own command…".
-    const t = scriptedTerminal(
-      [
-        ENTER,
-        ENTER,
-        ENTER,
-        ENTER,
-        ENTER,
-        ENTER,
-        DOWN,
-        ENTER,
-        "npm test\n",
-        "npx jest --outputFile={junit}\n",
-        ENTER,
-      ],
+    // Language, mode, drive, iterations, then "Let verid find it later", "Type my own command…".
+    const t = scriptedTerminal([
       ENTER,
       ENTER,
       ENTER,
       ENTER,
-      SETTINGS,
-    );
+      DOWN,
+      ENTER,
+      "npm test\n",
+      "npx jest --outputFile={junit}\n",
+      ENTER,
+    ]);
     await interactiveCook(project, t.io, "en-US");
     expect(t.screen()).toContain("{junit}");
     expect(manifest()).toContain("npx jest --outputFile={junit}");
