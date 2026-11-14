@@ -408,7 +408,6 @@
   "session.menu": "Trạng thái, câu hỏi và audit đầy đủ: `{verid} menu`; chu kỳ: `{verid} peek`.",
   "cook.found": "Tìm thấy: {provider} · {layout} · test runner: {runner}",
   "cook.found_no_runner": "chưa có",
-  "cook.change": "Đổi thiết lập (provider, layout, tài nguyên, iteration, kiến trúc)",
   "cook.say_next": "Mở {agent} và nói: what's next?",
   "usage.group": "Lệnh gate:",
   "board.locale": "vi-VN",

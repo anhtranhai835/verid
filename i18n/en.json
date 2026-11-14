@@ -408,7 +408,6 @@
   "session.menu": "Full status, questions and audits: `{verid} menu`; cycle: `{verid} peek`.",
   "cook.found": "Found: {provider} · {layout} · test runner: {runner}",
   "cook.found_no_runner": "none yet",
-  "cook.change": "Change settings (provider, layout, resources, iterations, architecture)",
   "cook.say_next": "Open {agent} and say: what's next?",
   "usage.group": "Gate commands:",
   "board.locale": "en-US",
