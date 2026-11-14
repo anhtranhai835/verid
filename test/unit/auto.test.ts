@@ -188,11 +188,11 @@ describe("autoPhase: where an auto drive stands", () => {
           ? `plan:${p.missing}:${p.problem}`
           : p.kind;
 
-  it("tells where auto stands: unsigned, stuck, planning, a module, or done", () => {
+  it("tells where auto stands: unsigned, blocked, planning, a module, or done; never stuck on a count", () => {
     expect({
       base: label(autoPhase(base)),
       unsigned: label(autoPhase({ ...base, auto: { ...base.auto, signed: null } })),
-      "blocked latched": label(
+      "old latch, file gone": label(
         autoPhase({ ...base, auto: { ...base.auto, blocked: "need a key" } }),
       ),
       "blocked file": label(autoPhase({ ...base, blockedFile: "need a key" })),
@@ -223,17 +223,17 @@ describe("autoPhase: where an auto drive stands", () => {
     }).toEqual({
       base: "module:calc",
       unsigned: "unsigned",
-      "blocked latched": "stuck:blocked:need a key",
+      "old latch, file gone": "module:calc",
       "blocked file": "stuck:blocked:need a key",
       research: "module:calc",
       design: "module:calc",
       "design gone": "module:calc",
-      "served edited": "stuck:served_changed:calc",
-      "plan reviews": "stuck:plan_reviews:3",
-      "coder rounds": "stuck:coder_rounds:AC-1",
-      "module reviews": "stuck:module_reviews:3",
-      "security reviews": "stuck:security_reviews:3",
-      stops: "stuck:no_progress:3",
+      "served edited": "module:calc",
+      "plan reviews": "module:calc",
+      "coder rounds": "module:calc",
+      "module reviews": "module:calc",
+      "security reviews": "module:calc",
+      stops: "module:calc",
       "two at once": "stuck:blocked:x",
       "no plan": "plan:true:null",
       "bad plan": "plan:false:AC-1 appears twice",
@@ -436,7 +436,7 @@ describe("the coder's rounds, closing a module, progress, and the next step", ()
       research: "menu.research",
       spec: "menu.spec",
       design: "menu.design",
-      "design before spec": "auto.sign",
+      "design before spec": "auto.plan",
     });
   });
 
@@ -460,8 +460,8 @@ describe("the coder's rounds, closing a module, progress, and the next step", ()
     expect({
       research: step({ kind: "unsigned" }, false, false),
       design: step({ kind: "unsigned" }, true, false),
-      sign: step({ kind: "unsigned" }),
-      stuck: step({ kind: "stuck", reason: "design_changed", detail: ".verid/design.md" }),
+      "both written": step({ kind: "unsigned" }),
+      stuck: step({ kind: "stuck", reason: "blocked", detail: "need a key" }),
       write: step({ kind: "plan", missing: true, problem: null }),
       fix: step({ kind: "plan", missing: false, problem: "the plan has no product module" }),
       review: step({ kind: "plan", missing: false, problem: null }),
@@ -504,8 +504,8 @@ describe("the coder's rounds, closing a module, progress, and the next step", ()
     }).toEqual({
       research: "menu.research",
       design: "menu.design",
-      sign: "auto.sign",
-      stuck: "auto.stuck.design_changed .verid/design.md",
+      "both written": "auto.plan",
+      stuck: "auto.stuck.blocked need a key",
       write: "auto.plan",
       fix: "auto.plan_fix the plan has no product module",
       review: "auto.plan_review",

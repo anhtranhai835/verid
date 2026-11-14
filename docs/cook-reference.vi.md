@@ -51,7 +51,7 @@ Xác nhận để áp dụng kế hoạch đã kiểm tra. Nội dung chỉ dẫ
 | `remix`  | Code có sẵn   | Ghi baseline bằng `verid stock`.                                                 |
 | `reheat` | Hệ cũ         | Cài adapter, rồi `verid reheat inventory`. Xem [mode reheat](reheat-mode.vi.md). |
 
-`big-brain` để developer order và serve. `no-brain` bắt đầu khi developer ký research,
-spec và design bằng `verid order`. Harness review plan rồi làm từng module.
-Câu hỏi chặn tiến độ được ghi vào `.verid/blocked.md`; developer xử lý rồi tiếp tục
-bằng `verid order`.
+`big-brain` để developer order và serve. `no-brain` không cần ai duyệt: verid tự ký
+research, spec và design khi đã có, cho review plan rồi làm từng module. Agent tự trả lời
+câu hỏi còn mở; chỉ vướng mắc agent không tự gỡ được mới ghi vào `.verid/blocked.md`, xoá
+file đó là drive chạy tiếp.

@@ -32,7 +32,11 @@ describe("kitchen roles follow the real run", () => {
       "head_chef",
     ],
     ["design not written: sous chef", { phase: { kind: "unsigned" }, design: false }, "sous_chef"],
-    ["both written, unsigned: the waiter asks", { phase: { kind: "unsigned" } }, "waiter"],
+    [
+      "both written, unsigned: head chef, verid signs itself",
+      { phase: { kind: "unsigned" } },
+      "head_chef",
+    ],
     [
       "plan being written: head chef",
       { phase: { kind: "plan", missing: true, problem: null } },
@@ -95,18 +99,13 @@ describe("the waiter speaks only when the user is needed", () => {
     expect(kitchenOf(input({ denied })).waiter).toBeNull();
   });
 
-  it("brings the agent's question, repeated failed reviews and the signature to the user", () => {
+  it("brings the agent's question to the user, never a signature", () => {
     const blocked: AutoPhase = { kind: "stuck", reason: "blocked", detail: "Which DB?" };
     expect(kitchenOf(input({ phase: blocked })).waiter).toEqual({
       kind: "question",
       params: { detail: "Which DB?" },
     });
-    const reviews: AutoPhase = { kind: "stuck", reason: "module_reviews", detail: "3" };
-    expect(kitchenOf(input({ phase: reviews })).waiter).toEqual({
-      kind: "reviews",
-      params: { detail: "3" },
-    });
-    expect(kitchenOf(input({ phase: { kind: "unsigned" } })).waiter?.kind).toBe("sign");
+    expect(kitchenOf(input({ phase: { kind: "unsigned" } })).waiter).toBeNull();
     expect(kitchenOf(input({ halted: "lunch" })).waiter).toEqual({
       kind: "halted",
       params: { detail: "lunch" },

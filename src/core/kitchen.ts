@@ -44,26 +44,13 @@ const denialKind = (rule: RuleCode) =>
           ? "deny_auto"
           : "deny_guard";
 
-const STUCK_KIND: Record<string, string> = {
-  blocked: "question",
-  research_changed: "changed",
-  design_changed: "changed",
-  served_changed: "changed",
-  plan_reviews: "reviews",
-  coder_rounds: "reviews",
-  module_reviews: "reviews",
-  security_reviews: "reviews",
-  no_progress: "stalled",
-  reheat_gate: "gate",
-};
-
 function roleOf(input: KitchenInput): Role {
   const { phase } = input;
   if (input.halted !== null) return "waiter";
   if (phase === null) return "head_chef";
   switch (phase.kind) {
     case "unsigned":
-      return !input.research ? "head_chef" : !input.design ? "sous_chef" : "waiter";
+      return input.research && !input.design ? "sous_chef" : "head_chef";
     case "plan":
       return "head_chef";
     case "module":
@@ -78,17 +65,18 @@ function roleOf(input: KitchenInput): Role {
   }
 }
 
-/** Only when the user is needed: halted, stuck, a fresh denial, a signature, or all served. */
+/** Only when the user is needed: halted, blocked, a fresh denial, or all served. */
 function waiterOf(input: KitchenInput): WaiterLine | null {
   const { phase, denied } = input;
   if (input.halted !== null) return { kind: "halted", params: { detail: input.halted } };
   if (phase?.kind === "stuck")
-    return { kind: STUCK_KIND[phase.reason] ?? "stalled", params: { detail: phase.detail } };
+    return {
+      kind: phase.reason === "blocked" ? "question" : "gate",
+      params: { detail: phase.detail },
+    };
   if (input.parity) return { kind: "parity", params: { detail: input.parity } };
   if (denied && input.now - Date.parse(denied.at) < DENIAL_FRESH_MS)
     return { kind: denialKind(denied.rule), params: { code: denied.rule } };
-  if (phase?.kind === "unsigned" && input.research && input.design)
-    return { kind: "sign", params: {} };
   if (phase?.kind === "done") return { kind: "done", params: {} };
   return null;
 }

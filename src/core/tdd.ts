@@ -219,12 +219,6 @@ export function fileRole(
 const isE2eFile = (rel: string, layout: Omit<TddLayout, "repoRoot">): boolean =>
   (layout.e2eGlobs ?? []).some((g) => matchesGlob(rel, g));
 
-/** What locks production code and tests in an auto drive, and why. */
-export type AutoLock = keyof typeof LOCKS;
-const LOCKS = {
-  VERID_BURNT_AUTO_STUCK: "the auto drive is stuck",
-} as const;
-
 /**
  * Gate for file writes. `code` allows a write to production code, which no run shows yet.
  * `reopen` allows a test write and sends the cycle back to RAW (or keeps it there): the changed
@@ -234,10 +228,8 @@ const LOCKS = {
  * can work while the developer reads the plan.
  * With the stub step open, RAW allows production code too, and a test write keeps the stub open.
  * Who writes is judged first, outside the repo too: the role says who, the cycle says when.
- * In an auto drive, a lock stops production code and tests alike: a stuck drive (the developer
- * clears it), a closed module waiting for the developer's merge, or a module branch verid cannot
- * prepare. Production code with no open module is denied as the drive's own wait rather than as a
- * plan the developer has yet to approve.
+ * A no-brain drive passes `planApproved` true: it waits for no approval, and the cycle alone
+ * judges its writes.
  */
 export function decideTdd(
   action: Action,
@@ -245,7 +237,6 @@ export function decideTdd(
   layout: TddLayout | readonly TddLayout[],
   planApproved: boolean,
   who: { writer: Writer; split: boolean } = { writer: "main", split: false },
-  auto?: { lock: AutoLock | null },
 ): TddDecision {
   if (Array.isArray(layout)) {
     const matching = layout.filter(
@@ -254,13 +245,13 @@ export function decideTdd(
     // Outside every repo, preserve the existing role rules and outside-repo TDD decision.
     const candidates = matching.length ? matching : layout.slice(0, 1);
     const decisions = candidates.map((repo) =>
-      decideTdd(action, { state, stub }, repo, planApproved, who, auto),
+      decideTdd(action, { state, stub }, repo, planApproved, who),
     );
     return decisions.length
       ? decisions.reduce((a, b) => (TDD_STRICTNESS[b.kind] > TDD_STRICTNESS[a.kind] ? b : a))
       : { kind: "allow", reason: "no repo" };
   }
-  return decideRepoTdd(action, { state, stub }, layout as TddLayout, planApproved, who, auto);
+  return decideRepoTdd(action, { state, stub }, layout as TddLayout, planApproved, who);
 }
 
 function decideRepoTdd(
@@ -269,7 +260,6 @@ function decideRepoTdd(
   layout: TddLayout,
   planApproved: boolean,
   who: { writer: Writer; split: boolean },
-  auto?: { lock: AutoLock | null },
 ): TddDecision {
   if (action.kind !== "file" || action.access !== "write")
     return { kind: "allow", reason: "not a file write" };
@@ -283,8 +273,6 @@ function decideRepoTdd(
   );
   if (byRole.kind === "deny") return byRole;
   if (role === "outside") return { kind: "allow", reason: "outside the repo" };
-  if (auto?.lock && role !== "free")
-    return { kind: "deny", code: auto.lock, target: action.display, reason: LOCKS[auto.lock] };
   if (role === "test")
     return state === "COOKING"
       ? {
@@ -298,7 +286,7 @@ function decideRepoTdd(
   if (!planApproved)
     return {
       kind: "deny",
-      code: auto ? "VERID_BURNT_AUTO_NO_MODULE" : "VERID_BURNT_PLAN_NOT_APPROVED",
+      code: "VERID_BURNT_PLAN_NOT_APPROVED",
       target: action.display,
       reason: "production code before the plan is approved",
     };

@@ -4,12 +4,12 @@
 
 `prep` và `recipe` luôn có hồ sơ module và board, cho cả monorepo (một Git repo) và workspace (nhiều repo con). Cook cho chọn layout, mặc định theo tự nhận diện. Workspace phải nằm ngoài repo Git và có ít nhất một repo con. Project đã có manifest giữ layout đã chọn.
 
-| Cấu hình  | Giá trị     | Hành vi                                                                                            |
-| --------- | ----------- | -------------------------------------------------------------------------------------------------- |
-| Drive     | `big-brain` | Người dùng chọn task; mỗi task một session AI mới; người dùng serve.                               |
-| Drive     | `no-brain`  | Chủ project chat trên board, đọc rồi ký research và design ngay ở đó; một session đi hết hàng đợi. |
-| Resources | `installed` | Dùng skills và agents đã cài.                                                                      |
-| Resources | `repo`      | Pin skills, agents, templates và runtime trong project; giữ tùy chỉnh đã có.                       |
+| Cấu hình  | Giá trị     | Hành vi                                                                                   |
+| --------- | ----------- | ----------------------------------------------------------------------------------------- |
+| Drive     | `big-brain` | Người dùng chọn task; mỗi task một session AI mới; người dùng serve.                      |
+| Drive     | `no-brain`  | Chủ project chat trên board; verid tự ký research và design; một session đi hết hàng đợi. |
+| Resources | `installed` | Dùng skills và agents đã cài.                                                             |
+| Resources | `repo`      | Pin skills, agents, templates và runtime trong project; giữ tùy chỉnh đã có.              |
 
 `remix` giữ luồng baseline; board báo không có task.
 

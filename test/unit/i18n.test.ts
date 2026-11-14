@@ -176,7 +176,7 @@ describe("agent-facing message length", () => {
       "auto.security",
       "auto.waiting_merge",
       "auto.done",
-      "auto.stuck.served_changed",
+      "auto.stuck.no_progress",
       "taste.not_compiled",
       "status.stub",
     ];

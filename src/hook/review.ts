@@ -14,7 +14,14 @@ import {
 import { reviewSnapshot } from "../adapters/review-snapshot.js";
 import { appendAudit } from "../adapters/audit-log.js";
 import { taskSessions, planned, type Manifest } from "../core/manifest.js";
-import { kanbanSessionProblem, observe, statusLine, advance, tryClose } from "./lifecycle.js";
+import {
+  kanbanSessionProblem,
+  observe,
+  selfSign,
+  statusLine,
+  advance,
+  tryClose,
+} from "./lifecycle.js";
 import { subagentHold } from "../core/roles.js";
 import { bilingual } from "../adapters/i18n.js";
 import type { State } from "../core/state.js";
@@ -76,6 +83,8 @@ export async function subagentStop(p: z.infer<typeof lifecycleSchema>): Promise<
   }
   const writer = shared.writerFor(p.agent_id, p.agent_type, manifest.roles);
   const auto = manifest.drive === "auto";
+  // A review is judged against research and design as they are now, so verid signs them first.
+  if (auto) selfSign(project, paths, manifest);
   if (writer === "reviewer" || writer === "security") {
     if (manifest.mode !== "remix") recordReview(p, project, paths, auto, manifest, writer);
     return { exit: 0 };

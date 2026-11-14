@@ -15,10 +15,11 @@ boundary to the developer.
 
 ## No-brain drive
 
-In no-brain drive, follow the next menu step; verid opens modules after plan review.
-Three failing coder rounds per named AC, failed reviews, or idle Stop holds leave
-the drive stuck. A blocker or a question needing the developer goes in
-`.verid/blocked.md`; the developer settles it and runs `verid order` to resume.
+In no-brain drive, follow the next menu step without asking; verid opens modules after
+plan review. Failed rounds and reviews never stop the drive: from the second failed
+review, find the root cause with the debugger first. Decide open questions yourself and
+record why. Only a blocker no agent can clear (a missing credential, say) goes in
+`.verid/blocked.md`; the agent may stop, and deleting the file resumes the drive.
 With `stations: 1`, the drive creates no branches and waits for no merge.
 With parallel stations, read `../../plan/references/stations.md`; retry counters
 and blockers stay local, and the developer closes each served station.

@@ -628,7 +628,7 @@ function autoMenuLines(
     ? plan
     : readPlan(project, manifest?.iterations !== undefined, false, servedSections(state), true);
   // A plan that cannot be read lists no modules; the step says what to fix. A module is built only
-  // while the drive is at it: unsigned, planning or stuck, the one next in line waits.
+  // while the drive is at it: unsigned, planning or blocked, the one next in line waits.
   const views = displayPlan?.ok
     ? autoModules(
         orderedModules(displayPlan.modules, state),
@@ -642,12 +642,13 @@ function autoMenuLines(
   const reviewed = auto.plan_sha256 !== null && auto.plan_sha256 === facts.planHash;
   const rounds = Object.entries(auto.coder_rounds)
     .filter(([, n]) => n > 0)
-    .map(([ac, n]) => `${ac} ${n}/${LIMIT}`);
+    .map(([ac, n]) => `${ac} ${n}`);
+  // Only Stop's holds have a limit; failed rounds and reviews never stop the drive.
   const counters = [
     ...(rounds.length > 0 ? [`rounds ${rounds.join(", ")}`] : []),
-    `module reviews ${auto.module_reviews}/${LIMIT}`,
-    ...(roles?.security ? [`security reviews ${auto.security_reviews}/${LIMIT}`] : []),
-    `plan reviews ${auto.plan_reviews}/${LIMIT}`,
+    `module reviews ${auto.module_reviews}`,
+    ...(roles?.security ? [`security reviews ${auto.security_reviews}`] : []),
+    `plan reviews ${auto.plan_reviews}`,
     `stops ${auto.stop_holds}/${LIMIT}`,
   ];
   return [

@@ -4,12 +4,12 @@
 
 `prep` and `recipe` always include module dossiers and a browser board, in a monorepo (one Git repository) or a workspace (multiple child repositories). Cook asks for the layout, defaulting to detection. A workspace must be outside a Git repository and contain child repositories. Existing manifests retain their layout.
 
-| Setting   | Value       | Behaviour                                                                                           |
-| --------- | ----------- | --------------------------------------------------------------------------------------------------- |
-| Drive     | `big-brain` | Developer selects each task; one fresh AI session per task; developer serves.                       |
-| Drive     | `no-brain`  | Owner chats on the board, reads and signs research and design there; one session follows the queue. |
-| Resources | `installed` | Use installed skills and agents.                                                                    |
-| Resources | `repo`      | Pin skills, agents, templates and runtime in the project; existing customizations are kept.         |
+| Setting   | Value       | Behaviour                                                                                        |
+| --------- | ----------- | ------------------------------------------------------------------------------------------------ |
+| Drive     | `big-brain` | Developer selects each task; one fresh AI session per task; developer serves.                    |
+| Drive     | `no-brain`  | Owner chats on the board; verid signs research and design itself; one session follows the queue. |
+| Resources | `installed` | Use installed skills and agents.                                                                 |
+| Resources | `repo`      | Pin skills, agents, templates and runtime in the project; existing customizations are kept.      |
 
 `remix` keeps its baseline workflow; the board reports that it has no tasks.
 

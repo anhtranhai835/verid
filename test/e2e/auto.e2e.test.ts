@@ -47,15 +47,6 @@ const setTdd = (s: string) => seed({ tdd: { state: s, last_run: null } });
 
 const prompt = (text: string) => fixture("user-prompt-submit-verid-tip", (p) => (p.prompt = text));
 
-// The developer, at the terminal, allows the action that was just blocked.
-async function allowOnce(reason = "hotfix"): Promise<void> {
-  const attended = { CLAUDE_CODE_SESSION_ATTENDED: "1" };
-  const warned = await hook(prompt(`/verid tip ${reason}`), attended);
-  const code = /\/verid confirm ([A-Z0-9]{6})/.exec(warned.stderr)?.[1];
-  expect(code).toBeDefined();
-  expect((await hook(prompt(`/verid confirm ${code}`), attended)).code).toBe(0);
-}
-
 const writePlan = (text: string) => put(".verid/plan.md", readyModulePlan(project, text));
 const sha = (rel: string) =>
   createHash("sha256")
@@ -99,7 +90,6 @@ const withSecurity = (): void =>
 
 const code = () => writeAs("verid:coder", "src/a.ts");
 const test = () => writeAs("verid:tester", "test/a.test.ts");
-const notes = () => writeAs("verid:coder", "notes.md");
 
 function checkGit(r: GitResult): void {
   expect(r.status, r.stderr).toBe(0);
@@ -111,6 +101,51 @@ function gitRepo(): void {
   git("add", "-A");
   git("commit", "-q", "-m", "init");
 }
+
+describe("signing in a no-brain drive", () => {
+  it("signs research and design itself at the first hook, and again when one changes, keeping the counters", async () => {
+    put(".verid/research.md", "# Research\n");
+    const early = await code(); // no design yet: nothing to sign
+    const unsigned = state().auto.signed;
+    put(".verid/design.md", "# Design\n");
+    writePlan(CALC_AND_PRODUCT);
+    await code();
+    const first = state().auto.signed;
+    seed({
+      auto: {
+        plan_sha256: autoFactsOf(project, readState(statePaths(project)), false, true).planHash,
+        plan_reviews: 2,
+        module_reviews: 1,
+      },
+    });
+    await code(); // nothing changed: the signature and the plan review stay
+    const kept = state().auto.plan_sha256;
+    appendFileSync(join(project, ".verid", "design.md"), "\nmore");
+    await stop(false);
+    const after = state().auto;
+    expect({
+      early,
+      unsigned,
+      first: first?.research_sha256,
+      kept: kept !== null,
+      resigned: after.signed.design_sha256 === sha(".verid/design.md"),
+      "plan after a design change": after.plan_sha256,
+      counters: [after.plan_reviews, after.module_reviews],
+      events: audit()
+        .filter((e) => e.event === "auto_signed")
+        .map((e) => e.by),
+    }).toEqual({
+      early: "VERID_BURNT_TDD_NO_FAILING_TEST",
+      unsigned: null,
+      first: sha(".verid/research.md"),
+      kept: true,
+      resigned: true,
+      "plan after a design change": null,
+      counters: [2, 1],
+      events: ["verid", "verid"],
+    });
+  });
+});
 
 describe("verid order and verid serve in an auto drive", () => {
   it("refuses what auto does itself, and what it cannot sign", async () => {
@@ -252,70 +287,22 @@ describe("verid order and verid serve in an auto drive", () => {
 });
 
 describe("writes in an auto drive", () => {
-  it("locks production code until a module is open, and code and tests while stuck", async () => {
+  it("never locks a write for want of a module or a stuck drive: the TDD cycle alone judges it", async () => {
     const rows: Record<string, string | undefined> = {};
-    rows.unsigned = await code();
-    await signed();
-    rows["plan pending"] = await code();
-    planPassed();
-    gitRepo();
-    await hook(fixture("session-start")); // the module opens on its own branch
+    put(".verid/research.md", "# Research\n");
+    put(".verid/design.md", "# Design\n");
+    rows["no plan, RAW code"] = await code();
+    writePlan(CALC_AND_PRODUCT);
     setTdd("COOKING");
-    rows.open = await code();
+    rows["plan pending, red code"] = await code();
     put(".verid/blocked.md", "need a key");
-    rows["stuck code"] = await code();
-    rows["stuck test"] = await test();
-    rows["stuck notes"] = await notes();
+    rows["blocked, red code"] = await code();
+    rows["blocked, red test"] = await test();
     expect(rows).toEqual({
-      unsigned: "VERID_BURNT_AUTO_NO_MODULE",
-      "plan pending": "VERID_BURNT_AUTO_NO_MODULE",
-      open: "exit 0",
-      "stuck code": "VERID_BURNT_AUTO_STUCK",
-      "stuck test": "VERID_BURNT_AUTO_STUCK",
-      "stuck notes": "exit 0",
-    });
-  });
-
-  it("latches blocked.md at the first write it sees, so a Bash rm of it does not resume", async () => {
-    await signed();
-    put(".verid/blocked.md", "need a key\n");
-    const rm = await hook(
-      fixture("pre-tool-use-bash", (p) => (p.tool_input.command = "rm .verid/blocked.md")),
-    );
-    rmSync(join(project, ".verid", "blocked.md")); // what the rm does once it runs
-    expect([
-      verdict(rm),
-      state().auto.blocked,
-      await code(),
-      audit().some((e) => e.event === "auto_stuck" && e.reason === "blocked"),
-    ]).toEqual(["exit 0", "need a key", "VERID_BURNT_AUTO_STUCK", true]);
-  });
-
-  it("lets the developer tip past an auto lock once", async () => {
-    await signed();
-    setTdd("COOKING");
-    const first = await code();
-    await allowOnce();
-    expect([first, await code(), await code()]).toEqual([
-      "VERID_BURNT_AUTO_NO_MODULE",
-      "exit 0",
-      "VERID_BURNT_AUTO_NO_MODULE",
-    ]);
-  });
-
-  it("holds a test to the cycle even after the developer tipped past the stuck lock", async () => {
-    await signed();
-    planPassed();
-    put(".verid/blocked.md", "need a key");
-    const tipped = async (cycle: string) => {
-      setTdd(cycle);
-      const first = await test();
-      await allowOnce();
-      return [first, await test(), state().tdd.state];
-    };
-    expect({ cooking: await tipped("COOKING"), plated: await tipped("PLATED") }).toEqual({
-      cooking: ["VERID_BURNT_AUTO_STUCK", "VERID_BURNT_TDD_TEST_FROZEN", "COOKING"],
-      plated: ["VERID_BURNT_AUTO_STUCK", "exit 0", "RAW"],
+      "no plan, RAW code": "VERID_BURNT_TDD_NO_FAILING_TEST",
+      "plan pending, red code": "exit 0",
+      "blocked, red code": "exit 0",
+      "blocked, red test": "VERID_BURNT_TDD_TEST_FROZEN",
     });
   });
 });
@@ -417,7 +404,7 @@ describe("Stop in an auto drive", () => {
     passed_acs: ["AC-1"],
   };
 
-  it("holds every stop of a signed drive, and lets go after three holds with no progress", async () => {
+  it("holds every stop of a signed drive, and lets go after three holds with no progress without locking", async () => {
     await signed(); // plan not reviewed yet: same outcome every time
     const runs = [
       await stop(false),
@@ -427,12 +414,14 @@ describe("Stop in an auto drive", () => {
       await stop(true),
     ];
     // hold 1 sets the outcome; holds 2 and 3 see no progress; the 4th stop is the third with none
+    setTdd("COOKING");
     expect([
       runs.map((r) => r.code),
       state().auto.stop_holds,
-      audit().some((e) => e.event === "auto_stuck" && e.reason === "no_progress"),
+      audit().some((e) => e.event === "auto_idle" && e.reason === "no_progress"),
       told(runs[3], "auto.stuck.no_progress", { detail: "3" }),
-    ]).toEqual([[2, 2, 2, 0, 0], 3, true, true]);
+      await code(),
+    ]).toEqual([[2, 2, 2, 0, 0], 4, true, true, "exit 0"]);
   });
 
   it("tells the developer why it lets the agent go: done, or stuck", async () => {
@@ -460,22 +449,17 @@ describe("Stop in an auto drive", () => {
     expect(state().auto.stop_holds).toBe(0);
   });
 
-  it("does not hold before the developer signs", async () => {
+  it("does not hold before research and design are written", async () => {
     put(".verid/research.md", "# Research\n");
     expect((await stop(false)).code).toBe(0);
   });
 
-  it("latches blocked.md: the agent may stop, and deleting the file does not resume", async () => {
+  it("lets the agent stop on blocked.md, and holds it again once the file is gone", async () => {
     await signed();
     put(".verid/blocked.md", "need a key\n");
-    const r = await stop(false);
+    const blocked = await stop(false);
     rmSync(join(project, ".verid", "blocked.md"));
-    expect([
-      r.code,
-      state().auto.blocked,
-      await code(),
-      audit().some((e) => e.event === "auto_stuck" && e.reason === "blocked"),
-    ]).toEqual([0, "need a key", "VERID_BURNT_AUTO_STUCK", true]);
+    expect([blocked.code, (await stop(false)).code]).toEqual([0, 2]);
   });
 
   it("closes the open module on green evidence, a passing review and a clean tree, then opens the next", async () => {
@@ -524,7 +508,7 @@ describe("Stop in an auto drive", () => {
     expect({
       waiting: [waiting.code, waiting.stderr.includes("verid:security"), reviewed.modules.calc],
       failed: [failed.security?.verdict, failed.auto.security_reviews, failed.modules.calc],
-      counted: menu.includes("security reviews 1/3"),
+      counted: menu.includes("security reviews 1"),
       passed: [
         typeof passed.modules.calc?.served_at,
         passed.security,
@@ -542,7 +526,7 @@ describe("Stop in an auto drive", () => {
     });
   });
 
-  it("leaves the drive stuck after the third failed security review", async () => {
+  it("goes on after the third failed security review: the next step is the fix, never a stuck drive", async () => {
     withSecurity();
     await signed();
     planPassed();
@@ -554,8 +538,16 @@ describe("Stop in an auto drive", () => {
     expect([
       state().auto.security_reviews,
       r.code,
-      r.stdout.includes("security reviewer has failed"),
-    ]).toEqual([3, 0, true]);
+      r.stderr.includes(
+        enMessage("auto.security_fix", {
+          module: "calc",
+          tester: "verid:tester",
+          coder: "verid:coder",
+          reviewer: "verid:reviewer",
+          security: "verid:security",
+        }),
+      ),
+    ]).toEqual([3, 2, true]);
   });
 
   it("drops the module's passing review once an edited plan passes its review again", async () => {
@@ -616,7 +608,6 @@ describe("menu, peek and session start in an auto drive", () => {
       pending: pending.slice(0, 2),
       open: open.slice(0, 4),
       "stuck calc": stuck.split("\n")[1],
-      stuck: stuck.includes(enMessage("auto.stuck.design_changed", { detail: ".verid/design.md" })),
     }).toEqual({
       unsigned: "verid: mode prep · drive no-brain · not signed · plan pending · 0 modules",
       pending: [
@@ -628,9 +619,8 @@ describe("menu, peek and session start in an auto drive", () => {
         "verid: mode prep · drive no-brain · signed · plan reviewed · 2 modules",
         "  calc · cooking · 0/1 ACs",
         "  product · planned · 0/1 ACs",
-        "  rounds AC-1 2/3 · module reviews 1/3 · plan reviews 0/3 · stops 0/3",
+        "  rounds AC-1 2 · module reviews 1 · plan reviews 0 · stops 0/3",
       ],
-      stuck: false,
     });
   });
 

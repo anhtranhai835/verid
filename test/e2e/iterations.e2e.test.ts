@@ -365,7 +365,7 @@ describe("iterations through the real CLI and hook", () => {
     expect(cli("menu").stdout).toContain("auth · cooking");
   });
 
-  it("holds the whole auto drive on invalid metadata under a heading", () => {
+  it("holds the auto drive at Stop on invalid metadata, leaving writes to the TDD cycle", () => {
     expect(cli("cook", "--mode", "prep", "--drive", "auto", "--lang", "en", ...FLAGS).code).toBe(0);
     put("research.md", "research");
     put("design.md", "design");
@@ -386,9 +386,7 @@ describe("iterations through the real CLI and hook", () => {
     expect(menu.stdout).toContain("auth: line 2: Iteration must be a positive integer");
     expect(menu.stdout).toContain("auth · planned");
     expect(menu.stdout).toContain("product · planned");
-    const denied = productionWrite();
-    expect(denied.code).toBe(2);
-    expect(denied.stderr).toContain("VERID_BURNT_AUTO_NO_MODULE");
+    expect(productionWrite().code).toBe(0);
     const stop = run(HOOK, [], {
       hook_event_name: "Stop",
       session_id: "iterations-session",

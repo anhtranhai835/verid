@@ -89,7 +89,7 @@ verid serve <module>
 | Spec           | Main with BA writes traceable requirements in `.verid/spec.md`.                |
 | Design         | Architect, or Codex main, agrees interfaces and reuse in `.verid/design.md`.   |
 | Plan           | Planner, or Codex main, writes ordered ACs in `.verid/plan.md`.                |
-| Order          | Developer approves the module; no-brain drive follows its signed plan.         |
+| Order          | Developer approves the module; no-brain drive orders it itself.                |
 | Build and test | Tester/QA then coder on Claude; main on Codex; every cycle uses `verid taste`. |
 | Review         | Fresh reviewers inspect ACs, design, dossier, diff and the review packet.      |
 | Serve          | Evidence, AC coverage and verdicts must pass before closure.                   |
@@ -117,7 +117,7 @@ project root. The `verid` shorthand below also works with an optional global ins
 | `verid peek`                           | Show the current TDD state.                                                   |
 | `verid stock`                          | Record pre-existing failures for remix.                                       |
 | `verid taste`                          | Run tests and record evidence.                                                |
-| `verid order [module]`                 | Approve a module in big-brain drive; sign or resume no-brain drive.           |
+| `verid order [module]`                 | Approve a module in big-brain drive; optional in no-brain (re-sign, reset).   |
 | `verid serve <module>`                 | Close a module when coverage, fresh evidence and reviews pass.                |
 | `verid menu --commits --file`          | Produce the review packet.                                                    |
 | `verid garnish`                        | Start a refactor-only session.                                                |
@@ -125,8 +125,9 @@ project root. The `verid` shorthand below also works with an optional global ins
 | `verid setup-codex`                    | Set up the installed reviewer in the Codex user config.                       |
 
 Cook, upgrade, plugin, stock, order, serve, garnish, halt and resume are developer commands,
-run in your own terminal. Agents use taste, menu, peek and doctor. In signed no-brain
-drive, the harness manages module order and closure. Cook flags are in the [cook reference](docs/cook-reference.md).
+run in your own terminal. Agents use taste, menu, peek and doctor. In no-brain drive,
+verid signs research and design itself and manages module order and closure: nobody approves
+anything, and the TDD evidence and the agent reviews still gate each module. Cook flags are in the [cook reference](docs/cook-reference.md).
 
 ---
 
