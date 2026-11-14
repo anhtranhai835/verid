@@ -6,6 +6,7 @@ import {
   mkdirSync,
   readdirSync,
   rmSync,
+  type Stats,
   statSync,
   writeFileSync,
 } from "node:fs";
@@ -143,15 +144,31 @@ export function repoFolder(project: string, path: string): string {
   return checkedPath(project, path, true);
 }
 
+/**
+ * What the file system said to one batch of path checks. Cook checks each of its hundreds of
+ * files, mostly under the same folders; one batch asks once per folder. A batch must not span a
+ * write or a wait for the developer: checks before the writes start a new one.
+ */
+export interface PathAnswers {
+  real: Map<string, string>;
+  stat: Map<string, Stats | null>;
+}
+export const pathAnswers = (): PathAnswers => ({ real: new Map(), stat: new Map() });
+
 /** Setup files must not redirect writes through linked directories or file links either. */
-export function checkSetupPath(project: string, path: string): void {
-  checkedPath(project, path, false);
+export function checkSetupPath(project: string, path: string, answers?: PathAnswers): void {
+  checkedPath(project, path, false, answers);
 }
 
-function checkedPath(project: string, path: string, directory: boolean): string {
+function checkedPath(
+  project: string,
+  path: string,
+  directory: boolean,
+  answers?: PathAnswers,
+): string {
   const folder = resolve(project, ...path.split(/[/\\]/));
-  const base = normalizePath(project);
-  const target = normalizePath(folder);
+  const base = normalizePath(project, answers?.real);
+  const target = normalizePath(folder, answers?.real);
   const invalid = () =>
     new VeridError("VERID_BURNT_MANIFEST_INVALID", {
       path: join(project, ".verid", "manifest.yaml"),
@@ -162,13 +179,21 @@ function checkedPath(project: string, path: string, directory: boolean): string 
   const parts = path.split(/[/\\]/);
   for (const [i, part] of parts.entries()) {
     current = join(current, part);
-    try {
-      const stat = lstatSync(current);
-      if (stat.isSymbolicLink() || ((directory || i < parts.length - 1) && !stat.isDirectory()))
-        throw invalid();
-    } catch (error) {
-      if (errno(error) !== "ENOENT") throw error;
+    let stat = answers?.stat.get(current);
+    if (stat === undefined) {
+      try {
+        stat = lstatSync(current);
+      } catch (error) {
+        if (errno(error) !== "ENOENT") throw error;
+        stat = null;
+      }
+      answers?.stat.set(current, stat);
     }
+    if (
+      stat &&
+      (stat.isSymbolicLink() || ((directory || i < parts.length - 1) && !stat.isDirectory()))
+    )
+      throw invalid();
   }
   return folder;
 }

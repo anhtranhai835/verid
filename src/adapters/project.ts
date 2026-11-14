@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { existsSync, realpathSync, statSync } from "node:fs";
 import { ownEntry } from "../core/station.js";
 import { dirname, join, resolve } from "node:path";
@@ -15,6 +16,25 @@ function ancestor(cwd: string, entry: string, canonical = true): string | null {
     if (existsSync(join(dir, entry))) return dir;
     if (dirname(dir) === dir) return null;
   }
+}
+
+const hookGit = new AsyncLocalStorage<Map<string, ReturnType<typeof runGit>>>();
+
+/**
+ * One hook payload asks Git once per folder for its common directory and branch: a hook resolves
+ * the station several times, and on Windows each Git process costs about 0.1 s. Nothing in a hook
+ * moves a worktree or switches its branch; CLI commands do, so they always ask Git afresh.
+ */
+export const withHookGit = <T>(fn: () => T): T => hookGit.run(new Map(), fn);
+
+function stationGit(root: string, args: string[]): ReturnType<typeof runGit> {
+  const memo = hookGit.getStore();
+  const key = `${folderKey(root)}\0${args.join("\0")}`;
+  const known = memo?.get(key);
+  if (known) return known;
+  const result = runGit(root, args);
+  memo?.set(key, result);
+  return result;
 }
 
 export interface StationContext {
@@ -40,7 +60,7 @@ export function stationContext(cwd: string): StationContext | null {
       return null;
     }
   }
-  const git = runGit(root, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
+  const git = stationGit(root, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
   if (git.status !== 0) throw new VeridError("VERID_BURNT_STATION_INVALID", { detail: git.stderr });
   const common = canonicalFolder(git.stdout.trim());
   // Stations are supported only for a primary, non-bare repository with its own .git directory.
@@ -67,7 +87,7 @@ export function stationContext(cwd: string): StationContext | null {
   );
   if (!station || !sameFolder(station.common, common) || station.stage === "opening")
     throw new VeridError("VERID_BURNT_STATION_UNREGISTERED", { detail: root });
-  const branch = runGit(root, ["symbolic-ref", "--quiet", "--short", "HEAD"]);
+  const branch = stationGit(root, ["symbolic-ref", "--quiet", "--short", "HEAD"]);
   if (branch.status !== 0 || branch.stdout.trim() !== station.branch)
     throw new VeridError("VERID_BURNT_STATION_INVALID", { detail: `branch: ${root}` });
   return { project, root, state, station };

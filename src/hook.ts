@@ -7,7 +7,7 @@ import { userPrompt, lifecycle } from "./hook/lifecycle.js";
 import { VeridError, languageOf, statePaths } from "./adapters/state-store.js";
 import type { ErrorCode } from "./core/errors.js";
 import { subagentStart, subagentStop } from "./hook/review.js";
-import { stationSessionProblem } from "./adapters/project.js";
+import { stationSessionProblem, withHookGit } from "./adapters/project.js";
 
 /**
  * PreToolUse fails closed; prompt errors allow without overrides; lifecycle errors never block.
@@ -26,7 +26,11 @@ export async function main(): Promise<void> {
 }
 
 /** The whole hook for one payload, with the hook's arguments; tests call it in process. */
-export async function run(raw: string, args: readonly string[]): Promise<Result> {
+export function run(raw: string, args: readonly string[]): Promise<Result> {
+  return withHookGit(() => runPayload(raw, args));
+}
+
+async function runPayload(raw: string, args: readonly string[]): Promise<Result> {
   const chosen = hostFor(args);
   shared.setHost(chosen.host);
   // A payload that names no project gets both languages, as in a fresh process.

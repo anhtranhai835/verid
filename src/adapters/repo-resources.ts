@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { contentRoot, installedSkills, reviewerTemplateFile } from "./codex-settings.js";
-import { checkSetupPath } from "./workspace.js";
+import { checkSetupPath, pathAnswers } from "./workspace.js";
 import type { Manifest } from "../core/manifest.js";
 
 export type ResourceFile = { rel: string; content: Buffer | string };
@@ -38,8 +38,9 @@ export function repoResources(project: string, providers: Manifest["providers"])
     ...resourceTree(join(root, "templates"), ".verid/templates"),
     { rel: ".verid/templates/codex-reviewer.toml", content: readFileSync(reviewerTemplateFile()) },
   ];
+  const answers = pathAnswers();
   const effective = (file: ResourceFile) => {
-    checkSetupPath(project, file.rel);
+    checkSetupPath(project, file.rel, answers);
     return existsSync(join(project, file.rel))
       ? readFileSync(join(project, file.rel), "utf8")
       : file.content.toString();
