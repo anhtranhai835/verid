@@ -389,7 +389,8 @@ describe("repo rules", () => {
 
     it("fails CI when coverage drops under its floors", () => {
       const ci = readFileSync(join(root, ".github/workflows/ci.yml"), "utf8");
-      expect(ci).toContain("npm run test:coverage");
+      // The shards turn their floors off; the merge job must apply the config's floors unchanged.
+      expect(ci).toMatch(/^\s*- run: npx vitest --merge-reports --coverage$/m);
       const scripts = (json("package.json") as { scripts: Record<string, string> }).scripts;
       expect(scripts["test:coverage"]).toMatch(/vitest run --coverage$/);
       const config = readFileSync(join(root, "vitest.config.ts"), "utf8");

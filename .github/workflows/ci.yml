@@ -95,8 +95,12 @@ jobs:
       - run: npm ci
       - run: npm run build
       # Unit, end-to-end and installer tests (install.ps1 and install.sh via Git Bash). The blob
-      # holds this shard's results and coverage for the merge job.
-      - run: npx vitest run --coverage --shard=${{ matrix.shard }}/3 --reporter=blob
+      # holds this shard's results and coverage for the merge job. A shard covers only part of
+      # src/, so its floors are off here; the merge job applies them to the whole.
+      - run: >-
+          npx vitest run --coverage --shard=${{ matrix.shard }}/3 --reporter=blob
+          --coverage.thresholds.lines=0 --coverage.thresholds.statements=0
+          --coverage.thresholds.branches=0 --coverage.thresholds.functions=0
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: vitest-blob-${{ matrix.shard }}
