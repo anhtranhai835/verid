@@ -11,6 +11,7 @@ import type { CliResult } from "./test.js";
 import { cookInputs } from "./cook/inputs.js";
 import { planExistingManifest, planNewManifest } from "./cook/manifest.js";
 import { createPlanner } from "./cook/planner.js";
+import { pathAnswers } from "../adapters/workspace.js";
 import {
   planInstructions,
   planClaudeSettings,
@@ -185,7 +186,8 @@ export async function planCook(
   const apply = cookApplier(p, layout, configured, missing, existing);
   const { steps, writes, machineWrites, notes, checkWritePath } = p;
   const files = [...steps.filter((s) => s.rel !== ".claude/commands/verid/"), ...commandFiles];
-  for (const write of writes) checkWritePath(write.rel);
+  const answers = pathAnswers();
+  for (const write of writes) checkWritePath(write.rel, answers);
   const revision = JSON.stringify({
     files,
     writes: writes.map(({ rel, content }) => ({ rel, content })),

@@ -18,6 +18,7 @@ import {
   cloneMissingRepo,
   type detectLayout,
   initWorkspaceGit,
+  pathAnswers,
   validateRepoPaths,
 } from "../../adapters/workspace.js";
 import type { Sees } from "./inputs.js";
@@ -117,7 +118,8 @@ export function cookApplier(
 ): CookPlan["apply"] {
   const { project, paths, writes, machineWrites, checkWritePath } = p;
   return () => {
-    for (const write of writes) checkWritePath(write.rel);
+    const answers = pathAnswers();
+    for (const write of writes) checkWritePath(write.rel, answers);
     for (const write of machineWrites) checkSetupPath(dirname(write.path), basename(write.path));
     if (layout === "workspace") {
       checkWorkspaceRoot(project);

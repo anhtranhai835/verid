@@ -191,11 +191,11 @@ export function writtenPath(path: string): string {
  * Absolute, `..` resolved, symlinks/junctions resolved for the part that exists
  * (realpath of the nearest existing parent when the file is new), lowercase on win32.
  */
-export function normalizePath(path: string): string {
+export function normalizePath(path: string, known?: Map<string, string>): string {
   // NTFS accepts streams on files and directory components, including new targets.
   // Strip before realpath so its missing-parent fallback cannot retain an alias.
   const real = stripStreams(
-    localAdminPath(realpathLoose(stripStreams(resolve(localAdminPath(path))))),
+    localAdminPath(realpathLoose(stripStreams(resolve(localAdminPath(path))), known)),
   );
   return process.platform === "win32" ? real.toLowerCase() : real;
 }
@@ -226,11 +226,17 @@ function stripStreams(path: string): string {
   );
 }
 
-function realpathLoose(path: string): string {
+/** `known` shares answers across one batch of checks while nothing writes, as in one cook plan. */
+function realpathLoose(path: string, known?: Map<string, string>): string {
+  const cached = known?.get(path);
+  if (cached !== undefined) return cached;
+  let real: string;
   try {
-    return realpathSync.native(path);
+    real = realpathSync.native(path);
   } catch {
     const parent = dirname(path);
-    return parent === path ? path : join(realpathLoose(parent), basename(path));
+    real = parent === path ? path : join(realpathLoose(parent, known), basename(path));
   }
+  known?.set(path, real);
+  return real;
 }

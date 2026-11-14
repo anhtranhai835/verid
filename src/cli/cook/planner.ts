@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { Action, PlannedFile } from "../../core/setup-plan.js";
-import { checkSetupPath } from "../../adapters/workspace.js";
+import { checkSetupPath, pathAnswers, type PathAnswers } from "../../adapters/workspace.js";
 import { errno, statePaths, VeridError } from "../../adapters/state-store.js";
 
 export const invalid = (path: string, detail: string) =>
@@ -15,8 +15,8 @@ export interface Planner {
   writes: Array<{ rel: string; content: unknown; apply: () => void }>;
   machineWrites: Array<{ path: string; content: string; apply: () => void }>;
   notes: string[];
-  /** Refuses a path that leaves the project or goes through a link. */
-  checkWritePath: (rel: string) => void;
+  /** Refuses a path that leaves the project or goes through a link; a loop of checks shares answers. */
+  checkWritePath: (rel: string, answers?: PathAnswers) => void;
   /** One line of the preview, with the write that makes it true when there is one. */
   step: (action: Action, rel: string, write?: { content: unknown; apply: () => void }) => void;
   /** A file cook creates once and never overwrites. */
@@ -29,9 +29,9 @@ export function createPlanner(project: string): Planner {
   const writes: Array<{ rel: string; content: unknown; apply: () => void }> = [];
   const machineWrites: Array<{ path: string; content: string; apply: () => void }> = [];
   const notes: string[] = [];
-  const checkWritePath = (rel: string) => {
+  const checkWritePath = (rel: string, answers?: PathAnswers) => {
     try {
-      checkSetupPath(project, rel);
+      checkSetupPath(project, rel, answers);
     } catch (error) {
       if (
         ["AGENTS.md", "CLAUDE.md"].includes(rel) &&
@@ -48,10 +48,12 @@ export function createPlanner(project: string): Planner {
   };
 
   const resourcesPlanned = new Set<string>();
+  // Planning writes nothing, so its resource checks share one batch; apply checks afresh.
+  const planned = pathAnswers();
   const addResource = (rel: string, content: Buffer | string) => {
     if (resourcesPlanned.has(rel)) return;
     resourcesPlanned.add(rel);
-    checkWritePath(rel);
+    checkWritePath(rel, planned);
     if (existsSync(join(project, rel))) {
       step("kept", rel);
       return;
