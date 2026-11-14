@@ -20,3 +20,7 @@ plugin/skills/tdd/writing-good-tests.md
 # Recorded host payloads and reviewer notes stay as they were written.
 test/fixtures/codex/
 .claude/agent-memory/
+# Vendored graphify skill trees are kept as distributed upstream.
+.agents/skills/graphify/
+.claude/skills/graphify/
+.codex/skills/graphify/
