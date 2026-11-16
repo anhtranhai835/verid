@@ -25,6 +25,7 @@ import { status } from "./peek.js";
 import { serve, serveArgs } from "./serve.js";
 import { hasTerminal, interactive, terminalIo, locale, systemLang } from "./shell.js";
 import { usageCommand } from "./usage.js";
+import packageJson from "../../package.json" with { type: "json" };
 
 /** `dist/cli.js`: the command line in, its output and exit code out. */
 export async function main(): Promise<void> {
@@ -95,6 +96,13 @@ export async function runCli(args: readonly string[]): Promise<CliResult> {
       });
     } else if (cmd === undefined) r = usage(project, null, await helpNextStep(project));
     else if (["help", "--help", "-h"].includes(cmd)) r = usage(project, null);
+    else if (["--version", "-v"].includes(cmd) && rest.length === 0)
+      r = {
+        exit: 0,
+        stdout: `${packageJson.version}
+`,
+        stderr: "",
+      };
     else r = usage(project, misused(cmd, rest));
   } catch (err) {
     const code: ErrorCode = err instanceof VeridError ? err.code : "VERID_BURNT_INTERNAL";
