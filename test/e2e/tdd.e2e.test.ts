@@ -28,11 +28,13 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { verifyAuditChain } from "../../src/adapters/audit-log.js";
 import { MODES } from "../../src/core/manifest.js";
 import { runCli } from "./in-process.js";
+import packageJson from "../../package.json" with { type: "json" };
 import type { Payload } from "./helpers.js";
 
 // What verid's messages tell the agent to run: works without `npm link`.
 const VERID_CMD = `node "${CLI.replaceAll("\\", "/")}"`;
 
+const PACKAGE_VERSION = packageJson.version;
 const SESSION = "11111111-2222-3333-4444-555555555555";
 
 let project: string;
@@ -127,6 +129,13 @@ describe("verid taste: evidence from a real run", () => {
     expect(process.exitCode).toBeUndefined();
     const rows = [
       [["--help"], 0, `verid = ${VERID_CMD}`, ""],
+      [
+        ["--version"],
+        0,
+        `${PACKAGE_VERSION}
+`,
+        "",
+      ],
       [["bogus"], 2, "", "bogus"],
       [["serve"], 2, "", "serve"],
     ] as const;
@@ -805,6 +814,7 @@ describe("the hook enforces the cycle", () => {
     const r = await hook(powershell);
     expect(r.code).toBe(2);
     expect(r.stderr).toContain("verid [VERID_BURNT_SHELL_UNSUPPORTED]");
+    expect(r.stderr).toContain("Use the Bash tool");
     const terminal = await hook(tool("mcp__terminal__run_in_terminal", { command: "verid order" }));
     expect(terminal.code).toBe(2);
     expect(terminal.stderr).toContain("verid [VERID_BURNT_SHELL_UNSUPPORTED]");

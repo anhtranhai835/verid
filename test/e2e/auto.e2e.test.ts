@@ -508,7 +508,7 @@ describe("Stop in an auto drive", () => {
     expect({
       waiting: [waiting.code, waiting.stderr.includes("verid:security"), reviewed.modules.calc],
       failed: [failed.security?.verdict, failed.auto.security_reviews, failed.modules.calc],
-      counted: menu.includes("security reviews 1"),
+      counted: menu.includes("failed security reviews 1"),
       passed: [
         typeof passed.modules.calc?.served_at,
         passed.security,
@@ -601,6 +601,12 @@ describe("menu, peek and session start in an auto drive", () => {
     await hook(fixture("session-start")); // the module opens on its own branch
     seed({ auto: { coder_rounds: { "AC-1": 2 }, module_reviews: 1 } });
     const open = (await cli("menu")).stdout.split("\n");
+    // A counted stop says what it is and what happens at the limit.
+    seed({ auto: { stop_holds: 3 } });
+    const stops = (await cli("menu")).stdout;
+    expect(stops).toContain("stops 3/3");
+    expect(stops).toContain("verid held the agent from ending its turn");
+    seed({ auto: { stop_holds: 0 } });
     appendFileSync(join(project, ".verid", "design.md"), "\nmore");
     const stuck = (await cli("menu")).stdout;
     expect({
@@ -619,9 +625,19 @@ describe("menu, peek and session start in an auto drive", () => {
         "verid: mode prep · drive no-brain · signed · plan reviewed · 2 modules",
         "  calc · cooking · 0/1 ACs",
         "  product · planned · 0/1 ACs",
-        "  rounds AC-1 2 · module reviews 1 · plan reviews 0 · stops 0/3",
+        "  rounds AC-1 2 · failed module reviews 1 · failed plan reviews 0 · stops 0/3",
       ],
     });
+    withSecurity();
+    const rows = [
+      ["en", "failed module reviews 1 · failed security reviews 2 · failed plan reviews 0"],
+      ["vi", "review module thất bại 1 · review bảo mật thất bại 2 · review plan thất bại 0"],
+      [null, "failed module reviews 1 · failed security reviews 2 · failed plan reviews 0"],
+    ] as const;
+    for (const [language, counters] of rows) {
+      seed({ language, auto: { security_reviews: 2 } });
+      expect((await cli("menu")).stdout, String(language)).toContain(counters);
+    }
   });
 
   it("gives peek and /verid:menu the same next step as the menu", async () => {

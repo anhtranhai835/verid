@@ -42,13 +42,12 @@ export function writable(file: string): boolean {
 }
 
 /**
- * The reviewer's Codex agent file: beside the bundle, which the hook protects. A verid that
- * another user installed (`sudo npm install -g`) is not this user's to write, so there the file
- * goes beside Codex's own config, which names it.
+ * The reviewer's Codex agent file, beside Codex's own config, which names it; the hook protects
+ * both. Not beside the bundle: reinstalling verid replaces that folder, and a verid another user
+ * installed (`sudo npm install -g`) is not this user's to write.
  */
-export function reviewerOverlay(canWrite: (file: string) => boolean = writable): string {
-  const beside = join(runtimeDirectory(), "codex-reviewer.toml");
-  return canWrite(beside) ? beside : join(codexHome(), "verid-reviewer.toml");
+export function reviewerOverlay(): string {
+  return join(codexHome(), "verid-reviewer.toml");
 }
 
 export function reviewerContent(skillsRoot = installedSkills()): string {

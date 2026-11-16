@@ -127,7 +127,7 @@ describe.skipIf(process.platform !== "win32")(
       const rows = [
         ["cat", "~/.claude/projects/project/session.jsonl", 2, "VERID_BURNT_TRANSCRIPT_PROTECTED"],
         ["cat", ".verid/.state/state.json", 2, "VERID_BURNT_STATE_PROTECTED"],
-        ["cat", ".verid/manifest.yaml", 2, "VERID_BURNT_MANIFEST_PROTECTED"],
+        ["printf x >", ".verid/manifest.yaml", 2, "VERID_BURNT_MANIFEST_PROTECTED"],
         ["cat", "~/.claude/settings.json", 2, "VERID_BURNT_HOOK_PROTECTED"],
         ["cat", "~/.claude/settings.local.json", 2, "VERID_BURNT_HOOK_PROTECTED"],
         ["cat", "~/.claude/agents/x.md", 2, "VERID_BURNT_HOOK_PROTECTED"],
@@ -161,7 +161,7 @@ describe.skipIf(process.platform !== "win32")(
       const rows = [
         ["cat", "projects/project/session.jsonl", 2, "VERID_BURNT_TRANSCRIPT_PROTECTED"],
         ["cat", ".verid/.state/state.json", 2, "VERID_BURNT_STATE_PROTECTED"],
-        ["cat", ".verid/manifest.yaml", 2, "VERID_BURNT_MANIFEST_PROTECTED"],
+        ["printf x >", ".verid/manifest.yaml", 2, "VERID_BURNT_MANIFEST_PROTECTED"],
         ["cat", "settings.json", 2, "VERID_BURNT_HOOK_PROTECTED"],
         ["cat", "settings.local.json", 2, "VERID_BURNT_HOOK_PROTECTED"],
         ["cat", "agents/x.md", 2, "VERID_BURNT_HOOK_PROTECTED"],

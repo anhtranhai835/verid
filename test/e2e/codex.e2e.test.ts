@@ -457,13 +457,20 @@ describe("Codex hook transport and policy", () => {
       ["collaborationwait_agent", { timeout_ms: 30000 }, "allow"],
       // Codex's plan tool only updates the plan shown to the developer.
       ["update_plan", { plan: [{ step: "write the test", status: "in_progress" }] }, "allow"],
+      // Asking the developer writes nothing.
+      ["request_user_input", { questions: [{ question: "Which?" }] }, "allow"],
+      ["request_user_input_async", { questions: [{ question: "Which?" }] }, "allow"],
+      ["clocksleep", { seconds: 30 }, "allow"],
+      ["collaborationlist_agents", {}, "allow"],
+      // Main's later words would reach a fresh reviewer through these: spawn a new one instead.
+      ["collaborationsend_message", { message: "also check x" }, "fresh verid_reviewer"],
       ["Read", { file_path: "notes.txt" }, "allow"],
       [
         "mcp__files__write",
         { target: { path: ".codex/config.toml" } },
         "VERID_BURNT_HOOK_PROTECTED",
       ],
-      ["collaborationfollowup_task", { message: "work" }, "VERID_BURNT_TOOL_UNSUPPORTED"],
+      ["collaborationfollowup_task", { message: "work" }, "fresh verid_reviewer"],
       ["unknown_writer", { file_path: "src/code.ts" }, "VERID_BURNT_TOOL_UNSUPPORTED"],
     ] as const;
     for (const [tool, input, expected] of rows) {
@@ -474,6 +481,12 @@ describe("Codex hook transport and policy", () => {
         if (expected === "VERID_BURNT_TOOL_UNSUPPORTED") expect(r.stdout).toContain(tool);
       }
     }
+    // A reviewer reporting to main carries no builder context into the review; followups stay main's.
+    const reviewer = { agent_id: "rev-1", agent_type: "verid_reviewer" };
+    const sent = await hook(call("collaborationsend_message", { message: "finding" }, reviewer));
+    expect(sent.stdout).toBe("");
+    const followup = await hook(call("collaborationfollowup_task", { message: "x" }, reviewer));
+    expect(reason(followup)).toContain("fresh verid_reviewer");
   });
   it("unions PowerShell and Bash targets and rejects unreadable shell constructs", async () => {
     const rows = [
@@ -487,6 +500,10 @@ describe("Codex hook transport and policy", () => {
       ["pwsh -EncodedCommand AAA=", "VERID_BURNT_SHELL_UNSUPPORTED"],
       ["[ScriptBlock]::Create($text)", "VERID_BURNT_SHELL_UNSUPPORTED"],
       ["& $program 'text'", "VERID_BURNT_SHELL_UNSUPPORTED"],
+      [
+        "$text = @'\nresearch\n'@\nSet-Content .verid/research.md $text",
+        "VERID_BURNT_SHELL_UNSUPPORTED",
+      ],
       ["codex exec 'write code'", "VERID_BURNT_BASH_NESTED_CODEX"],
       // Codex applies a patch handed to the shell from a workdir or `cd` the hook never sees, so
       // only the apply_patch tool, resolved against the hook's cwd, may carry one.
@@ -529,6 +546,11 @@ describe("Codex hook transport and policy", () => {
       else expect(reason(r), command).toContain(expected);
       if (expected === "VERID_BURNT_PATCH_UNSUPPORTED")
         expect(reason(r), command).toContain("apply_patch tool");
+      // Codex has no Bash tool: the way out is apply_patch.
+      if (expected === "VERID_BURNT_SHELL_UNSUPPORTED") {
+        expect(reason(r), command).toContain("apply_patch");
+        expect(reason(r), command).not.toContain("Bash tool");
+      }
     }
   });
   // Spawned: verid protects its own plugin folder next to the built hook, which only dist/ has.
@@ -552,6 +574,11 @@ describe("Codex hook transport and policy", () => {
         expected,
       );
     }
+    // Codex has no read tool: it reads the installed skills AGENTS.md names through the shell.
+    const skill = join(ROOT, "plugin/skills/ba/SKILL.md").replaceAll("\\", "/");
+    expect(spawnHook(call("Bash", { command: `Get-Content -LiteralPath '${skill}'` })).stdout).toBe(
+      "",
+    );
     // Codex's home also keeps prompt history and thread databases beside the sessions.
     const reads = [
       [join(home, ".codex/auth.json"), "VERID_BURNT_SECRET_PROTECTED"],
@@ -581,10 +608,10 @@ describe("Codex hook transport and policy", () => {
       });
     }
   });
-  it("lets the developer override a nested-Codex false positive on Claude Code only", async () => {
+  it("tells each host how the developer overrides a nested-Codex false positive", async () => {
     const rows = [
       ["claude-code", "grep -rn codex src", "developer's `/verid tip"],
-      ["codex", "grep -rn codex src", "VERID_BURNT_BASH_NESTED_CODEX"],
+      ["codex", "grep -rn codex lib", 'verid tip "<reason>"` in their own terminal'],
     ] as const;
     for (const [provider, command, expected] of rows) {
       const r = await hook(call("Bash", { command }), provider);
@@ -594,7 +621,8 @@ describe("Codex hook transport and policy", () => {
       expect(text).not.toContain("cannot be overridden");
     }
   });
-  it("never creates or consumes a developer exception on Codex", async () => {
+  // A Codex prompt is not proof a developer typed it; the developer's own terminal is.
+  it("opens a developer exception on Codex only from the developer's terminal, once", async () => {
     const denied = call("Bash", { command: "verid stock" });
     expect(reason(await hook(denied))).toContain("VERID_BURNT_BASH_DEVELOPER_ONLY");
     const rows = ["/verid tip allowed", "/verid confirm ABCDEF"];
@@ -606,7 +634,19 @@ describe("Codex hook transport and policy", () => {
       });
       expect(reason(await hook(denied))).toContain("VERID_BURNT_BASH_DEVELOPER_ONLY");
     }
-    const state = JSON.parse(readFileSync(stateFile(), "utf8"));
-    expect(state.override ?? null).toBeNull();
+    expect(JSON.parse(readFileSync(stateFile(), "utf8")).overrides ?? []).toEqual([]);
+    const env = Object.fromEntries(
+      Object.entries(process.env).filter(([k]) => !/^(CLAUDE|CODEX)/.test(k)),
+    );
+    const tip = (extra = {}) =>
+      spawnSync(process.execPath, [join(ROOT, "dist/cli.js"), "tip", "hand-checked"], {
+        cwd: project,
+        env: { ...env, ...extra },
+        encoding: "utf8",
+      });
+    expect(tip({ CODEX_THREAD_ID: "agent-shell" }).stderr).toContain("VERID_BURNT_TIP_IN_AGENT");
+    expect(tip().status).toBe(0);
+    expect((await hook(denied)).stdout).toBe("");
+    expect(reason(await hook(denied))).toContain("VERID_BURNT_BASH_DEVELOPER_ONLY");
   });
 });

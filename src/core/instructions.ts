@@ -119,7 +119,8 @@ export function renderInstructions(
 ): string {
   const agents = (role: RoleName): string => manifest.roles?.[role]?.join(", ") ?? "main";
   const skill = (name: string): string => `${skillsRoot.replaceAll("\\", "/")}/${name}/SKILL.md`;
-  const routing = `${skillsRoot.replaceAll("\\", "/")}/../templates/skill-routing.md`;
+  // The templates folder beside skills/, named without a `..` segment.
+  const routing = `${skillsRoot.replaceAll("\\", "/").replace(/\/?[^/]*$/, "") || "."}/templates/skill-routing.md`;
   const codex = provider === "codex";
   // Codex: the main agent writes; skills are read by path.
   const single = provider !== "claude-code";
@@ -131,16 +132,21 @@ export function renderInstructions(
     "",
     "### Rules",
     codex
-      ? "- Codex hooks enforce TDD, gates and protected files as strictly as the host allows; run verid doctor and trust the hooks in /hooks."
+      ? "- Codex hooks enforce TDD, gates and protected files where the host allows; run verid doctor; trust them in /hooks."
       : "- Claude Code hooks enforce TDD (RAW → COOKING → PLATED), module approval, roles and protected files.",
     "- Never bypass a denial; follow its reason.",
+    ...(codex
+      ? [
+          "- On Windows, read files with `Get-Content -Raw -Encoding UTF8`; PowerShell 5.1 misreads UTF-8 (e.g. →).",
+        ]
+      : []),
     codex
-      ? "- Only the developer edits the manifest; /verid tip and /verid confirm have no effect on Codex; exceptions require Claude Code."
+      ? '- Only the developer edits the manifest or opens exceptions: verid tip "<reason>" in their own terminal.'
       : "- Only the developer edits the manifest or opens exceptions with /verid tip and /verid confirm.",
     manifest.resources === "repo"
       ? "- Read skills and agents from .verid/skills/ and .verid/agents/ in this repo. Local verid-<name> entries route there; calls written verid:<name> in those files mean verid-<name> here. Resolve supporting files relative to the repo copy."
       : single
-        ? "- Call the installed skills by absolute path; do not copy their text."
+        ? "- Call installed skills by absolute path; do not copy their text."
         : "- Call the installed skills; do not copy their text.",
     ...(manifest.resources === "repo"
       ? [
@@ -176,7 +182,7 @@ export function renderInstructions(
     ...(single
       ? [
           `- Research/spec: verid:ba → ${skill("ba")}.`,
-          `- Design: verid:design → ${skill("design")}.`,
+          `- Design: verid:design → ${skill("design")}; builder check: spawn verid_reviewer as for review.`,
           `- Plan: verid:plan → ${skill("plan")}.`,
           `- Build: verid:build → ${skill("build")}; the main agent writes tests and code under the TDD gate.`,
           `- TDD: verid:tdd → ${skill("tdd")}.`,

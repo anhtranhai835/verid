@@ -71,7 +71,10 @@ describe("self-contained verid skills", () => {
           if (!parsed.ok) throw new Error(parsed.detail);
           const skillsRoot = resources === "repo" ? ".verid/skills" : "C:/installed/plugin/skills";
           const instructions = renderInstructions(parsed.manifest, provider, skillsRoot);
-          expect(instructions).toContain(`${skillsRoot}/../templates/skill-routing.md`);
+          expect(instructions).toContain(
+            `${skillsRoot.replace(/\/skills$/, "")}/templates/skill-routing.md`,
+          );
+          expect(instructions).not.toContain("/../");
         }
   });
 

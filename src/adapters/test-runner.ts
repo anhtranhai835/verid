@@ -1,10 +1,13 @@
-import { spawn, spawnSync } from "node:child_process";
+import { spawn, spawnSync, type ChildProcessByStdio } from "node:child_process";
+import type { Readable } from "node:stream";
 import { createWriteStream, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { detectRunners, type FolderFacts, type Runner } from "../core/runners.js";
 import { fileRole, type TddLayout } from "../core/tdd.js";
 import { xmlReports } from "./junit.js";
+import { sandboxBlocked } from "../core/doctor.js";
+import { VeridError } from "./state-store.js";
 import { isDirectory } from "./manifest.js";
 
 /** `exit` is null when the command could not start, was killed by a signal or timed out. */
@@ -36,21 +39,31 @@ export function runCommand(
   timeoutMs: number,
   env: Record<string, string> = {},
 ): Promise<TestRun> {
-  return new Promise((done) => {
-    // Appended: the runners verid finds share one log.
-    const log = createWriteStream(logFile, { flags: "a" });
+  return new Promise((done, fail) => {
+    // Codex's Windows workspace-write sandbox refuses every process verid starts (EPERM), with or
+    // without a shell: no runner can run there, so say so rather than fail as an internal error.
+    const blocked = (e: unknown) =>
+      fail(new VeridError("VERID_BURNT_RUN_SANDBOXED", { detail: String(e) }));
     // cmd.exe refuses a UNC working directory and silently runs in C:\Windows instead;
     // pushd maps a temporary drive letter for it.
     const unc = process.platform === "win32" && cwd.startsWith("\\\\");
-    const child = spawn(unc ? `pushd "${cwd}" && ${command}` : command, {
-      cwd: unc ? tmpdir() : cwd,
-      env: { ...process.env, ...env },
-      shell: true,
-      stdio: ["ignore", "pipe", "pipe"],
-      windowsHide: true,
-      // Its own process group on POSIX, so a timeout reaches the runner the shell started.
-      detached: process.platform !== "win32",
-    });
+    let child: ChildProcessByStdio<null, Readable, Readable>;
+    try {
+      child = spawn(unc ? `pushd "${cwd}" && ${command}` : command, {
+        cwd: unc ? tmpdir() : cwd,
+        env: { ...process.env, ...env },
+        shell: true,
+        stdio: ["ignore", "pipe", "pipe"],
+        windowsHide: true,
+        // Its own process group on POSIX, so a timeout reaches the runner the shell started.
+        detached: process.platform !== "win32",
+      });
+    } catch (e) {
+      if (sandboxBlocked(e)) return blocked(e);
+      throw e;
+    }
+    // Appended: the runners verid finds share one log.
+    const log = createWriteStream(logFile, { flags: "a" });
     child.stdout.pipe(log, { end: false });
     child.stderr.pipe(log, { end: false });
     let settled = false;
@@ -68,7 +81,12 @@ export function runCommand(
       child.stderr.destroy();
       finish(null, true, `\nverid: stopped after ${timeoutMs / 1000} s\n`);
     }, timeoutMs);
-    child.on("error", (e) => finish(null, false, `\nverid: ${e.message}\n`));
+    child.on("error", (e) => {
+      if (!sandboxBlocked(e)) return finish(null, false, `\nverid: ${e.message}\n`);
+      settled = true;
+      clearTimeout(timer);
+      log.end(() => blocked(e));
+    });
     child.on("close", (code) => finish(code, false));
   });
 }

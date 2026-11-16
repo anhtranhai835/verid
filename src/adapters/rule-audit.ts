@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, openSync, closeSync, fstatSync, readSync } from "node:fs";
 import { join } from "node:path";
+import { GIT_SANDBOX_MESSAGE, sandboxBlocked } from "../core/doctor.js";
 import { closeHistory, isWorkBranch, isConventionalCommit } from "../core/git-convention.js";
 import type { Manifest } from "../core/manifest.js";
 import { dependencyProblems, parsePlan } from "../core/plan.js";
@@ -51,7 +52,10 @@ export function auditWarnings(project: string, manifest: Manifest, state: State)
         Math.max(1, deadline - Date.now()),
       );
       if (status.error || status.status !== 0)
-        warn("GIT_UNRESOLVED", `${repo}: status unavailable`);
+        warn(
+          "GIT_UNRESOLVED",
+          `${repo}: ${sandboxBlocked(status.error) ? GIT_SANDBOX_MESSAGE : "status unavailable"}`,
+        );
       else if (status.stdout.trim()) warn("GIT_DIRTY", `${repo}: uncommitted changes`);
     }
     const present = new Set((Array.isArray(roots) ? roots : []).map((root) => root.repo));
@@ -106,7 +110,10 @@ export function auditWarnings(project: string, manifest: Manifest, state: State)
     if (manifest.drive === "auto" && signedResearch && signedResearch !== readFileHash(research))
       warn("RESEARCH_CHANGED", ".verid/research.md changed since approval");
   } catch (err) {
-    warn("AUDIT_UNAVAILABLE", err instanceof Error ? err.message : String(err));
+    warn(
+      "AUDIT_UNAVAILABLE",
+      sandboxBlocked(err) ? GIT_SANDBOX_MESSAGE : err instanceof Error ? err.message : String(err),
+    );
   }
   return [...new Set(warnings)];
 }

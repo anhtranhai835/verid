@@ -78,8 +78,9 @@ const CODEX_IGNORED = new Set(["PostToolUse", "SessionEnd"]);
 const codexHost: Host = {
   id: "codex",
   singleWriter: true,
-  // Codex has no attended-input signal: a prompt never opens an exception there.
-  overrides: false,
+  // Codex has no attended-input signal: a prompt never opens an exception there, but the
+  // developer's own terminal does (`verid tip`), and the hook spends it.
+  overrides: true,
   spawnTool: "collaborationspawn_agent",
   knownTools: CODEX_TOOLS,
   events: (payload) => {

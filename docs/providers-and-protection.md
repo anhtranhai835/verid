@@ -29,6 +29,10 @@ discovers local skill entries under `.agents/skills/`.
 The onboard skill inventories repos and runners, reports health and gives the next
 step. It proposes manifest changes for the developer to apply.
 
+On Windows, Codex's `workspace-write` sandbox blocks every process verid starts, so
+`verid taste` cannot run the test runner there (`VERID_BURNT_RUN_SANDBOXED`). Run Codex
+with `sandbox_mode = "danger-full-access"` for TDD steps, or run taste from a terminal.
+
 ## Protection and audit
 
 The hook protects runtime state, secrets, provider definitions, hook bundles and

@@ -44,7 +44,13 @@ describe("Codex setup and diagnostics", () => {
     expect(parse(read(join(project, ".verid/manifest.yaml"))).roles).not.toHaveProperty(
       "researcher",
     );
-    const overlay = join(install, "dist/codex-reviewer.toml");
+    // Reinstalling the same version replaces the bundle's folder: the reviewer must survive it.
+    rmSync(install, { recursive: true });
+    for (const name of ["dist", "plugin", "i18n"])
+      cpSync(join(root, name), join(install, name), { recursive: true });
+    writeFileSync(join(install, "package.json"), '{"type":"module"}');
+    expect(cliAt(entry, "doctor").stdout).not.toContain("! codex.reviewer:");
+    const overlay = join(home, "verid-reviewer.toml");
     const rows = ["missing", "edited"];
     for (const kind of rows) {
       if (kind === "missing") rmSync(overlay);

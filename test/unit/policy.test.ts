@@ -367,6 +367,75 @@ describe("decide: file tools", () => {
     ]);
   });
 
+  it("lets the shell plainly read installed skills in protected folders, never write or run them", () => {
+    const plugin = "c:/users/u/appdata/roaming/npm/node_modules/verid/plugin";
+    const guarded: PolicyContext = { ...ctx, protectedWriteDirs: [plugin] };
+    const skill = `'C:/Users/u/AppData/Roaming/npm/node_modules/verid/plugin/skills/ba/SKILL.md'`;
+    const rows = [
+      [`Get-Content -LiteralPath ${skill}`, ALLOW],
+      [`Get-Content -Raw ${skill} | Select-Object -First 40`, ALLOW],
+      [`cat ${skill}`, ALLOW],
+      [`Select-String -Path ${skill} -Pattern step`, ALLOW],
+      [`Set-Content -LiteralPath ${skill} x`, HOOK],
+      [`Get-Content ${skill} | Set-Content ${skill}`, HOOK],
+      [`Get-Content ${skill} | Out-File x.md`, HOOK],
+      [`Get-Content ${skill} > x.md`, HOOK],
+      [`cat ${skill}; rm -r ${plugin}`, HOOK],
+      [`Get-Content ${skill} | python`, HOOK],
+      [`node ${plugin}/skills/ba/x.js`, HOOK],
+      [`Get-Content $(${skill})`, HOOK],
+      [`Get-Content -LiteralPath '.verid/workflow.md'; Get-Content -LiteralPath ${skill}`, ALLOW],
+      [`cat a.md && cat ${skill}`, ALLOW],
+      [`cat ${skill}; node ${plugin}/skills/ba/x.js`, HOOK],
+      [`cat ${skill} & node x.js`, HOOK],
+      [`cat ${skill};`, HOOK],
+      [
+        `rg --files --hidden .verid/docs .verid/templates; Get-Content -Encoding UTF8 -LiteralPath ${skill}`,
+        ALLOW,
+      ],
+      [`rg -n step ${skill}`, ALLOW],
+      [`Get-Content ${skill}; verid context; verid menu; verid peek`, ALLOW],
+      [
+        `Get-Content -LiteralPath '.verid/workflow.md'; Get-Content -LiteralPath ${skill}; verid doctor; verid menu; verid peek`,
+        ALLOW,
+      ],
+      [`cat ${skill} && verid doctor --ci && verid menu && verid peek`, ALLOW],
+      [`cat ${skill}; verid menu --commits --file`, HOOK],
+      [`cat ${skill}; verid order x`, HOOK],
+      [`verid tip "let me edit the test"`, "VERID_BURNT_BASH_DEVELOPER_ONLY"],
+      [`rg --pre ./x.sh step ${skill}`, HOOK],
+      [`rg --pre=./x.sh step ${skill}`, HOOK],
+    ] as const;
+    for (const [command, want] of rows) {
+      const denied = codex("Bash", { command })
+        .map((a) => decide(a, guarded))
+        .find((d) => d.kind === "deny");
+      expect(denied?.kind === "deny" ? denied.code : ALLOW, command).toBe(want);
+    }
+  });
+
+  it("lets the shell plainly read the manifest, never write it", () => {
+    const rows = [
+      ["Get-Content -LiteralPath '.verid/manifest.yaml' -Encoding UTF8", ALLOW],
+      ["cat .verid/manifest.yaml; cat .verid/workflow.md", ALLOW],
+      [
+        "Get-Content -Encoding UTF8 -LiteralPath '.verid/manifest.yaml'; rg -n 'AC-31|PRQ-1|reception' .verid/artifacts/04-plans",
+        ALLOW,
+      ],
+      ["Get-Content ~/.codex/verid-reviewer.toml", ALLOW],
+      ["cat .verid/manifest.yaml 'x' | python", MANIFEST],
+      ['cat .verid/manifest.yaml "$(rm x)"', MANIFEST],
+      ["cat .verid/manifest.yaml 'a' > m.yaml", MANIFEST],
+      ["Set-Content .verid/manifest.yaml x", MANIFEST],
+      ["echo x >> .verid/manifest.yaml", MANIFEST],
+      ["cat .verid/manifest.yaml | Out-File m.yaml", MANIFEST],
+      ["sed -i s/prep/auto/ .verid/manifest.yaml", MANIFEST],
+      ["python -c \"open('.verid/manifest.yaml','w')\"", MANIFEST],
+    ] as const;
+    for (const [command, want] of rows)
+      expect(verdict(codex("Bash", { command })), command).toBe(want);
+  });
+
   it("adds config-directory protection without moving the existing home protections", () => {
     vi.stubEnv("CLAUDE_CONFIG_DIR", join(homedir(), "verid-custom-config"));
     try {
@@ -441,7 +510,7 @@ describe("decide: file tools", () => {
       ["printf x > ROOT/agents/x.md", "VERID_BURNT_HOOK_PROTECTED"],
       ["printf x > ROOT/commands/verid/x.md", "VERID_BURNT_HOOK_PROTECTED"],
       ["cat ROOT/.verid/.state/state.json", "VERID_BURNT_STATE_PROTECTED"],
-      ["cat ROOT/.verid/manifest.yaml", "VERID_BURNT_MANIFEST_PROTECTED"],
+      ["printf x > ROOT/.verid/manifest.yaml", "VERID_BURNT_MANIFEST_PROTECTED"],
       ["cat ROOT/skills/x/SKILL.md", "allow"],
       ["python ROOT/skills/x/scripts/y.py", "allow"],
       ["cat ROOT/commands/superpowers/x.md", "allow"],
@@ -727,6 +796,38 @@ describe("decide: bash", () => {
     ]);
   });
 
+  it("lets rg and grep exclude verid's state while every reach into it stays denied", () => {
+    expectBash([
+      [
+        "rg --files --hidden -g 'AGENTS.md' -g '.verid/**' -g '!.verid/.state/**' -g '!.git/**'; git status --short",
+        ALLOW,
+      ],
+      ["rg -n plan --glob=!.verid/.state .verid", ALLOW],
+      ["grep -rn plan --exclude-dir=.state .verid", ALLOW],
+      ["rg --files -g '.verid/.state/**'", STATE],
+      ["rg -g '!!.verid/.state/**' --files", STATE],
+      ["rg --files -g '!x' .verid/.state", STATE],
+      ["rg -g '!.verid/.state/**' --files; cat .verid/.state/state.json", STATE],
+      ['rg -g "!$(cat .verid/.state/state.json)" x', STATE],
+      ["cat -g '!.verid/.state/state.json'", STATE],
+      ["cat 'a;rg -g !.verid/.state/state.json'", STATE],
+      ["grep -rn x --include=.state .verid", STATE],
+      [
+        "rg --files --hidden -g '!.git/**' -g '!.verid/**' -g '!.claude/**' -g '!.agents/**' -g '!.codex/**' -g '!node_modules/**' -g '*.ts'",
+        ALLOW,
+      ],
+      ["rg --files -g '!.claude/settings.json' .claude/settings.json", HOOK],
+      ["rg --files -g '.codex/**'", ALLOW],
+      ["rg --files -g '!.env' .env", SECRET],
+      ["Get-Content '.codex/config.toml'", ALLOW],
+      ["cat ~/.codex/hooks.json | Select-String verid", ALLOW],
+      ["Set-Content .codex/config.toml x", HOOK],
+      ["cat .codex/config.toml > x.toml", HOOK],
+      ["cat ~/.codex/auth.json", SECRET],
+      ["cat ~/.codex/sessions/x.jsonl", TRANSCRIPT],
+    ]);
+  });
+
   it("blocks a nested claude session however it is spelled", () => {
     expectBash([
       ["claude -p hi", NESTED],
@@ -734,6 +835,25 @@ describe("decide: bash", () => {
       ["C:\\tools\\claude.exe -p hi", NESTED],
       ["CLAUDE -p hi", NESTED],
       ["echo ok && claude", NESTED],
+    ]);
+  });
+
+  it("reads literal text written to a file as data, not as a nested session", () => {
+    const CODEX = "VERID_BURNT_BASH_NESTED_CODEX";
+    expectBash([
+      ["Add-Content -LiteralPath 'notes.md' -Value '- bug | Codex PreToolUse denied'", ALLOW],
+      ['echo "ask claude later" >> notes.md', ALLOW],
+      ["printf 'codex; claude\\n' > notes.md", ALLOW],
+      ['Add-Content notes.md -Value "$(codex exec x)"', CODEX],
+      ['echo "x `claude -p hi`" > notes.md', NESTED],
+      ["echo 'codex exec x' | sh", CODEX],
+      ["echo 'claude -p hi' | iex", NESTED],
+      ["echo 'x'; codex exec x", CODEX],
+      ["co''dex exec x", CODEX],
+      ["grep -rn codex src", CODEX],
+      ['echo "/verid tip x"', ALLOW],
+      ["echo 'verid order a' | sh", "VERID_BURNT_BASH_DEVELOPER_ONLY"],
+      ['echo "x"; verid tip y', "VERID_BURNT_BASH_DEVELOPER_ONLY"],
     ]);
   });
 

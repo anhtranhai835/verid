@@ -32,7 +32,7 @@ import type { State } from "../core/state.js";
 import { cycleHint, cycleLabel } from "../core/tdd.js";
 import { checkedRepos } from "./architecture.js";
 import type { Work } from "./git.js";
-import { bilingual } from "./i18n.js";
+import { bilingual, t } from "./i18n.js";
 import { auditLines } from "./rule-audit.js";
 import { errno, readFileHash } from "./state-store.js";
 import { checkSetupPath } from "./workspace.js";
@@ -453,6 +453,12 @@ function planStanding(project: string, state: State, iterations = false, modular
   };
 }
 
+// A plan that reads but whose module dossier is unfinished names that file, not the plan.
+const invalidLine = (detail: string): string =>
+  bilingual(detail.startsWith(".verid/artifacts/03-modules/") ? "menu.dossier" : "menu.invalid", {
+    detail,
+  });
+
 // A step that hands work to an agent names the one mapped to the role, or — when none is.
 const stepLine = (
   plan: ReturnType<typeof planStanding>,
@@ -461,12 +467,12 @@ const stepLine = (
 ): string =>
   plan.ok
     ? plan.detail
-      ? bilingual("menu.invalid", { detail: plan.detail })
+      ? invalidLine(plan.detail)
       : bilingual(plan.step.key, {
           ...mappedAgents(roles, singleWriter),
           ...("module" in plan.step ? { module: plan.step.module } : {}),
         })
-    : bilingual("menu.invalid", { detail: plan.detail });
+    : invalidLine(plan.detail);
 
 /**
  * An auto drive as `verid menu` reads it: the facts it decides from, where it stands, and the one
@@ -644,11 +650,14 @@ function autoMenuLines(
     .filter(([, n]) => n > 0)
     .map(([ac, n]) => `${ac} ${n}`);
   // Only Stop's holds have a limit; failed rounds and reviews never stop the drive.
+  const language = state.language ?? "en";
   const counters = [
     ...(rounds.length > 0 ? [`rounds ${rounds.join(", ")}`] : []),
-    `module reviews ${auto.module_reviews}`,
-    ...(roles?.security ? [`security reviews ${auto.security_reviews}`] : []),
-    `plan reviews ${auto.plan_reviews}`,
+    t(language, "auto.failed_module_reviews", { count: String(auto.module_reviews) }),
+    ...(roles?.security
+      ? [t(language, "auto.failed_security_reviews", { count: String(auto.security_reviews) })]
+      : []),
+    t(language, "auto.failed_plan_reviews", { count: String(auto.plan_reviews) }),
     `stops ${auto.stop_holds}/${LIMIT}`,
   ];
   return [
@@ -661,6 +670,10 @@ function autoMenuLines(
     ),
     ...views.map((v) => moduleLine(v, views, unitState(project, state, v.name))),
     ...(auto.signed === null ? [] : [`  ${counters.join(" · ")}`]),
+    // A stop counted without a word on what it means reads like an error.
+    ...(auto.signed !== null && auto.stop_holds > 0
+      ? [`  ${bilingual("auto.stops_hint", { limit: String(LIMIT) })}`]
+      : []),
     ...questionLines(project),
     ...(manifest ? auditLines(project, manifest, state, false) : []),
     step,

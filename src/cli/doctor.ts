@@ -5,7 +5,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
-import { node22OrLater } from "../core/doctor.js";
+import { node22OrLater, sandboxBlocked } from "../core/doctor.js";
 import { instructionBlock, instructionBlocks } from "../core/instructions.js";
 import { hasCurrentVeridHooks } from "../adapters/claude-settings.js";
 import {
@@ -42,6 +42,8 @@ export async function doctorCommand(project: string, ci = false): Promise<CliRes
   const say = (key: MessageKey, params: Record<string, string> = {}) => bilingual(key, params);
   const lines = [say("doctor.header", { project }), ...(ci ? [say("doctor.ci.scope")] : [])];
   let problems = 0;
+  // Warnings inform; only problems fail doctor and block a step.
+  let warnings = 0;
   const problem = (
     key: string,
     detail: MessageKey | ErrorCode,
@@ -231,10 +233,20 @@ export async function doctorCommand(project: string, ci = false): Promise<CliRes
       problem(`instructions.${file}`, "doctor.instructions.missing", "doctor.instructions.fix", {
         file,
       });
-    else if (!block.ok || block.block !== expected)
+    else if (!block.ok)
       problem(`instructions.${file}`, "doctor.instructions.edited", "doctor.instructions.fix", {
         file,
       });
+    // Sound markers around other text: the hook keeps agents out, so this is mostly an older verid.
+    else if (block.block !== expected)
+      problem(
+        `instructions.${file}`,
+        "doctor.instructions.outdated",
+        "doctor.instructions.upgrade",
+        {
+          file,
+        },
+      );
     else lines.push(say("doctor.instructions.ok", { file }));
   }
   for (const provider of ci ? [] : (manifest?.providers ?? [])) {
@@ -269,6 +281,7 @@ export async function doctorCommand(project: string, ci = false): Promise<CliRes
         problem("codex.hook_trust", "doctor.codex.hooks_untrusted", "doctor.codex.hooks_fix");
       else lines.push(say("doctor.codex.trust_ok"));
       // Codex's internal definition hash serialization is not part of the captured contract.
+      warnings++;
       lines.push(say("doctor.codex.retrust"));
       const overlay = local
         ? join(project, ".verid/agents/verid-reviewer.toml")
@@ -300,20 +313,26 @@ export async function doctorCommand(project: string, ci = false): Promise<CliRes
       )
         problem("codex.reviewer", "doctor.codex.reviewer_missing", "doctor.hooks.fix");
       else lines.push(say("doctor.codex.reviewer_ok"));
-      const version = spawnSync(
-        process.platform === "win32" ? "codex.cmd" : "codex",
-        ["--version"],
-        {
-          encoding: "utf8",
-          windowsHide: true,
-          timeout: 5000,
-          shell: process.platform === "win32",
-        },
-      );
+      // One command string: Node deprecates passing arguments together with a shell (DEP0190).
+      const version = spawnSync("codex --version", {
+        encoding: "utf8",
+        windowsHide: true,
+        timeout: 5000,
+        shell: true,
+      });
       const actual = version.status === 0 ? version.stdout.trim() : "unavailable";
-      if (!/^codex-cli 0\.164\.0$/.test(actual))
+      if (sandboxBlocked(version.error)) {
+        warnings++;
+        lines.push(say("doctor.codex.version_sandboxed"));
+      } else if (!/^codex-cli 0\.164\.0$/.test(actual)) {
+        warnings++;
         lines.push(say("doctor.codex.version_warning", { version: actual }));
-      else lines.push(say("doctor.codex.version_ok"));
+      } else lines.push(say("doctor.codex.version_ok"));
+      // Codex's Windows workspace-write sandbox refuses every process verid starts.
+      if (process.platform === "win32") {
+        warnings++;
+        lines.push(say("doctor.codex.windows_sandbox"));
+      }
     }
   }
   for (const repo of [
@@ -399,7 +418,9 @@ export async function doctorCommand(project: string, ci = false): Promise<CliRes
     else
       try {
         const state = readState(statePaths(project));
-        lines.push(...auditLines(project, manifest, state));
+        const audit = auditLines(project, manifest, state);
+        warnings += Number(/(\d+) warning/.exec(audit[0] ?? "")?.[1] ?? 0);
+        lines.push(...audit);
         if (planned(manifest)) {
           const plan = readPlan(
             project,
@@ -426,10 +447,12 @@ export async function doctorCommand(project: string, ci = false): Promise<CliRes
       } catch (err) {
         if (err instanceof VeridError && err.code !== "VERID_BURNT_STATE_MISSING")
           problem("state", err.code, "doctor.architecture.fix", err.params);
-        else
+        else {
+          warnings++;
           lines.push(
             `verid: audit unavailable: ${err instanceof Error ? err.message : String(err)}`,
           );
+        }
       }
   }
   // The hash chain detects an edited or removed entry; nothing else ever checks it.
@@ -450,7 +473,8 @@ export async function doctorCommand(project: string, ci = false): Promise<CliRes
     problems++;
     lines.push(`! plugins.json: ${error instanceof Error ? error.message : String(error)}`);
   }
-  lines.push(say(problems ? "doctor.problems" : "doctor.ok", { count: String(problems) }));
+  const summary = problems ? "doctor.problems" : warnings ? "doctor.ok_warnings" : "doctor.ok";
+  lines.push(say(summary, { count: String(problems), warnings: String(warnings) }));
   return { exit: problems ? 1 : 0, stdout: `${lines.join("\n")}\n`, stderr: "" };
 }
 

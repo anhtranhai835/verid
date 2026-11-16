@@ -432,11 +432,15 @@ describe("the coder's rounds, closing a module, progress, and the next step", ()
       spec: autoNextStep(unsigned, true, false, null, undefined, false).key,
       design: autoNextStep(unsigned, true, false, null, undefined, true).key,
       "design before spec": autoNextStep(unsigned, true, true, null, undefined, false).key,
+      // A drive switched to no-brain over a written plan adopts it: no new plan is written.
+      "plan already written": autoNextStep({ kind: "unsigned", planned: true }, true, true, null)
+        .key,
     }).toEqual({
       research: "menu.research",
       spec: "menu.spec",
       design: "menu.design",
       "design before spec": "auto.plan",
+      "plan already written": "auto.adopt",
     });
   });
 

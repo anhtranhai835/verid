@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { gitCleanAcross } from "../core/auto.js";
+import { GIT_SANDBOX_MESSAGE, sandboxBlocked } from "../core/doctor.js";
 import { resolveMain, type RepoFacts, type RootHistory } from "../core/git-convention.js";
 import { repoPathKey, type Manifest } from "../core/manifest.js";
 import { isSecretPath } from "../core/policy.js";
@@ -45,7 +46,9 @@ function runBy(deadline: number, cwd: string, args: readonly string[]) {
 }
 const failure = (r: ReturnType<typeof runGit>) =>
   r.error
-    ? `git did not run: ${errno(r.error) ?? r.error.message}`
+    ? sandboxBlocked(r.error)
+      ? GIT_SANDBOX_MESSAGE
+      : `git did not run: ${errno(r.error) ?? r.error.message}`
     : (r.stderr.trim().split("\n")[0] ?? `git exited ${r.status}`);
 
 /** A folder as one key: the same folder spelled two ways on Windows is one repository. */

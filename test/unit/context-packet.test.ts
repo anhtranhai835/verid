@@ -1,3 +1,5 @@
+import { rmSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { contextPacket, type ContextInput } from "../../src/core/context-packet.js";
 import { parsePlan } from "../../src/core/plan.js";
@@ -150,10 +152,43 @@ describe("context command and task prompt", () => {
     expect((await runCli(["context", "sub", "--ac", "AC-2"])).stdout).toContain("AC-2");
   });
 
-  it("fails shortly when no module is open or the module is unknown", async () => {
-    const none = await runCli(["context"]);
-    expect(none.exit).toBe(2);
-    expect(none.stderr.length).toBeLessThan(400);
+  it("gives the current stage's context before a plan exists, and still needs a plan for a module", async () => {
+    const plan = p.read(".verid/plan.md");
+    const design = p.read(".verid/design.md");
+    rmSync(join(p.root, ".verid/plan.md"));
+    rmSync(join(p.root, ".verid/design.md"));
+    p.put(".verid/research.md", "# Research\n");
+    const r = await runCli(["context"]);
+    expect(r.exit, r.stderr).toBe(0);
+    for (const part of [
+      "stage design",
+      "research.md: ok",
+      "spec.md: ok",
+      "design.md: missing",
+      "verid:design",
+    ])
+      expect(r.stdout).toContain(part);
+    expect((await runCli(["context", "add"])).stderr).toContain("VERID_BURNT_PLAN_MISSING");
+    p.put(".verid/design.md", design);
+    p.put(".verid/plan.md", plan);
+    rmSync(join(p.root, ".verid/research.md"));
+  });
+
+  it("gives the whole plan for review before any order, and fails shortly on an unknown module", async () => {
+    const plan = await runCli(["context"]);
+    expect(plan.exit, plan.stderr).toBe(0);
+    for (const part of [
+      "stage plan review",
+      ".verid/plan.md",
+      ".verid/spec.md",
+      ".verid/design.md",
+      "add: planned",
+      "sub: planned",
+      ".verid/artifacts/03-modules/sub/",
+    ])
+      expect(plan.stdout).toContain(part);
+    // The reviewer's snapshot before order is this packet, and menu --commits says so.
+    expect((await runCli(["menu", "--commits", "--file"])).stdout).toContain("verid context");
     expect((await runCli(["context", "nope"])).exit).toBe(2);
     expect((await runCli(["context", "sub", "--bad"])).exit).toBe(2);
   });

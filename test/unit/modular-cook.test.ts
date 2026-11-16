@@ -43,7 +43,7 @@ it("previews without writes, installs portable Codex resources, and preserves cu
   expect(read(".verid/agents/verid-reviewer.toml")).not.toContain(project);
   expect(read(".agents/skills/verid-ba/SKILL.md")).toContain("Read .verid/skills/ba/SKILL.md");
   expect(read(".agents/skills/verid-ba/SKILL.md")).toContain("not already in this context");
-  expect(read("AGENTS.md")).toContain(".verid/skills/../templates/skill-routing.md");
+  expect(read("AGENTS.md")).toContain(".verid/templates/skill-routing.md");
   expect(existsSync(join(project, ".verid/templates/skill-routing.md"))).toBe(true);
   expect(
     existsSync(join(project, ".verid/skills/context-engineering/scripts/document_reader.py")),

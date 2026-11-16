@@ -80,8 +80,25 @@ export function decideAgentContext(
 }
 
 /** Unknown host tools cannot acquire write or dispatch permissions by default. */
-export function decideKnownTool(tool: string, known: readonly string[]): PolicyDecision {
-  return tool.startsWith("mcp__") || known.includes(tool)
-    ? { kind: "allow", reason: "known tool" }
-    : { kind: "deny", code: "VERID_BURNT_TOOL_UNSUPPORTED", target: tool, reason: "unknown tool" };
+// Codex tools that hand a running agent more of main's words. verid's agents there are read-only
+// reviewers spawned fresh (fork_turns "none"); later messages would carry the builder's view.
+const REVIEWER_CONTEXT = new Set(["collaborationsend_message", "collaborationfollowup_task"]);
+
+export function decideKnownTool(
+  tool: string,
+  known: readonly string[],
+  fromSubagent = false,
+): PolicyDecision {
+  if (tool.startsWith("mcp__") || known.includes(tool))
+    return { kind: "allow", reason: "known tool" };
+  // A spawned reviewer reporting back sends no builder context into a review.
+  if (fromSubagent && tool === "collaborationsend_message")
+    return { kind: "allow", reason: "subagent reports to main" };
+  return {
+    kind: "deny",
+    code: "VERID_BURNT_TOOL_UNSUPPORTED",
+    target: tool,
+    reason: "unknown tool",
+    params: { detail_key: REVIEWER_CONTEXT.has(tool) ? "tool.reviewer_context" : "tool.unknown" },
+  };
 }

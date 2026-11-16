@@ -177,7 +177,9 @@ export function deny(code: ErrorCode, params: Record<string, string>): Result {
   const hint: MessageKey | undefined =
     rule && HOST.overrides
       ? isOverridable(rule)
-        ? "hint.overridable"
+        ? HOST.id === "codex"
+          ? "hint.overridable_terminal"
+          : "hint.overridable"
         : "hint.not_overridable"
       : undefined;
   const line = (lang: Lang) => `${t(lang, code, params)}${hint ? ` ${t(lang, hint, params)}` : ""}`;

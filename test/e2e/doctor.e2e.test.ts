@@ -148,9 +148,14 @@ describe("verid doctor", () => {
     }
   });
   it("reports missing and edited managed instructions without changing the file", async () => {
+    // A block with sound markers that differs from this install's text is usually just older.
     const rows = [
-      { content: null },
-      { content: "developer text\n<!-- verid:begin -->\nedited\n<!-- verid:end -->\n" },
+      { content: null, says: "missing" },
+      {
+        content: "developer text\n<!-- verid:begin -->\nedited\n<!-- verid:end -->\n",
+        says: "differs from this verid's template",
+      },
+      { content: "<!-- verid:begin -->\nbroken", says: "malformed markers" },
     ];
     for (const row of rows) {
       healthy();
@@ -162,6 +167,12 @@ describe("verid doctor", () => {
       expect(r.code, r.err + r.out).toBe(1);
       expect(r.out).toContain("! instructions.CLAUDE.md:");
       expect(r.out).toContain("upgrade");
+      expect(r.out).toContain(row.says);
+      // Only broken or missing markers need a look at the file; an older block needs only upgrade.
+      const finding = r.out.split("\n").find((l) => l.startsWith("! instructions.CLAUDE.md:"));
+      expect(finding?.includes("Review the file"), row.says).toBe(
+        row.says !== "differs from this verid's template",
+      );
       expect(snapshot()).toEqual(before);
     }
   });
@@ -222,6 +233,11 @@ describe("verid doctor", () => {
     expect(result.out).toContain("Codex hooks point at this install");
     expect(result.out).not.toContain("! hooks:");
     expect(result.out).not.toContain("! plugin.");
+    // Codex's re-trust note is a warning: counted apart from problems, and never blocking.
+    expect(result.out).toMatch(/No problems; [1-9]\d* warning\(s\), which never block a step\./);
+    // There Codex's sandbox stops verid taste from starting a runner: doctor says how to run it.
+    if (process.platform === "win32")
+      expect(result.out).toContain('sandbox_mode = "danger-full-access"');
     expect(snapshot()).toEqual(before);
   });
 
@@ -230,7 +246,7 @@ describe("verid doctor", () => {
     const before = snapshot();
     const r = await cli(["doctor"], { CLAUDECODE: "1" });
     expect(r.code, r.err + r.out).toBe(0);
-    expect(r.out).toContain("No problems found.");
+    expect(r.out).toMatch(/No problems(?: found\.|; \d+ warning\(s\))/);
     expect(snapshot()).toEqual(before);
   });
 

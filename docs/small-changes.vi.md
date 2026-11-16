@@ -27,3 +27,6 @@ Bảng dưới là điều hook ép ở từng mode và drive; mỗi hàng nêu 
 
 Module đã serve thì code bị khóa lại. Muốn sửa phần đã serve, sửa mục của module đó trong
 `.verid/plan.md` rồi order lại.
+
+Trên Codex, prompt không mở được ngoại lệ. Developer chạy `verid tip "<lý do>"` trong
+terminal của mình: nó cho phép hành động bị chặn gần nhất một lần, và từ chối khi chạy trong agent.

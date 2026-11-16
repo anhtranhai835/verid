@@ -18,6 +18,7 @@ import { contextArgs, contextCommand } from "./context.js";
 import { initFlags } from "./cook-flags.js";
 import { refactor } from "./garnish.js";
 import { halt, resume } from "./halt.js";
+import { tipCommand } from "./tip.js";
 import { misused, usage, helpNextStep } from "./help.js";
 import { menu, commitFlags, commits } from "./menu.js";
 import { approve } from "./order.js";
@@ -25,6 +26,7 @@ import { status } from "./peek.js";
 import { serve, serveArgs } from "./serve.js";
 import { hasTerminal, interactive, terminalIo, locale, systemLang } from "./shell.js";
 import { usageCommand } from "./usage.js";
+import packageJson from "../../package.json" with { type: "json" };
 
 /** `dist/cli.js`: the command line in, its output and exit code out. */
 export async function main(): Promise<void> {
@@ -83,6 +85,7 @@ export async function runCli(args: readonly string[]): Promise<CliResult> {
     else if (cmd === "menu" && rest[0] === "--commits" && commitFlags(rest.slice(1)))
       r = await commits(project, rest.includes("--file"), rest.includes("--compact"));
     else if (cmd === "garnish" && rest.length === 0) r = refactor(project);
+    else if (cmd === "tip" && rest.length > 0) r = tipCommand(project, rest.join(" "));
     else if (cmd === "halt") r = halt(project, rest);
     else if (cmd === "resume" && rest.length === 0) r = resume(project);
     else if (cmd === "stock" && rest.length === 0) r = await baselineCommand(project);
@@ -95,6 +98,13 @@ export async function runCli(args: readonly string[]): Promise<CliResult> {
       });
     } else if (cmd === undefined) r = usage(project, null, await helpNextStep(project));
     else if (["help", "--help", "-h"].includes(cmd)) r = usage(project, null);
+    else if (["--version", "-v"].includes(cmd) && rest.length === 0)
+      r = {
+        exit: 0,
+        stdout: `${packageJson.version}
+`,
+        stderr: "",
+      };
     else r = usage(project, misused(cmd, rest));
   } catch (err) {
     const code: ErrorCode = err instanceof VeridError ? err.code : "VERID_BURNT_INTERNAL";

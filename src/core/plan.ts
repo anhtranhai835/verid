@@ -77,7 +77,8 @@ export function parsePlan(text: string, iterations = false): PlanCheck {
           depends: (match[1] ?? "")
             .split(",")
             .map((name) => name.trim())
-            .filter((name) => name !== ""),
+            // `Depends: none` (or `-`) says what removing the line says.
+            .filter((name) => name !== "" && name !== "-" && name.toLowerCase() !== "none"),
         };
     }
     return {};
