@@ -345,7 +345,7 @@ const BASH_RULES: [RuleCode, string, (command: string, ctx: PolicyContext) => bo
   [
     "VERID_BURNT_MANIFEST_PROTECTED",
     "mentions the verid manifest",
-    (c) => c.includes("manifest.yaml"),
+    (c) => c.includes("manifest.yaml") && !plainRead(c),
   ],
   [
     "VERID_BURNT_GIT_INTERNALS",

@@ -398,6 +398,20 @@ describe("decide: file tools", () => {
     }
   });
 
+  it("lets the shell plainly read the manifest, never write it", () => {
+    const rows = [
+      ["Get-Content -LiteralPath '.verid/manifest.yaml' -Encoding UTF8", ALLOW],
+      ["cat .verid/manifest.yaml; cat .verid/workflow.md", ALLOW],
+      ["Set-Content .verid/manifest.yaml x", MANIFEST],
+      ["echo x >> .verid/manifest.yaml", MANIFEST],
+      ["cat .verid/manifest.yaml | Out-File m.yaml", MANIFEST],
+      ["sed -i s/prep/auto/ .verid/manifest.yaml", MANIFEST],
+      ["python -c \"open('.verid/manifest.yaml','w')\"", MANIFEST],
+    ] as const;
+    for (const [command, want] of rows)
+      expect(verdict(codex("Bash", { command })), command).toBe(want);
+  });
+
   it("adds config-directory protection without moving the existing home protections", () => {
     vi.stubEnv("CLAUDE_CONFIG_DIR", join(homedir(), "verid-custom-config"));
     try {
@@ -472,7 +486,7 @@ describe("decide: file tools", () => {
       ["printf x > ROOT/agents/x.md", "VERID_BURNT_HOOK_PROTECTED"],
       ["printf x > ROOT/commands/verid/x.md", "VERID_BURNT_HOOK_PROTECTED"],
       ["cat ROOT/.verid/.state/state.json", "VERID_BURNT_STATE_PROTECTED"],
-      ["cat ROOT/.verid/manifest.yaml", "VERID_BURNT_MANIFEST_PROTECTED"],
+      ["printf x > ROOT/.verid/manifest.yaml", "VERID_BURNT_MANIFEST_PROTECTED"],
       ["cat ROOT/skills/x/SKILL.md", "allow"],
       ["python ROOT/skills/x/scripts/y.py", "allow"],
       ["cat ROOT/commands/superpowers/x.md", "allow"],
