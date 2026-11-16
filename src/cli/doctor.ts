@@ -300,16 +300,13 @@ export async function doctorCommand(project: string, ci = false): Promise<CliRes
       )
         problem("codex.reviewer", "doctor.codex.reviewer_missing", "doctor.hooks.fix");
       else lines.push(say("doctor.codex.reviewer_ok"));
-      const version = spawnSync(
-        process.platform === "win32" ? "codex.cmd" : "codex",
-        ["--version"],
-        {
-          encoding: "utf8",
-          windowsHide: true,
-          timeout: 5000,
-          shell: process.platform === "win32",
-        },
-      );
+      // One command string: Node deprecates passing arguments together with a shell (DEP0190).
+      const version = spawnSync("codex --version", {
+        encoding: "utf8",
+        windowsHide: true,
+        timeout: 5000,
+        shell: true,
+      });
       const actual = version.status === 0 ? version.stdout.trim() : "unavailable";
       if (!/^codex-cli 0\.164\.0$/.test(actual))
         lines.push(say("doctor.codex.version_warning", { version: actual }));
