@@ -285,13 +285,16 @@ describe("modulePhases, openModule and nextStep: where each module stands", () =
 
   it("reads a module's Depends line before its first AC, and none when it has none", () => {
     const parsed = parsePlan(
-      "## Module: api\n- AC-1: serves\n## Module: web\nShows the shop.\nDepends: api, auth ,\n- AC-2: shows\n## Module: cli\n- AC-3: runs\nDepends: api\n",
+      "## Module: api\n- AC-1: serves\n## Module: web\nShows the shop.\nDepends: api, auth ,\n- AC-2: shows\n## Module: cli\n- AC-3: runs\nDepends: api\n## Module: db\nDepends: None\n- AC-4: stores\n## Module: log\nDepends: -\n- AC-5: logs\n",
     );
     if (!parsed.ok) throw new Error(parsed.detail);
+    // `none` or `-` says no dependency, as removing the line does.
     expect(parsed.modules.map((m) => [m.name, m.depends ?? null])).toEqual([
       ["api", null],
       ["web", ["api", "auth"]],
       ["cli", null],
+      ["db", []],
+      ["log", []],
     ]);
   });
 
