@@ -137,6 +137,10 @@ it("AC-14, AC-15, AC-18, AC-19: all planned projects have a board and splitting 
       existsSync(join(project, `.verid/artifacts/03-modules/${task.id}/ba/requirements.md`)),
     ).toBe(true);
   }
+  // An unfinished dossier is what stops the plan, so peek names it, not the plan.
+  const peek = (await cli("peek")).stdout;
+  expect(peek).toContain("Next: finish .verid/artifacts/03-modules/req-1/");
+  expect(peek).not.toContain("fix .verid/plan.md");
   expect((await cli("order", "req-1")).code).toBe(2);
 });
 

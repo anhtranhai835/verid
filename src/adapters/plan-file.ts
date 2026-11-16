@@ -453,6 +453,12 @@ function planStanding(project: string, state: State, iterations = false, modular
   };
 }
 
+// A plan that reads but whose module dossier is unfinished names that file, not the plan.
+const invalidLine = (detail: string): string =>
+  bilingual(detail.startsWith(".verid/artifacts/03-modules/") ? "menu.dossier" : "menu.invalid", {
+    detail,
+  });
+
 // A step that hands work to an agent names the one mapped to the role, or — when none is.
 const stepLine = (
   plan: ReturnType<typeof planStanding>,
@@ -461,12 +467,12 @@ const stepLine = (
 ): string =>
   plan.ok
     ? plan.detail
-      ? bilingual("menu.invalid", { detail: plan.detail })
+      ? invalidLine(plan.detail)
       : bilingual(plan.step.key, {
           ...mappedAgents(roles, singleWriter),
           ...("module" in plan.step ? { module: plan.step.module } : {}),
         })
-    : bilingual("menu.invalid", { detail: plan.detail });
+    : invalidLine(plan.detail);
 
 /**
  * An auto drive as `verid menu` reads it: the facts it decides from, where it stands, and the one
