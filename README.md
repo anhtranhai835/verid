@@ -99,6 +99,8 @@ This table is a summary. The full steps are in `.verid/workflow.md`. For a small
 
 ---
 
+For HTML mockups, open the HTML file in a browser, then run `verid mockup <module> <option>` before `verid order`. List options and the current choice with `verid mockup <module>`; add `--note "<text>"` to record feedback. Agents only read `ui/mockups/choice.json`.
+
 ## Commands
 
 In repo mode, run each command as `node .verid/verid.mjs <command>` from the
@@ -215,10 +217,9 @@ are in the [hook rule reference](docs/hook-reference.md).
 
 - [Install and set up](docs/installation.md): install options, Codex setup, upgrading, migrating from 1.x.
 - [Cook reference](docs/cook-reference.md): flags, preview, modes and drive.
-- [Modules and board](docs/modules-and-board.md): dossiers, the browser board, TDD states.
 - [Providers and protection](docs/providers-and-protection.md): agents and skills, the `.verid/` tree, working with a teammate.
 - [Troubleshooting](docs/troubleshooting.md): the refusals you meet first.
-- [Small changes](docs/small-changes.md) · [Board workflow](docs/kanban-workflow.md) · [Modular cook guide](docs/modular-cook.md) · [CI gate](docs/ci-gate.md)
+- [Small changes](docs/small-changes.md) · [Modular cook guide](docs/modular-cook.md) · [CI gate](docs/ci-gate.md)
 
 ## Development
 

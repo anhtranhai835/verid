@@ -9,9 +9,16 @@ tags `1.0.0` and `1.2.0` keep their names.
 
 ### Removed
 
+- The `verid board` web UI, chat, uploads and board-only assets.
+
 - The Antigravity provider: `--provider antigravity`, `verid setup-antigravity` and the plugin in
   `plugin/antigravity`. A manifest that lists `antigravity` under `providers` no longer loads;
   remove the entry and run `verid cook` again. Claude Code and Codex are unchanged.
+
+### Added
+
+- Developer command `verid mockup <module> [option] [--note "<text>"]` to list HTML
+  mockups and record a choice. Choice changes require module approval again.
 
 ### Changed
 

@@ -7,7 +7,6 @@ import { checkedRepos } from "../../src/adapters/architecture.js";
 import { statePaths } from "../../src/adapters/state-store.js";
 import { reheatArgs } from "../../src/cli/reheat.js";
 import { autoNextStep, autoPhase, type AutoFacts } from "../../src/core/auto.js";
-import { kitchenOf } from "../../src/core/kitchen.js";
 import { MODES, parseManifest, planned, renderManifest } from "../../src/core/manifest.js";
 import type { PlanModule } from "../../src/core/plan.js";
 import { pluginManifestSchema } from "../../src/core/plugin.js";
@@ -277,28 +276,6 @@ describe("a drive that follows the legacy gate and the parity signature", () => 
       "module",
     );
     expect(autoPhase(facts()).kind).toBe("module");
-  });
-
-  it("tells the board's waiter about the gate and the signature", () => {
-    const input = {
-      tdd: "RAW" as const,
-      research: true,
-      design: true,
-      halted: null,
-      denied: null,
-      tasks: [],
-      now: 0,
-    };
-    const gate = kitchenOf({
-      ...input,
-      phase: { kind: "stuck", reason: "reheat_gate", detail: "calc" },
-    });
-    expect(gate.waiter).toEqual({ kind: "gate", params: { detail: "calc" } });
-    expect(kitchenOf({ ...input, phase: null, parity: "calc" }).waiter).toEqual({
-      kind: "parity",
-      params: { detail: "calc" },
-    });
-    expect(kitchenOf({ ...input, phase: null, parity: null }).waiter).toBeNull();
   });
 
   describe("closing a ready unit", () => {

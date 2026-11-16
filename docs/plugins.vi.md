@@ -55,7 +55,7 @@ Payload JSON qua stdin, tên sự kiện còn ở `VERID_PLUGIN_EVENT`:
 | `on-state`    | taste hợp lệ làm đổi trạng thái TDD | `event`, `module` hoặc null, `from`, `to`       |
 | `after-serve` | CLI ghi đóng module                 | `event`, `module`, `commit` hoặc null, `review` |
 
-Bao gồm thao tác board gọi cùng handler CLI. Ký cả plan no-brain không order một module
+Ký cả plan no-brain không order một module
 cụ thể; quyết định module tự động trong hook provider không chạy plugin. Taste không đổi
 trạng thái hoặc không hợp lệ thì không phát sự kiện. Stdout của plugin phải rỗng hoặc là
 một object JSON; nội dung đó không thay quyết định gate. Hook lỗi, timeout, sai JSON hoặc

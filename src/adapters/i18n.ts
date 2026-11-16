@@ -64,15 +64,6 @@ function catalog(lang: Lang): Record<string, string> {
   return catalogs.get(lang)!;
 }
 
-/** Every message under a prefix, keyed without it, for a page that builds text in the browser. */
-export function messages(lang: Lang, prefix: string): Record<string, string> {
-  return Object.fromEntries(
-    Object.entries(catalog(lang)).flatMap(([key, text]) =>
-      key.startsWith(prefix) ? [[key.slice(prefix.length), text]] : [],
-    ),
-  );
-}
-
 export function t(lang: Lang, key: string, params: Record<string, string>): string {
   const template = catalog(lang)[key] ?? key;
   // A `detail_key` names a message for {detail}, so the detail is in the same language too.

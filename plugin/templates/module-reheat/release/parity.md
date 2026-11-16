@@ -1,8 +1,7 @@
 # {{module}}: parity record
 
 Evidence that the rebuilt unit behaves like the legacy one. One row per real case, not
-intentions. The developer signs this exact file (`verid serve {{module}}`, or the board in
-no-brain drive); any edit afterwards voids the signature.
+intentions. The developer signs this exact file (`verid serve {{module}} --parity-signed`); any edit afterwards voids the signature.
 
 ## Inputs
 

@@ -87,7 +87,7 @@ describe("autoModules and changedServed: modules in plan order", () => {
   const mods = modules(
     `## Module: calc\n- AC-1: adds\n## Module: report\n- AC-2: prints\n${PRODUCT_MODULE}`,
   );
-  it("AC-21, AC-26: serving a prioritized task keeps it done after the pending queue moves ahead", () => {
+  it("AC-21, AC-26: a served task stays done while earlier modules remain pending", () => {
     const views = autoModules(
       mods,
       hashes,

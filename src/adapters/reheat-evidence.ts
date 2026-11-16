@@ -86,7 +86,7 @@ export function readParity(
   };
 }
 
-/** One unit as the commands and the boards show it. */
+/** One unit as the commands show it. */
 export function unitState(project: string, state: State, unit: string): UnitStatus | null {
   const record = ownEntry(state.reheat ?? {}, unit);
   if (record === undefined) return null;

@@ -38,12 +38,12 @@ và `verid doctor` để đăng ký hook này; trên Codex, tin cậy handler m�
 Tài nguyên repo đã ghim phiên bản cần được cập nhật runtime và định nghĩa rõ ràng
 theo hướng dẫn nâng cấp trong README.
 
-`VERID_BURNT_TASK_SESSION` là rule của board không cho agent mở ngoại lệ. Người dùng
+`VERID_BURNT_TASK_SESSION` là rule quản lý session không cho agent mở ngoại lệ. Người dùng
 chọn task, rồi một session AI mới nhận task đó. Session lập kế hoạch, session khác
 và session đã làm task trước không được nhận task này. Sửa spec, plan hoặc design
 cần duyệt lại và mở session mới. Resume/compact giữ task hiện tại. Nghiệm thu xong,
-AI dừng; người dùng chọn task tiếp theo trong `verid board`.
-Xem [workflow của board](kanban-workflow.md).
+AI dừng; người dùng chọn task tiếp theo bằng `verid order <module>`.
+Xem [workflow module](modular-cook.md).
 
 Định nghĩa tài nguyên repo trong `.verid/agents/`, `.verid/skills/`, `.verid/templates/`,
 `.verid/hooks/`, `.verid/i18n/` và `.verid/policies/` cũng được bảo vệ bởi
@@ -81,4 +81,4 @@ Các rule áp dụng cho tool file, Bash (đích ghi rõ ràng được xét nh�
 
 Vai trò: khi có tester và coder, chỉ coder viết code production và chỉ tester (hoặc qa, với test end-to-end) viết test; luồng chính và agent lạ không giành được quyền nào trong hai quyền đó. Reviewer và security không ghi gì. Phạm vi của các vai soạn thảo (architect, planner, qa) và danh sách skill/agent được biết là chỉ dẫn: chỗ lệch được audit, không bị chặn. Một vai cần định danh subagent do host cung cấp.
 
-Ở prep/recipe với drive big-brain, `VERID_BURNT_TASK_SESSION` bảo vệ một task một session mới, dù chọn task từ board hay `verid order`. Drive no-brain dùng một session theo hàng đợi; remix giữ baseline.
+Ở prep/recipe với drive big-brain, `VERID_BURNT_TASK_SESSION` yêu cầu một session mới cho mỗi task được chọn bằng `verid order`. Drive no-brain dùng một session làm lần lượt các module theo thứ tự trong `.verid/plan.md`; remix giữ luồng baseline.

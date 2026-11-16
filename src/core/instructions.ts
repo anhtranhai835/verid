@@ -173,7 +173,7 @@ export function renderInstructions(
           "- Templates: .verid/templates/; main records evidence; reviewers read only.",
           ...(manifest.drive === "auto"
             ? [
-                "- AI: developer sets priorities in verid board; verid signs research/design itself. One session follows that queue through TDD/review/serve without asking; current work stays first.",
+                "- AI: module order follows .verid/plan.md; verid signs research/design itself. One session follows that order through TDD/review/serve without asking; current work stays first.",
               ]
             : []),
         ]
@@ -204,7 +204,7 @@ export function renderInstructions(
     "- Task start: verid context [module]",
     "- Developer terminal only: verid cook, upgrade, stock, order [module], serve <module>, garnish, halt, resume.",
     ...(planned(manifest)
-      ? ["- Developer only: verid board; agents never select or reorder tasks."]
+      ? ["- Developer only: verid mockup; agents read choice.json, never write it."]
       : []),
     "",
     "### Files",

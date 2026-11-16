@@ -35,7 +35,7 @@ Parity comes last. Fill `.verid/artifacts/03-modules/<unit>/release/parity.md`:
 - `## New results`: what the new code does for the same input, and the test that shows it.
 
 Cases are real ones, not intentions. Then stop: only the developer signs parity, with
-`verid serve <unit>` in a terminal or on the no-brain board. Editing `parity.md` afterwards
+`verid serve <unit>` in a terminal (use `--parity-signed` in no-brain drive). Editing `parity.md` afterwards
 voids the signature, so finish it before you hand over.
 
 Never mark a unit done yourself, and never run `serve`.

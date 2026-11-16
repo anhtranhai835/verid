@@ -25,7 +25,7 @@ const ARGS: Record<string, number> = {
   stock: 0,
   order: 1,
   serve: 1,
-  board: 0,
+  mockup: 2,
 };
 
 /** What verid could not run in a command line: the command, or the words it did not expect. */
@@ -97,8 +97,8 @@ export function usage(project: string, wrong: Misuse | null, next?: string): Cli
     { emoji: "🗂️", command: `${v} context [module] [--ac <id>]`, what: say("usage.context") },
     {
       emoji: "▦",
-      command: `${v} board [--port <number>] [--no-open]`,
-      what: say("usage.board"),
+      command: `${v} mockup <module> [option] [--note <text>]`,
+      what: say("usage.mockup"),
       who: dev,
     },
     {

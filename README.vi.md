@@ -99,6 +99,8 @@ Bảng này là bản tóm tắt. Các bước đầy đủ nằm ở `.verid/wo
 
 ---
 
+Với HTML mockup, mở tệp HTML trong trình duyệt, rồi chạy `verid mockup <module> <option>` trước `verid order`. Dùng `verid mockup <module>` để xem phương án và lựa chọn hiện tại; thêm `--note "<text>"` để ghi nhận xét. Agent chỉ đọc `ui/mockups/choice.json`.
+
 ## Lệnh
 
 Với chế độ repo, chạy từng lệnh bằng `node .verid/verid.mjs <lệnh>` từ gốc project.
@@ -215,10 +217,9 @@ không chặn: doctor và menu hiển thị chúng. Mã rule và cách override 
 
 - [Cài đặt và thiết lập](docs/installation.vi.md): các cách cài, thiết lập Codex, nâng cấp, chuyển từ 1.x.
 - [Tham chiếu cook](docs/cook-reference.vi.md): flags, xem trước, mode và drive.
-- [Module và board](docs/modules-and-board.vi.md): hồ sơ module, board trên trình duyệt, các trạng thái TDD.
 - [Provider và bảo vệ](docs/providers-and-protection.vi.md): agents và skills, cây `.verid/`, làm việc cùng thành viên mới.
 - [Xử lý sự cố](docs/troubleshooting.vi.md): các lần từ chối gặp đầu tiên.
-- [Thay đổi nhỏ](docs/small-changes.vi.md) · [Board workflow](docs/kanban-workflow.md) · [Hướng dẫn modular cook](docs/modular-cook.md) · [Kiểm trong CI](docs/ci-gate.vi.md)
+- [Thay đổi nhỏ](docs/small-changes.vi.md) · [Hướng dẫn modular cook](docs/modular-cook.md) · [Kiểm trong CI](docs/ci-gate.vi.md)
 
 ## Phát triển
 

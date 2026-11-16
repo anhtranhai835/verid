@@ -39,20 +39,6 @@
   },
   "overrides": [
     {
-      "includes": ["src/cli/board-ui/*.client.js"],
-      "linter": {
-        "rules": {
-          "correctness": {
-            "noUnusedVariables": "off"
-          },
-          "suspicious": {
-            "noRedundantUseStrict": "off",
-            "useIterableCallbackReturn": "off"
-          }
-        }
-      }
-    },
-    {
       "includes": ["src/**"],
       "linter": {
         "rules": {

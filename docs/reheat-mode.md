@@ -63,7 +63,7 @@ give the folder a read-only checkout or a clone without push rights.
 | Serve     | `verid serve <unit>`          | Asks the developer to sign the parity record, or takes `--parity-signed`.                                |
 
 `verid reheat` commands are not developer-only: the adapter is code you approved, like a test runner.
-Signing parity is: an agent shell cannot run `verid serve`, and the board refuses agents.
+Signing parity is: an agent shell cannot run `verid serve`.
 
 **Exit codes of `reheat gate`:** 0 passed and parity signed, 1 the gate failed or the adapter failed, 3
 passed but parity is not signed yet. A failing gate on an ordered, unserved unit cancels its order, as a
@@ -81,13 +81,12 @@ Leaving a `[NEEDS CLARIFICATION` marker counts as empty. The signature is the sh
 voids it, and so does a change to the unit's spec or to `spec/legacy/` for the gate.
 
 - **big-brain:** `verid serve <unit>` asks `Sign the parity record?` in your terminal. The answer binds
-  to the version you were shown. In a script, add `--parity-signed`. The board's Serve button appears only
-  after the unit is signed.
+  to the version you were shown. In a script, add `--parity-signed`.
 - **no-brain:** the drive does not open a unit whose gate has not passed, and does not serve one without a
-  signature. Sign on the board (a **Sign parity** button on the unit's card) or run
+  signature. Run
   `verid serve <unit> --parity-signed` in your terminal; the drive then serves the unit itself.
 
-`verid menu` and the board show each unit's extract, gate and parity state, with its family and parent.
+`verid menu` shows each unit's extract, gate and parity state, with its family and parent.
 
 ## The adapter contract
 

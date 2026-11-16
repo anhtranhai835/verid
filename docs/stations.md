@@ -69,16 +69,13 @@ retry close after releasing Windows file locks. Branches remain for inspection.
 Up to three stations may be open. For no-brain drive set `stations: 2` or `3` in
 the manifest before signing with `verid order`. Omission means `1`, retaining the
 serial workflow. After independent plan review, the drive opens eligible modules
-in queue order; each station owns its retry counters, so one stuck station does
+in `.verid/plan.md` order; each station owns its retry counters, so one stuck station does
 not stop another. `product` stays on the primary tree until every integration
 finishes. Close remains a developer command.
 
-The board shows each station's own TDD state on its Cooking card. A served station
-stays there until integration succeeds. No-brain chat has a Conversation selector
-for the project and each station; transcripts and stop buttons are separate,
-with at most `stations` provider processes at once. After the coordinator finishes
-a message, the board can start the eligible station sessions. Closing the board
-stops its child processes.
+Run `verid peek` inside each station to inspect its TDD state. A served station
+remains provisional until integration succeeds. Open provider sessions at the
+station paths printed by `verid station`.
 
 `verid doctor` reports orphan station worktrees, missing branches/worktrees and
 changed approvals. Keep the registry and local state private and ignored. For an

@@ -41,4 +41,8 @@ Cook fills missing files and preserves existing copies; upgrades do not overwrit
 After cloning, run `node .verid/verid.mjs cook --yes` to regenerate this machine's hooks, then
 trust the project and hooks in Codex. Commit the resource copies, templates and dossiers.
 
-For prep/recipe, the developer arranges the priority queue in `verid board`. Complete module dossiers before order. Big-brain drive binds one fresh session per selected task and stops after serve. No-brain drive follows that queue in one session with no signature to wait for; reprioritizing never interrupts current work. Remix keeps its baseline flow.
+For prep/recipe, module order follows `.verid/plan.md`. Complete module dossiers before order. Big-brain drive binds one fresh session per selected task and stops after serve. No-brain drive follows that order in one session with no signature to wait for; current work stays first. Remix keeps its baseline flow.
+
+For browser mockups, the developer opens the HTML file in a browser, then runs
+`verid mockup <module> <option>` before order. Agents only read `ui/mockups/choice.json`;
+never write it or run `verid mockup`. A changed choice requires order again.

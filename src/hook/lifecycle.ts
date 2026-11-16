@@ -150,11 +150,11 @@ export async function lifecycle(
   const taskContext: string[] = [];
   if (planned(manifest))
     taskContext.push(
-      "verid: module dossiers in .verid/artifacts/03-modules/<name> are required before order. Read .verid/workflow.md; use verid board for priorities.",
+      "verid: module dossiers in .verid/artifacts/03-modules/<name> are required before order. Read .verid/workflow.md; verid menu shows module order.",
     );
   if (planned(manifest) && manifest.drive === "auto")
     taskContext.push(
-      "verid: AI drive follows the developer's priority queue in one session. Finish the current task before moving to the next.",
+      "verid: AI drive follows the module order in .verid/plan.md in one session. Finish the current task before moving to the next.",
     );
   if (taskSessions(manifest) || readState(paths).station !== null) {
     const key = shared.sessionKey(p.session_id);

@@ -1,7 +1,7 @@
 import { tempProject } from "../support/project.js";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync } from "node:fs";
 
 import { join } from "node:path";
 import { expect, it, vi } from "vitest";
@@ -9,7 +9,6 @@ import { parse, stringify } from "yaml";
 import { autoPhase } from "../../src/core/auto.js";
 import { parsePlan } from "../../src/core/plan.js";
 import { defaultRoles } from "../../src/core/manifest.js";
-import { boardSnapshot, saveBoardDocument } from "../../src/adapters/kanban.js";
 import {
   autoFactsOf,
   MODULE_INPUTS,
@@ -18,14 +17,11 @@ import {
 } from "../../src/adapters/plan-file.js";
 import { statePaths, writeState } from "../../src/adapters/state-store.js";
 import { planCook } from "../../src/cli/init.js";
-import { startBoard } from "../../src/cli/board.js";
-import { boardHtml } from "../../src/cli/board-page.js";
 import { readyModulePlan, startTaskSession } from "./helpers.js";
 import { runReview } from "./in-process.js";
 
 let fixture: string;
 let project: string;
-let server: Awaited<ReturnType<typeof startBoard>> | undefined;
 
 const roots = () =>
   parse(read(".verid/manifest.yaml")).repos.map((repo: { path: string }) => repo.path) as string[];
@@ -49,20 +45,10 @@ const t = tempProject("verid-v2-", {
     vi.stubEnv("CODEX_HOME", join(fixture, "user-codex"));
   },
   teardown: async () => {
-    await closeBoard();
     vi.unstubAllEnvs();
   },
 });
 const { read, put, loadState: state, cliBound: cli, sessionEvent: hook, payloadFor: payload } = t;
-async function closeBoard() {
-  if (!server) return;
-  server.server.closeAllConnections();
-  await new Promise<void>((resolve, reject) =>
-    server!.server.close((error) => (error ? reject(error) : resolve())),
-  );
-  server = undefined;
-}
-
 async function cook(drive = "human", layout = "monorepo", mode = "prep") {
   if (layout === "workspace")
     for (const repo of ["api", "web"]) {
@@ -88,8 +74,16 @@ async function cook(drive = "human", layout = "monorepo", mode = "prep") {
   put(".verid/design.md", "Pure arithmetic functions; no UI\n");
   put(".verid/spec.md", "- REQ-1: Add two numbers\n- REQ-2: Subtract two numbers\n");
 }
-function splitReady() {
-  saveBoardDocument(project, "split");
+async function createModules() {
+  put(
+    ".verid/plan.md",
+    "## Module: req-1\nArtifacts: .verid/artifacts/03-modules/req-1\n- AC-1: Add two numbers (REQ-1)\n\n## Module: req-2\nArtifacts: .verid/artifacts/03-modules/req-2\n- AC-2: Subtract two numbers (REQ-2)\n\n## Module: product\nArtifacts: .verid/artifacts/03-modules/product\nDepends: req-1, req-2\n- AC-3 (e2e): Verify the complete product (REQ-1, REQ-2)\n",
+  );
+  for (const name of ["req-1", "req-2", "product"])
+    expect((await cli("module", name)).code).toBe(0);
+}
+async function splitReady() {
+  await createModules();
   readyModulePlan(project, read(".verid/plan.md"));
 }
 
@@ -123,48 +117,31 @@ async function changed(session: string, file: string) {
   await hook("PostToolUse", session, input);
 }
 
-it("AC-14, AC-15, AC-18, AC-19: all planned projects have a board and splitting creates real unfinished dossiers", async () => {
+it("module scaffolding creates real unfinished dossiers that block order", async () => {
   await cook();
-  saveBoardDocument(project, "split");
-  const snapshot = await boardSnapshot(project);
-  expect(snapshot.drive).toBe("human");
-  expect(snapshot.tasks).toHaveLength(3);
-  for (const task of snapshot.tasks) {
-    expect(task.text).toContain(`Artifacts: .verid/artifacts/03-modules/${task.id}`);
-    expect(task.dossier.unresolved).toBeGreaterThan(0);
-    expect(task.reason).toContain("resolve the module draft");
+  await createModules();
+  for (const name of ["req-1", "req-2", "product"]) {
+    expect(read(".verid/plan.md")).toContain(`Artifacts: .verid/artifacts/03-modules/${name}`);
     expect(
-      existsSync(join(project, `.verid/artifacts/03-modules/${task.id}/ba/requirements.md`)),
+      existsSync(join(project, `.verid/artifacts/03-modules/${name}/ba/requirements.md`)),
     ).toBe(true);
   }
-  // An unfinished dossier is what stops the plan, so peek names it, not the plan.
   const peek = (await cli("peek")).stdout;
   expect(peek).toContain("Next: finish .verid/artifacts/03-modules/req-1/");
   expect(peek).not.toContain("fix .verid/plan.md");
   expect((await cli("order", "req-1")).code).toBe(2);
 });
 
-it("AC-15: remix displays a no-task notice and leaves baseline gates unchanged", async () => {
+it("remix leaves baseline gates unchanged", async () => {
   await cook("human", "monorepo", "remix");
-  expect(await boardSnapshot(project)).toMatchObject({
-    tasks: [],
-    notice: expect.stringContaining("remix"),
-  });
   expect(existsSync(join(project, ".verid/artifacts"))).toBe(false);
 });
 
-it("AC-17: the board is self-contained and adds no runtime dependency", () => {
-  for (const lang of ["en", "vi"] as const)
-    expect(boardHtml(lang)).not.toMatch(/<(?:script|link)[^>]+(?:src|href)=["']https?:/i);
-  const pkg = JSON.parse(readFileSync(join(import.meta.dirname, "../../package.json"), "utf8"));
-  expect(pkg.dependencies).toBeUndefined();
-});
-
-it.each(["human", "ai"])(
-  "AC-8: %s drive blocks unfinished dossiers, missing inputs and missing Artifacts from module work",
-  async (drive) => {
+it("AC-8: both drives block unfinished dossiers, missing inputs and missing Artifacts from module work", async () => {
+  for (const drive of ["human", "ai"] as const) {
+    t.fresh();
     await cook(drive);
-    saveBoardDocument(project, "split");
+    await createModules();
     const blocked = async (detail: string) => {
       const result = drive === "human" ? await cli("order", "req-1") : await cli("order");
       if (drive === "human") {
@@ -202,210 +179,93 @@ it.each(["human", "ai"])(
       read(".verid/plan.md").replace("Artifacts: .verid/artifacts/03-modules/req-1\n", ""),
     );
     await blocked("req-1: requires Artifacts");
-  },
-);
+  }
+});
 
-it.each(["human", "ai"])(
-  "AC-13: %s SessionStart describes module dossiers, board priorities and its session rule",
-  async (drive) => {
+it("AC-13: SessionStart describes module dossiers, module order and the session rule for each drive", async () => {
+  for (const drive of ["human", "ai"] as const) {
+    t.fresh();
     await cook(drive);
-    splitReady();
+    await splitReady();
     expect((await (drive === "human" ? cli("order", "req-1") : cli("order"))).code).toBe(0);
     const startup = await hook("SessionStart", "instruction-session", { source: "startup" });
     expect(startup.code, startup.stderr).toBe(0);
     const context = JSON.parse(startup.stdout).hookSpecificOutput.additionalContext;
     expect(context).toContain("module dossiers in .verid/artifacts/03-modules/<name>");
     expect(context).toContain("required before order");
-    expect(context).toContain("verid board for priorities");
+    expect(context).toContain("verid menu shows module order");
     if (drive === "human") {
       expect(context).toContain("ONE TASK PER SESSION");
       expect(context).toContain("Never start another task in this session");
     } else {
-      expect(context).toContain("AI drive follows the developer's priority queue in one session");
+      expect(context).toContain(
+        "AI drive follows the module order in .verid/plan.md in one session",
+      );
       expect(context).toContain("Finish the current task before moving to the next");
       expect(context).not.toContain("ONE TASK PER SESSION");
     }
-  },
-);
-
-async function launch() {
-  server = await startBoard(project, async (command, task) => {
-    const result = await cli(command, ...(task ? [task] : []));
-    return { exit: result.code, stdout: result.stdout, stderr: result.stderr };
-  });
-  return {
-    Authorization: `Bearer ${server.token}`,
-    "Content-Type": "application/json",
-    Origin: server.origin,
-  };
-}
-const post = (headers: Record<string, string>, body: unknown) =>
-  fetch(`${server!.origin}/api/action`, { method: "POST", headers, body: JSON.stringify(body) });
-
-it.each(["human", "ai"])(
-  "AC-20, AC-21: an unstarted constructor module can change priority in %s drive",
-  async (drive) => {
-    await cook(drive);
-    splitReady();
-    put(
-      ".verid/plan.md",
-      readyModulePlan(project, read(".verid/plan.md").replaceAll("req-2", "constructor")),
-    );
-    const headers = await launch();
-    const before = await boardSnapshot(project);
-    expect(before.tasks.find((task) => task.id === "constructor")).toMatchObject({
-      column: "backlog",
-      canMove: true,
-    });
-    expect(
-      (
-        await post(headers, {
-          action: "move",
-          task: "constructor",
-          direction: "up",
-          revision: before.revision,
-        })
-      ).status,
-    ).toBe(200);
-    expect((await boardSnapshot(project)).tasks.map((task) => task.id)).toEqual([
-      "constructor",
-      "req-1",
-      "product",
-    ]);
-    expect(Object.hasOwn(state().modules, "constructor")).toBe(false);
-  },
-);
-
-it("AC-20, AC-21, AC-22, AC-24, AC-27: priorities persist across board restart, match menu, and use all API guards", async () => {
-  await cook();
-  splitReady();
-  const headers = await launch();
-  const before = await boardSnapshot(project);
-  const input = { action: "move", task: "req-2", direction: "up", revision: before.revision };
-  expect((await post({ ...headers, Authorization: "Bearer wrong" }, input)).status).toBe(401);
-  expect((await post({ ...headers, Origin: "https://example.test" }, input)).status).toBe(403);
-  expect((await post(headers, { ...input, revision: "stale" })).status).toBe(409);
-  expect((await post(headers, input)).status).toBe(200);
-  expect((await post(headers, input)).status).toBe(409);
-  let snapshot = await boardSnapshot(project);
-  expect(snapshot.tasks.map((task) => task.id)).toEqual(["req-2", "req-1", "product"]);
-  expect(snapshot.tasks[0]?.next).toBe(true);
-  const menu = (await cli("menu")).stdout;
-  expect(menu.indexOf("req-2 ·")).toBeLessThan(menu.indexOf("req-1 ·"));
-  expect(
-    (await post(headers, { ...input, task: "product", revision: snapshot.revision })).status,
-  ).toBe(400);
-  await closeBoard();
-  await launch();
-  expect((await boardSnapshot(project)).tasks.map((task) => task.id)).toEqual([
-    "req-2",
-    "req-1",
-    "product",
-  ]);
-  expect((await cli("order", "req-1")).code).toBe(0); // human selection may ignore queue priority
-  snapshot = await boardSnapshot(project);
-  expect(snapshot.tasks.find((task) => task.id === "req-1")?.canMove).toBe(false);
-  const currentHeaders = {
-    Authorization: `Bearer ${server!.token}`,
-    "Content-Type": "application/json",
-    Origin: server!.origin,
-  };
-  expect(
-    (await post(currentHeaders, { ...input, task: "req-1", revision: snapshot.revision })).status,
-  ).toBe(400);
-  await startTaskSession(project, "owner", "codex");
-  expect(
-    (
-      await hook("PreToolUse", "owner", {
-        tool_name: "apply_patch",
-        tool_input: {
-          command:
-            "*** Begin Patch\n*** Update File: .verid/.state/state.json\n@@\n-a\n+b\n*** End Patch",
-        },
-      })
-    ).stdout,
-  ).toContain("VERID_BURNT_STATE_PROTECTED");
+  }
 });
 
-it("AC-16, AC-25, AC-26: AI follows priorities, preserves current work, and forbids manual selection or planning writes during work", async () => {
+it("denies agent writes to protected task state", async () => {
+  await cook();
+  await splitReady();
+  expect((await cli("order", "req-1")).code).toBe(0);
+  await startTaskSession(project, "owner", "codex");
+  const result = await hook("PreToolUse", "owner", {
+    tool_name: "apply_patch",
+    tool_input: {
+      command:
+        "*** Begin Patch\n*** Update File: .verid/.state/state.json\n@@\n-a\n+b\n*** End Patch",
+    },
+  });
+  expect(result.stdout).toContain("VERID_BURNT_STATE_PROTECTED");
+});
+
+it("AC-16, AC-25, AC-26: AI follows plan order, ignores legacy queue state and refuses manual selection", async () => {
   await cook("ai");
-  splitReady();
-  const headers = await launch();
-  const before = await boardSnapshot(project);
-  expect(
-    (
-      await post(headers, {
-        action: "move",
-        task: "req-2",
-        direction: "up",
-        revision: before.revision,
-      })
-    ).status,
-  ).toBe(200);
+  await splitReady();
+  const legacy = state();
+  writeState(statePaths(project), {
+    ...legacy,
+    kanban: { ...legacy.kanban, queue: ["req-2", "req-1"] },
+  });
   expect((await cli("order")).code).toBe(0);
   await startTaskSession(project, "ai", "codex");
   await review("ai", "plan-review");
   let facts = autoFactsOf(project, state(), false, true);
-  expect(autoPhase(facts)).toMatchObject({ kind: "module", view: { name: "req-2" } });
+  expect(autoPhase(facts)).toMatchObject({ kind: "module", view: { name: "req-1" } });
   const planHash = facts.planHash;
   const original = state();
   writeState(statePaths(project), {
     ...original,
-    kanban: { ...original.kanban, queue: ["req-1", "req-2"] },
+    kanban: { ...original.kanban, queue: ["product", "unknown", "req-2"] },
   });
   facts = autoFactsOf(project, state(), false, true);
   expect(facts.planHash).toBe(planHash);
-  expect(autoPhase(facts)).toMatchObject({ kind: "module", view: { name: "req-2" } });
-  const snapshot = await boardSnapshot(project);
-  expect(snapshot.drive).toBe("auto");
-  expect(
-    (await post(headers, { action: "select", task: "req-1", revision: snapshot.revision })).status,
-  ).toBe(409);
-  expect(
-    (
-      await post(headers, {
-        action: "plan",
-        content: read(".verid/plan.md"),
-        revision: snapshot.revision,
-      })
-    ).status,
-  ).toBe(400);
-  // This project has set no language, so the machine's is used.
-  expect(() => saveBoardDocument(project, "spec", "- REQ-1: changed")).toThrow(
-    /A task is open|Đang có task mở/,
-  );
+  expect(autoPhase(facts)).toMatchObject({ kind: "module", view: { name: "req-1" } });
+  const refused = await cli("order", "req-1");
+  expect(refused.code).toBe(2);
 });
 
-it.each([
-  ["human", "monorepo"],
-  ["ai", "monorepo"],
-  ["human", "workspace"],
-  ["ai", "workspace"],
-])(
-  "AC-9, AC-10, AC-31: %s drive completes two modules in %s through real order/TDD/review/serve gates",
-  async (drive, layout) => {
+it("AC-9, AC-10, AC-31: both drives complete two modules in each layout through real order/TDD/review/serve gates", async () => {
+  for (const [drive, layout] of [
+    ["human", "monorepo"],
+    ["ai", "monorepo"],
+    ["human", "workspace"],
+    ["ai", "workspace"],
+  ] as const) {
+    t.fresh();
     await cook(drive, layout);
-    splitReady();
-    const headers = await launch();
-    const before = await boardSnapshot(project);
-    expect(
-      (
-        await post(headers, {
-          action: "move",
-          task: "req-2",
-          direction: "up",
-          revision: before.revision,
-        })
-      ).status,
-    ).toBe(200);
+    await splitReady();
     if (drive === "ai") {
       expect((await cli("order")).code).toBe(0);
       await startTaskSession(project, "ai-session", "codex");
       await review("ai-session", "plan");
     }
     for (const [task, ac] of [
-      ["req-2", 2],
       ["req-1", 1],
+      ["req-2", 2],
     ] as const) {
       const session = drive === "ai" ? "ai-session" : `${task}-session`;
       if (drive === "human") {
@@ -432,16 +292,10 @@ it.each([
       await review(session, `review-${task}`);
       if (drive === "human") expect((await cli("serve", task)).code).toBe(0);
       expect(state().modules[task]?.served_at).toEqual(expect.any(String));
-      expect((await boardSnapshot(project)).tasks.find((item) => item.id === task)).toMatchObject({
-        column: "done",
-        canMove: false,
-      });
     }
-    expect(
-      (await boardSnapshot(project)).tasks.find((task) => task.id === "product"),
-    ).toMatchObject({ next: drive === "human", canMove: false });
-  },
-);
+    expect((await cli("menu")).stdout).toContain("product");
+  }
+});
 
 it("AC-28, AC-29, AC-30: upgrade is previewable and idempotent, fills partial templates, and preserves served sections and evidence", async () => {
   const first = "## Module: served\r\n- AC-1: done\r\n\r\n";
@@ -536,9 +390,9 @@ it("AC-28, AC-29, AC-30: upgrade is previewable and idempotent, fills partial te
   });
 });
 
-it.each(["quick", "fix"])(
-  "the %s path keeps every gate: one AC, a short dossier, then order, TDD, review and serve",
-  async (path) => {
+it("the quick and fix paths keep every gate: one AC, a short dossier, then order, TDD, review and serve", async () => {
+  for (const path of ["quick", "fix"] as const) {
+    t.fresh();
     await cook();
     const base = ".verid/artifacts/03-modules/tweak";
     const module = await cli("module", "tweak", `--${path}`);
@@ -584,5 +438,5 @@ it.each(["quick", "fix"])(
     await review(`${path}-session`, `review-${path}`);
     expect((await cli("serve", "tweak")).code).toBe(0);
     expect(state().modules.tweak?.served_at).toEqual(expect.any(String));
-  },
-);
+  }
+});

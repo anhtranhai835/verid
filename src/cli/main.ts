@@ -8,7 +8,7 @@ import { doctorCommand } from "./doctor.js";
 import { initCommand } from "./init.js";
 import { setupCodexCommand } from "./setup-codex.js";
 import { moduleCommand } from "./module.js";
-import { boardCommand } from "./board.js";
+import { mockupCommand } from "./mockup.js";
 import { baselineCommand, testCommand, type CliResult } from "./test.js";
 import { pluginCommand } from "./plugin.js";
 import { resolveProject } from "../adapters/project.js";
@@ -72,12 +72,7 @@ export async function runCli(args: readonly string[]): Promise<CliResult> {
     else if (cmd === "module" && rest.length === 1) r = await moduleCommand(project, rest[0]!);
     else if (cmd === "module" && rest.length === 2 && ["--quick", "--fix"].includes(rest[1]!))
       r = await moduleCommand(project, rest[0]!, rest[1] === "--quick" ? "quick" : "fix");
-    else if (cmd === "board")
-      r = await boardCommand(project, rest, (action, task, paritySigned) =>
-        action === "order"
-          ? approve(project, task)
-          : serve(project, task ?? "", { paritySigned: paritySigned === true }),
-      );
+    else if (cmd === "mockup") r = mockupCommand(project, rest);
     else if (cmd === "peek" && rest.length === 0) r = await status(project);
     else if (cmd === "usage") r = usageCommand(project, rest);
     else if (cmd === "context" && contextArgs(rest)) r = await contextCommand(project, rest);

@@ -76,7 +76,7 @@ JSON arrives through stdin; `VERID_PLUGIN_EVENT` also names the event.
 | `on-state`    | Valid taste evidence changes the TDD state | `event`, `module` (or null), `from`, `to`       |
 | `after-serve` | A CLI module serve has been persisted      | `event`, `module`, `commit` (or null), `review` |
 
-Order/serve include board actions that call the same CLI handlers. Signing an entire
+Signing an entire
 no-brain plan does not order a named module; automatic module decisions inside provider
 hooks do not execute plugins. Unchanged/invalid taste runs emit no state event.
 Plugin stdout must be empty or one JSON object; its contents do not affect verid decisions.

@@ -5,8 +5,6 @@ description: Use when a verid design is agreed and needs modules with testable a
 
 # verid: plan
 
-Keep changes local and testable.
-
 Use verid:ba to settle scope from `.verid/research.md`, `.verid/spec.md` and
 `.verid/design.md`.
 Read `.verid/manifest.yaml` with Read for the planner mapping and iterations.
@@ -73,9 +71,10 @@ Visitors who signed up edit their profile.
 - `product` is last, with all ACs `(e2e)`, and can be ordered only after the other
   modules are served. When product is served last, the product is done.
 
-In big-brain drive, ask the developer to read the module and run `verid order <module>`
-from their terminal. One module is open; changing its signed section needs another
-order because approval covers that section. Continue with verid:build.
+Big-brain: the developer reads the module and runs `verid order <module>` in their terminal.
+One module is open; signed input changes require order again. Continue with verid:build.
 
 In no-brain drive, read `references/auto-drive.md` in this skill's folder before writing the
 plan.
+
+For browser mockups, follow `references/screens.md`; agents only read the choice.

@@ -51,3 +51,7 @@ States: empty, invalid email under its field, email taken (REQ-2), submitting, d
 ```
 
 ```
+
+For browser mockups, ask the developer to open the HTML file in a browser, then run
+`verid mockup <module> <option>`. Read `ui/mockups/choice.json` before order;
+never write the choice or run `verid mockup`. Changes require order again.

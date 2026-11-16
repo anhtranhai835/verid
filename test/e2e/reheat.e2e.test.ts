@@ -4,10 +4,8 @@ import { join, resolve } from "node:path";
 import { expect, it, vi } from "vitest";
 import { tempProject, manifest, FRESH_STATE } from "../support/project.js";
 import * as pluginProcess from "../../src/adapters/plugin-process.js";
-import { boardSnapshot } from "../../src/adapters/kanban.js";
 import { readPlan } from "../../src/adapters/plan-file.js";
 import { signParity } from "../../src/adapters/reheat.js";
-import { startBoard } from "../../src/cli/board.js";
 
 const sample = resolve("examples/adapters/sample");
 const dossier = ".verid/artifacts/03-modules/calc";
@@ -52,30 +50,6 @@ const t = tempProject("verid-reheat-", {
     });
   },
 });
-/** The board as the developer's browser uses it, running the same commands as the terminal. */
-async function withBoard<T>(work: (post: (body: unknown) => Promise<Response>) => Promise<T>) {
-  const board = await startBoard(t.dir, async (command, task, paritySigned) => {
-    const run = await t.cli(
-      command,
-      ...(task ? [task] : []),
-      ...(paritySigned ? ["--parity-signed"] : []),
-    );
-    return { exit: run.code, stdout: run.stdout, stderr: run.stderr };
-  });
-  const headers = {
-    Authorization: `Bearer ${board.token}`,
-    "Content-Type": "application/json",
-    Origin: board.origin,
-  };
-  try {
-    return await work((body) =>
-      fetch(`${board.origin}/api/action`, { method: "POST", headers, body: JSON.stringify(body) }),
-    );
-  } finally {
-    board.server.closeAllConnections();
-    await new Promise<void>((resolve) => board.server.close(() => resolve()));
-  }
-}
 const install = (source = sample) => t.cli("plugin", "add", `file:${source}`, "--yes");
 const gate = () => t.cli("reheat", "gate", "calc");
 /** The adapter ran, the spec names the legacy input and the gate passed: a unit ready to order. */
@@ -349,23 +323,12 @@ it("signs parity only for the developer, binds the signature to the evidence and
   const agent = await t.cliWith({ CLAUDECODE: "1" }, "serve", "calc", "--parity-signed");
   expect(agent.stderr).toContain("VERID_BURNT_SERVE_IN_AGENT");
   expect(t.state().reheat.calc.parity).toBeUndefined();
-  // A big-brain board cannot sign: that happens in the terminal, at serve.
-  await withBoard(async (post) => {
-    const snapshot = await boardSnapshot(t.dir);
-    const refused = await post({ action: "parity", task: "calc", revision: snapshot.revision });
-    expect(refused.status).toBe(409);
-  });
-  expect(t.state().reheat.calc.parity).toBeUndefined();
   signParity(t.dir, "calc");
   expect((await gate()).code).toBe(0);
-  const task = (await boardSnapshot(t.dir)).tasks.find((item) => item.id === "calc");
-  expect(task?.migration).toMatchObject({ gate: "pass", parity: true, canSignParity: false });
+  expect(t.state().reheat.calc.parity.sha256).toBeTruthy();
   // Any edit voids the signature.
   t.put(parityFile, `${parity}One more case\n`);
   expect((await gate()).code).toBe(3);
-  expect(
-    (await boardSnapshot(t.dir)).tasks.find((item) => item.id === "calc")?.migration,
-  ).toMatchObject({ parity: false, parityState: "unsigned" });
   // An incomplete record cannot be signed at all.
   t.put(parityFile, "# Parity\n\n## Inputs\n1 + 2\n");
   expect(() => signParity(t.dir, "calc")).toThrow(/parity/i);
@@ -374,37 +337,24 @@ it("signs parity only for the developer, binds the signature to the evidence and
   expect(menu).toContain("gate pass");
 });
 
-it("offers the no-brain board a parity signature only for a passing gate and a complete record", async () => {
+it("allows only the developer to sign no-brain parity for a complete record", async () => {
   await gated();
   t.editManifest((m) => {
     m.drive = "no-brain";
     m.roles = { reviewer: ["verid:reviewer"], tester: ["verid:tester"], coder: ["verid:coder"] };
   });
-  const task = async () => (await boardSnapshot(t.dir)).tasks.find((item) => item.id === "calc");
-  expect((await task())?.migration?.canSignParity).toBe(false);
+  expect((await t.cli("serve", "calc", "--parity-signed")).code).toBe(2);
   t.put(parityFile, parity);
-  expect((await task())?.migration).toMatchObject({ canSignParity: true, parityState: "unsigned" });
-  // The one thing the developer does in a drive that serves by itself.
   const agent = await t.cliWith({ CLAUDECODE: "1" }, "serve", "calc", "--parity-signed");
   expect(agent.stderr).toContain("VERID_BURNT_SERVE_IN_AGENT");
+  expect(t.state().reheat.calc.parity).toBeUndefined();
   expect((await t.cli("serve", "calc")).stderr).toContain("VERID_BURNT_AUTO_SERVE");
-  // The board's button runs the same signature, and only while there is something to sign.
-  await withBoard(async (post) => {
-    const revision = async () => (await boardSnapshot(t.dir)).revision;
-    const unknown = await post({ action: "parity", task: "nothing", revision: await revision() });
-    expect(unknown.status).toBe(409);
-    expect(t.state().reheat.calc.parity).toBeUndefined();
-    const signed = await post({ action: "parity", task: "calc", revision: await revision() });
-    expect(signed.status).toBe(200);
-    expect(t.state().reheat.calc.parity.sha256).toBeTruthy();
-    const again = await post({ action: "parity", task: "calc", revision: await revision() });
-    expect(again.status).toBe(409);
-  });
-  // Signing serves nothing: the drive closes the unit once tests and review pass.
+  expect((await t.cli("serve", "nothing", "--parity-signed")).code).toBe(2);
+  expect(t.state().reheat.calc.parity).toBeUndefined();
+  expect((await t.cli("serve", "calc", "--parity-signed")).code).toBe(0);
+  expect(t.state().reheat.calc.parity.sha256).toBeTruthy();
   expect(t.state().modules.calc?.served_at ?? null).toBeNull();
-  expect((await task())?.migration).toMatchObject({ canSignParity: false, parity: true });
-  const cli = await t.cli("serve", "calc", "--parity-signed");
-  expect(cli.code).toBe(0);
+  expect((await t.cli("serve", "calc", "--parity-signed")).code).toBe(0);
 });
 
 it("leaves the legacy repo out of test runs and tells doctor what is wrong", async () => {

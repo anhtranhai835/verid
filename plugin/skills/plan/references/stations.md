@@ -20,6 +20,6 @@ integration passes. Conflict or failed tests retain the station.
 
 No-brain can opt into `stations: 2` or `3` before signing. Default `1` remains serial;
 retry counters and conversation ownership stay local to each station. The product
-module stays on the primary tree after integrations. The board shows separate
-TDD cards and station conversations. Real-provider token/time comparisons are
+module stays on the primary tree after integrations. Run `verid peek` inside each
+station to inspect its TDD state. Real-provider token/time comparisons are
 pending; do not promise savings.

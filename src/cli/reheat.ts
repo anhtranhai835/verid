@@ -12,7 +12,7 @@ export const reheatArgs = (args: readonly string[]): boolean =>
 /**
  * `verid reheat <inventory|extract|gate>`: the three steps an adapter performs on a legacy system.
  * The adapter is developer-approved code, so agents run these like `verid taste`; the signature
- * on a unit's parity record is the one step they never take (`verid serve`, or the board).
+ * on a unit's parity record is the one step they never take (`verid serve`).
  * Exit 0: done. 1: the gate failed or the adapter failed, with no state changed. 3: the gate
  * passed and the parity record is not signed yet.
  */

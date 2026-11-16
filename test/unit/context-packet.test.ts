@@ -4,7 +4,6 @@ import { describe, expect, it, vi } from "vitest";
 import { contextPacket, type ContextInput } from "../../src/core/context-packet.js";
 import { parsePlan } from "../../src/core/plan.js";
 import { runCli } from "../../src/cli/main.js";
-import { taskPrompt } from "../../src/adapters/kanban.js";
 import { tempProject, kanbanManifest } from "../support/project.js";
 
 const SPEC = [
@@ -120,7 +119,7 @@ describe("context packet", () => {
   });
 });
 
-describe("context command and task prompt", () => {
+describe("context command", () => {
   const p = tempProject("verid-context-", {
     claudeProject: false,
     manifest: kanbanManifest,
@@ -191,19 +190,5 @@ describe("context command and task prompt", () => {
     expect((await runCli(["menu", "--commits", "--file"])).stdout).toContain("verid context");
     expect((await runCli(["context", "nope"])).exit).toBe(2);
     expect((await runCli(["context", "sub", "--bad"])).exit).toBe(2);
-  });
-
-  it("points the task prompt at the packet instead of whole documents", async () => {
-    p.seed({
-      kanban: {
-        active: { module: "add", session: null, spec_sha256: "x" },
-        sessions: {},
-        queue: [],
-      },
-    });
-    const prompt = taskPrompt(p.root, "add");
-    expect(prompt).toContain("verid context add");
-    expect(prompt).not.toMatch(/\.verid\/spec\.md, \.verid\/design\.md/);
-    expect(prompt).toContain("NEW session for task add only");
   });
 });

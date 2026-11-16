@@ -8,7 +8,6 @@ import { runCli, runHook, runReview } from "./in-process.js";
 import { runGit } from "../../src/adapters/git.js";
 import { readState, statePaths } from "../../src/adapters/state-store.js";
 import { resolveProject } from "../../src/adapters/project.js";
-import { boardSnapshot } from "../../src/adapters/kanban.js";
 import { stationDiagnostics, scheduleStations } from "../../src/adapters/station.js";
 import { autoFactsOf } from "../../src/adapters/plan-file.js";
 import { loadManifest } from "../../src/adapters/manifest.js";
@@ -101,7 +100,7 @@ it("serves independent stations and counts them done only after merged tests pas
   expect(state(b).tdd).toMatchObject({ state: "RAW", last_run: null });
   await finish(b, "billing", "AC-2");
   expect(state(t.dir).modules.identity?.served_at).toBeNull();
-  expect((await boardSnapshot(t.dir)).tasks.every((task) => task.column === "progress")).toBe(true);
+  expect(Object.keys(state(t.dir).stations)).toEqual(["identity", "billing"]);
   scenario(t.dir);
   const first = await cli(t.dir, "station", "close", "identity");
   expect(first.code, first.stderr).toBe(0);
@@ -121,7 +120,7 @@ it("serves independent stations and counts them done only after merged tests pas
   const second = await cli(t.dir, "station", "close", "billing");
   expect(second.code, second.stderr).toBe(0);
   expect(state(t.dir).stations).toEqual({});
-  expect((await boardSnapshot(t.dir)).tasks.every((task) => task.column === "done")).toBe(true);
+  expect(Object.values(state(t.dir).modules).every((module) => module.served_at)).toBe(true);
 });
 
 it("retains the station and leaves the parent incomplete when merged tests fail", async () => {
@@ -271,14 +270,8 @@ it("isolates write boundaries, TDD state and session ownership across stations",
   expect(state(b).review_jobs).toEqual({});
   expect(state(a).tdd.state).toBe("RAW");
   expect(state(b).tdd).toMatchObject({ state: "RAW", last_run: null });
-  const board = await boardSnapshot(t.dir);
-  expect(board.tasks.filter((task) => task.station).map((task) => task.id)).toEqual([
-    "identity",
-    "billing",
-  ]);
-  expect(
-    board.tasks.every((task) => task.column === "progress" && task.station?.tdd === "RAW"),
-  ).toBe(true);
+  expect(Object.keys(state(t.dir).stations)).toEqual(["identity", "billing"]);
+  for (const cwd of [a, b]) expect(state(cwd).tdd.state).toBe("RAW");
 });
 
 it("keeps a plated station unchanged while another station records a new failure", async () => {

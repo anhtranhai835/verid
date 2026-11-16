@@ -1,6 +1,6 @@
 # Plain-language summary in the no-brain drive
 
-In no-brain drive the person watching the board may not be a developer, and `research.md`,
+In no-brain drive the person following the run may not be a developer, and `research.md`,
 `spec.md` and `design.md` are written for builders. verid signs them itself, so write
 `.verid/summary.md` for that person to follow what the agent is building.
 

@@ -101,7 +101,7 @@ export const servedSections = (state: State): Map<string, string> =>
       .map(([name, approval]) => [name, approval.sha256]),
   );
 
-/** Shared by menu, the board and AI drive; priority never changes a plan signature. */
+/** Shared by menu and AI drive; current work stays first, then plan order. */
 export function orderedModules<T extends { name: string }>(
   modules: readonly T[],
   state: State,
@@ -111,11 +111,11 @@ export function orderedModules<T extends { name: string }>(
     state.auto.work?.module ??
     Object.entries(state.modules).find(([, approval]) => approval.served_at === null)?.[0] ??
     null;
-  const order = effectiveOrder(state.kanban.queue, modules, servedModules(state), building);
+  const order = effectiveOrder(modules, servedModules(state), building);
   return order.map((name) => modules.find((module) => module.name === name)!);
 }
 
-/** Dossier diagnostics also work on drafts so the board can explain how to make them ready. */
+/** Dossier diagnostics also work on drafts so commands can explain how to make them ready. */
 export function dossierStatus(project: string, module: Pick<PlanModule, "name" | "text">) {
   const base = `.verid/artifacts/03-modules/${module.name}`;
   const missing: string[] = [];

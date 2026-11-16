@@ -2,12 +2,12 @@ import { readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { checkSetupPath } from "./workspace.js";
 
-const moduleName = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+export const moduleName = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const htmlName = /^[a-z0-9][a-z0-9._-]*\.html$/i;
 const directory = (module: string) => `.verid/artifacts/03-modules/${module}/ui/mockups`;
 
 /** Reuse setup's link checks for every directory component and the leaf file. */
-export function mockupFile(project: string, module: string, file: string): string | null {
+function mockupFile(project: string, module: string, file: string): string | null {
   if (!moduleName.test(module) || !htmlName.test(file)) return null;
   const relative = `${directory(module)}/${file}`;
   try {
@@ -20,39 +20,36 @@ export function mockupFile(project: string, module: string, file: string): strin
 }
 
 export function moduleMockups(project: string, module: string) {
-  const files: string[] = [];
-  if (moduleName.test(module)) {
-    try {
-      checkSetupPath(project, directory(module));
-      files.push(
-        ...readdirSync(join(project, directory(module)))
-          .filter((file) => mockupFile(project, module, file))
-          .sort(),
-      );
-    } catch {
-      // Missing or linked mockup directories offer no previews.
-    }
+  if (!moduleName.test(module)) throw new Error("Invalid module name");
+  checkSetupPath(project, directory(module));
+  checkSetupPath(project, `${directory(module)}/choice.json`);
+  let entries: string[] = [];
+  try {
+    entries = readdirSync(join(project, directory(module)));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
+  for (const file of entries.filter((file) => htmlName.test(file)))
+    checkSetupPath(project, `${directory(module)}/${file}`);
+  const files = entries.filter((file) => mockupFile(project, module, file)).sort();
   let choice: { choice: string; note: string; at: string } | null = null;
-  if (moduleName.test(module)) {
-    try {
-      const relative = `${directory(module)}/choice.json`;
-      checkSetupPath(project, relative);
-      const value: unknown = JSON.parse(readFileSync(join(project, relative), "utf8"));
-      if (
-        value &&
-        typeof value === "object" &&
-        "choice" in value &&
-        "note" in value &&
-        "at" in value &&
-        typeof value.choice === "string" &&
-        typeof value.note === "string" &&
-        typeof value.at === "string"
-      )
-        choice = { choice: value.choice, note: value.note, at: value.at };
-    } catch {
-      // A missing or malformed selection is displayed as unselected.
-    }
+  try {
+    const relative = `${directory(module)}/choice.json`;
+    checkSetupPath(project, relative);
+    const value: unknown = JSON.parse(readFileSync(join(project, relative), "utf8"));
+    if (
+      value &&
+      typeof value === "object" &&
+      "choice" in value &&
+      "note" in value &&
+      "at" in value &&
+      typeof value.choice === "string" &&
+      typeof value.note === "string" &&
+      typeof value.at === "string"
+    )
+      choice = { choice: value.choice, note: value.note, at: value.at };
+  } catch {
+    // A missing or malformed selection is displayed as unselected.
   }
   return { files, choice };
 }

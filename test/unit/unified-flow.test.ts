@@ -102,7 +102,7 @@ it("AC-11: remix keeps its baseline workflow without module scaffolding", async 
   });
 });
 
-it("AC-13: generated instructions describe dossiers and board priorities, with drive-specific sessions", () => {
+it("AC-13: generated instructions describe dossiers and module order, with drive-specific sessions", () => {
   for (const drive of ["human", "ai"]) {
     const parsed = parseManifest({
       schemaVersion: 1,
@@ -115,11 +115,16 @@ it("AC-13: generated instructions describe dossiers and board priorities, with d
     if (!parsed.ok) throw new Error(parsed.detail);
     const instructions = renderInstructions(parsed.manifest, "codex");
     expect(instructions).toContain("Artifacts: .verid/artifacts/03-modules/<name>");
-    expect(instructions).toContain("verid board");
+    expect(instructions).toContain("verid mockup");
     if (drive === "human") expect(instructions).toContain("ONE TASK PER SESSION");
     else {
-      expect(instructions).toContain("One session follows that queue");
+      expect(instructions).toContain("One session follows that order");
       expect(instructions).not.toContain("ONE TASK PER SESSION");
     }
   }
+});
+
+it("AC-17: adds no runtime dependency", () => {
+  const pkg = JSON.parse(readFileSync(join(import.meta.dirname, "../../package.json"), "utf8"));
+  expect(pkg.dependencies).toBeUndefined();
 });

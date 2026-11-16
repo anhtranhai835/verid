@@ -1540,7 +1540,7 @@ describe("prep and recipe plan", () => {
     const locked = await hook(write("src/a.ts"));
     expect(locked.code).toBe(2);
     expect(locked.stderr).toContain("verid [VERID_BURNT_TASK_SESSION]");
-    expect(locked.stderr).toContain("verid board"); // the agent can pass it on as is
+    expect(locked.stderr).toContain("verid order"); // the agent can pass it on as is
     expect((await hook(write("test/a.test.ts"))).stderr).toContain("VERID_BURNT_TASK_SESSION"); // tests need a selected task too
     expect((await hook(write(".verid/plan.md"))).code).toBe(0);
 

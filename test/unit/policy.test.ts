@@ -54,7 +54,7 @@ const TRANSCRIPT = "VERID_BURNT_TRANSCRIPT_PROTECTED";
 const HOOK = "VERID_BURNT_HOOK_PROTECTED";
 const MANIFEST = "VERID_BURNT_MANIFEST_PROTECTED";
 const DOCS = "VERID_BURNT_DOCS_PROTECTED";
-it("keeps mockup choices readable but reserves writes for the board", () => {
+it("keeps mockup choices readable but reserves writes for the developer", () => {
   const base = "c:/proj/.verid/artifacts/03-modules/screen/ui/mockups";
   expect(decide(read(`${base}/choice.json`), ctx).kind).toBe(ALLOW);
   expect(decide(write(`${base}/option-a.html`), ctx).kind).toBe(ALLOW);
@@ -888,6 +888,9 @@ describe("decide: bash", () => {
       ["echo $CLAUDECODE", DEVELOPER],
       ["verid.cmd order", DEVELOPER],
       ["verid serve auth", DEVELOPER],
+      ["verid mockup screen option-a", DEVELOPER],
+      ["verid.cmd mockup screen option-a.html", DEVELOPER],
+      ['node "C:/x/verid/dist/cli.js" mockup screen', DEVELOPER],
       ["node dist/cli serve auth", DEVELOPER],
       ["verid resume", DEVELOPER],
       ['node "C:/x/verid/dist/cli.js" resume', DEVELOPER],

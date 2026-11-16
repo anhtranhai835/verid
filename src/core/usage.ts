@@ -1,4 +1,4 @@
-export interface TokenUsage {
+interface TokenUsage {
   /** All input tokens, including cached reads and cache creation. */
   input: number;
   /** Cached reads are a subset of input, never added to the total again. */
@@ -16,7 +16,7 @@ export interface ModuleUsage {
   tokens: (TokenUsage & { total: number }) | null;
 }
 
-export const isCount = (value: unknown): value is number =>
+const isCount = (value: unknown): value is number =>
   typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 
 const EVENTS = new Set([

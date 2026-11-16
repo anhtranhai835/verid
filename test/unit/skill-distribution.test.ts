@@ -26,7 +26,7 @@ describe("self-contained verid skills", () => {
       "2 to 3",
       "self-contained",
       "no external resources",
-      "verid board",
+      "verid mockup <module> <option>",
       "choice.json",
       "ui/brief.md",
       "before order",
@@ -389,8 +389,8 @@ describe("self-contained verid skills", () => {
     );
   });
 
-  it("states the board and drive rules once per context", () => {
-    const sentence = "the developer arranges the priority queue";
+  it("states the module and drive rules once per context", () => {
+    const sentence = "module order follows";
     expect(read("plugin/templates/workflow.md")).toContain(sentence);
     for (const file of ["plugin/skills/modules/SKILL.md", "plugin/templates/skill-routing.md"])
       expect(read(file), file).not.toContain(sentence);

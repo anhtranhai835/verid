@@ -24,9 +24,10 @@ For a module that changes screens, read `ui.mockups` in the manifest (default `a
 `browser`: always prepare HTML. `ask`: ask the developer once per module and record the answer in `ui/brief.md`.
 For browser previews, create 2 to 3 self-contained HTML options with no external resources under
 `.verid/artifacts/03-modules/<module>/ui/mockups/`, one option per `.html` file.
-Tell the developer to open `verid board`, open the module's Mockup tab and choose before order.
+Tell the developer to open the HTML file in a browser, then run `verid mockup <module> <option>` before order.
+`verid mockup <module>` lists the options and current choice; `--note "<text>"` records feedback.
 Wait for `ui/mockups/choice.json`, then record the chosen option and note in `ui/brief.md`.
-Read the choice; never write it. A changed choice requires order again.
+Read the choice; never write it or run `verid mockup`. A changed choice requires order again.
 
 Follow the usual mapped writers, order, taste, independent read-only review and serve
 gates. On Codex main writes tests and code; only its configured reviewer is spawned.

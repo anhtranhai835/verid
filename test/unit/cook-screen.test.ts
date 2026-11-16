@@ -696,7 +696,7 @@ describe("interactiveCook: verid cook in the developer's terminal", () => {
       results[name] = {
         asked: t.screen().includes("Who runs the kitchen?"),
         iterations: t.screen().includes("Plan in iterations?"),
-        hint: t.screen().includes("one session follows your priority queue"),
+        hint: t.screen().includes("one session follows the module order in .verid/plan.md"),
         mode: /^mode: "(\w+)"/m.exec(manifest())?.[1],
         drive: manifest().includes('drive: "no-brain"') ? "auto" : "human",
       };

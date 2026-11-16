@@ -17,12 +17,12 @@ After upgrading, run `verid upgrade --yes` and `verid doctor` to register this h
 on Codex, trust the new handler through `/hooks`. Pinned repo resources require
 their runtime and definitions to be updated explicitly as described in the README.
 
-`VERID_BURNT_TASK_SESSION` is a non-overridable board rule. The developer selects
+`VERID_BURNT_TASK_SESSION` is a non-overridable task-session rule. The developer selects
 a task, then a fresh AI session owns it. Planning sessions, other sessions and
 sessions used for earlier tasks cannot act on it. Changed spec, plan or design
 requires reapproval and a new session. Resume and compaction keep the current
-task. After serving, stop; the developer chooses the next task in `verid board`.
-See [the board workflow](kanban-workflow.md).
+task. After serving, stop; the developer chooses the next task with `verid order <module>`.
+See [the module workflow](modular-cook.md).
 
 Repo resource definitions in `.verid/agents/`, `.verid/skills/`, `.verid/templates/`,
 `.verid/hooks/`, `.verid/i18n/` and `.verid/policies/` are also protected by
@@ -82,4 +82,4 @@ The rules cover file tools, Bash (its plain write targets are judged like a Writ
 
 Roles: with a tester and a coder mapped, only the coder writes production code and only the tester (or qa, for end-to-end tests) writes tests; main and unknown agents cannot take either permission. Reviewer and security write nothing. The scope of the drafting roles (architect, planner, qa) and the known skill/agent lists are advisory: departures are audited, not blocked. A role needs the host's subagent identity.
 
-In prep/recipe big-brain drive, `VERID_BURNT_TASK_SESSION` enforces one fresh session per task, selected through either the board or `verid order`. No-brain drive uses one session along the priority queue; remix keeps its baseline flow.
+In prep/recipe big-brain drive, `VERID_BURNT_TASK_SESSION` enforces one fresh session per task, selected through `verid order`. No-brain drive uses one session following the module order in `.verid/plan.md`; remix keeps its baseline flow.

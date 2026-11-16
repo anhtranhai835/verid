@@ -63,15 +63,12 @@ của cây chính trước khi gỡ; sự kiện usage được giữ trong audi
 
 Tối đa ba station mở. No-brain: đặt `stations: 2` hoặc `3` trước khi ký
 `verid order`; bỏ trống là `1`, giữ luồng tuần tự. Sau review plan độc lập, drive
-mở các module đủ điều kiện theo hàng đợi. Bộ đếm lỗi riêng giúp một station bị
+mở các module đủ điều kiện theo thứ tự trong `.verid/plan.md`. Bộ đếm lỗi riêng giúp một station bị
 kẹt không chặn station khác. `product` chờ mọi station gộp xong và chạy ở cây
 chính; close vẫn do developer chạy.
 
-Board hiển thị TDD riêng trên thẻ Đang làm. Station đã serve vẫn ở đó tới khi gộp
-đạt. Chat no-brain có bộ chọn Cuộc hội thoại cho project và từng station, lịch
-sử/nút dừng riêng; tối đa `stations` tiến trình provider đồng thời. Khi cuộc hội
-thoại điều phối kết thúc một lượt, board có thể mở session cho station đủ điều
-kiện. Tắt board sẽ dừng các tiến trình con.
+Chạy `verid peek` trong từng station để xem trạng thái TDD riêng. Station đã serve
+vẫn cần gộp đạt. Mở session provider tại đường dẫn do `verid station` in ra.
 
 `doctor` báo worktree station mồ côi, nhánh/worktree bị mất và approval lệch.
 Giữ registry/state riêng tư, ngoài Git. Nếu mở station bị ngắt, kiểm

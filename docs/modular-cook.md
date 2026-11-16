@@ -6,9 +6,9 @@ Không yêu cầu chuyển source code dự án sang monorepo Haren/Bun.
 
 ## Luồng module duy nhất
 
-Prep và recipe luôn dùng hồ sơ module và board. Cook hỏi mode và drive big-brain/no-brain; layout monorepo/workspace, resources installed/repo và các thiết lập khác nằm trong "Đổi thiết lập"; không hỏi workflow. Monorepo là một Git repo; workspace gồm các repo con và dùng một harness chung, một vòng TDD tổng hợp các runner. Thư mục workspace không được có .git hoặc nằm trong repo Git cha; phải có repo con.
+Prep và recipe luôn dùng hồ sơ module. Cook hỏi mode và drive big-brain/no-brain; layout monorepo/workspace, resources installed/repo và các thiết lập khác nằm trong "Đổi thiết lập"; không hỏi workflow. Monorepo là một Git repo; workspace gồm các repo con và dùng một harness chung, một vòng TDD tổng hợp các runner. Thư mục workspace không được có .git hoặc nằm trong repo Git cha; phải có repo con.
 
-Big-brain: chọn task trên board hoặc order từ terminal, rồi mở session AI mới cho đúng task đó. No-brain: xếp ưu tiên trên board, ký research/spec/design bằng verid order; một session đi hết hàng đợi, không cắt ngang module đang làm. Dùng ↑/↓ hoặc Alt+↑/↓ để đổi thứ tự task chưa bắt đầu; product luôn cuối.
+Big-brain: chạy `verid order <module>` từ terminal, rồi mở session AI mới cho đúng task đó. No-brain: thứ tự module theo `.verid/plan.md`; một session làm hết các module theo thứ tự đó, không cắt ngang module đang làm; product luôn cuối.
 
 Resources installed dùng tài nguyên đã cài; repo pin tài nguyên trong project và giữ các tùy chỉnh đã có. Chạy verid upgrade để chuyển project 1.x; module đã serve giữ nguyên, module chưa serve nhận hồ sơ nháp cần điền và order lại.
 
@@ -151,3 +151,22 @@ Kiểm tra offline trên Codex CLI 0.166.0 bằng `codex debug prompt-input` cũ
 project config đọc được và model-visible input có `AGENTS.md`, đường dẫn skills trong
 repo cùng skill `verid-modules`. Kiểm tra này không gọi model hoặc tạo trust cho hook
 trên project thật.
+
+## Module gates and browser mockups
+
+Run `verid module <name>` to scaffold a dossier. Complete its BA, UI, spec/design,
+test-plan and security inputs before `verid order <name>`. Big-brain uses a fresh
+session per ordered module; after tests, independent review and developer serve,
+stop that session. No-brain follows the module order in `.verid/plan.md` and keeps
+current work first. `verid menu` shows module status; `verid peek` shows TDD progress.
+
+For browser mockups, create self-contained `.html` options in
+`.verid/artifacts/03-modules/<module>/ui/mockups/`. The developer opens the HTML
+file in a browser, then runs `verid mockup <module> <option>` before order. The
+option accepts its name with or without `.html`. `verid mockup <module>` lists
+options and the current choice. Optional `--note "<text>"` accepts at most 1000
+characters without CR, LF or NUL. Missing options, invalid module names and linked
+paths are refused with exit 2. Agent shells and agent policy calls are refused.
+Agents only read `ui/mockups/choice.json`; never write it or run `verid mockup`.
+Creating, changing or removing the choice invalidates the module's approval and
+requires `verid order` again. Review/release output does not change that signature.

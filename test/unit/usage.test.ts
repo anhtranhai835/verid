@@ -2,10 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import { usageReport } from "../../src/core/usage.js";
 import { tempProject, kanbanManifest } from "../support/project.js";
 import { runCli } from "../../src/cli/main.js";
-import { boardSnapshot, saveBoardDocument } from "../../src/adapters/kanban.js";
 import { appendAudit } from "../../src/adapters/audit-log.js";
 import { statePaths, withLock } from "../../src/adapters/state-store.js";
-import { boardHtml } from "../../src/cli/board-page.js";
 
 describe("usage ledger", () => {
   it("groups counters, unique sessions and provider tokens by module", () => {
@@ -120,7 +118,7 @@ describe("usage views", () => {
     state: { schemaVersion: 1, language: "en" },
     setup: (p) => {
       p.put(".verid/spec.md", "- REQ-1: Add numbers\n");
-      saveBoardDocument(p.root, "split");
+      p.putPlan(".verid/plan.md", "## Module: req-1\n- AC-1: Add numbers (REQ-1)\n");
       vi.stubEnv("CLAUDE_PROJECT_DIR", p.root);
     },
     teardown: () => {
@@ -128,7 +126,7 @@ describe("usage views", () => {
     },
   });
 
-  it("shows the same totals on cards and in JSON without changing state or audit", async () => {
+  it("shows the totals in text and JSON without changing state or audit", async () => {
     const paths = statePaths(p.root);
     withLock(paths, () => {
       appendAudit(paths.audit, {
@@ -160,9 +158,6 @@ describe("usage views", () => {
     expect(result.exit).toBe(0);
     const [row] = JSON.parse(result.stdout);
     expect(row.tokens).toEqual({ input: 80, cached: 60, output: 10, total: 90 });
-    const snapshot = await boardSnapshot(p.root);
-    expect(snapshot.tasks.find((t) => t.id === "req-1")?.usage).toEqual(row);
-    expect(snapshot.tasks.find((t) => t.id === "product")?.usage).toBeNull();
     expect((await runCli(["usage", "--json", "missing"])).stdout.trim()).toBe("[]");
     expect((await runCli(["usage"])).stdout).toContain("80/60/10 (90)");
     expect([p.read(".verid/.state/state.json"), p.read(".verid/.state/audit.jsonl")]).toEqual(
@@ -200,9 +195,5 @@ describe("usage views", () => {
       1,
     );
     expect(events.find((e) => e.event === "stop_blocked")?.chars).toBeGreaterThan(0);
-  });
-
-  it("labels cards without reported tokens in readable Vietnamese", () => {
-    expect(boardHtml("vi")).toContain('"tokens_none":"Token: không có"');
   });
 });

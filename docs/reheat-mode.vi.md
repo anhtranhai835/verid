@@ -59,7 +59,7 @@ thư mục này một checkout chỉ đọc hoặc bản clone không có quyề
 | Serve     | `verid serve <unit>`          | Hỏi developer ký bằng chứng parity, hoặc nhận `--parity-signed`.                            |
 
 Các lệnh `verid reheat` không chỉ dành cho developer: adapter là code bạn đã duyệt, như test runner. Ký parity
-thì có: shell của agent không chạy được `verid serve`, và board từ chối agent.
+thì có: shell của agent không chạy được `verid serve`.
 
 **Mã thoát của `reheat gate`:** 0 đạt và parity đã ký, 1 gate không đạt hoặc adapter lỗi, 3 đạt nhưng parity
 chưa ký. Gate không đạt trên unit đã order, chưa serve sẽ hủy order đó, như khi tài liệu của nó đổi. Adapter
@@ -76,12 +76,11 @@ có `Artifacts:` và các tài liệu hồ sơ giữ chỗ, nên plan vẫn đ�
 của unit hoặc `spec/legacy/` đổi thì gate mất hiệu lực.
 
 - **big-brain:** `verid serve <unit>` hỏi `Ký bằng chứng parity?` trong terminal. Câu trả lời gắn với đúng bản
-  bạn được xem. Trong script, thêm `--parity-signed`. Nút Serve trên board chỉ hiện sau khi unit đã ký.
-- **no-brain:** drive không mở unit mà gate chưa đạt, và không serve unit chưa có chữ ký. Ký trên board (nút
-  **Ký parity** trên thẻ của unit) hoặc chạy `verid serve <unit> --parity-signed` trong terminal; drive sau đó
+  bạn được xem. Trong script, thêm `--parity-signed`.
+- **no-brain:** drive không mở unit mà gate chưa đạt, và không serve unit chưa có chữ ký. Chạy `verid serve <unit> --parity-signed` trong terminal; drive sau đó
   tự serve unit.
 
-`verid menu` và board hiện trạng thái extract, gate và parity của từng unit, cùng nhóm và unit cha.
+`verid menu` hiện trạng thái extract, gate và parity của từng unit, cùng nhóm và unit cha.
 
 ## Hợp đồng adapter
 
