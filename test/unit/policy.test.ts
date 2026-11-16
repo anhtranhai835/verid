@@ -795,6 +795,19 @@ describe("decide: bash", () => {
       ["cat -g '!.verid/.state/state.json'", STATE],
       ["cat 'a;rg -g !.verid/.state/state.json'", STATE],
       ["grep -rn x --include=.state .verid", STATE],
+      [
+        "rg --files --hidden -g '!.git/**' -g '!.verid/**' -g '!.claude/**' -g '!.agents/**' -g '!.codex/**' -g '!node_modules/**' -g '*.ts'",
+        ALLOW,
+      ],
+      ["rg --files -g '!.claude/settings.json' .claude/settings.json", HOOK],
+      ["rg --files -g '.codex/**'", ALLOW],
+      ["rg --files -g '!.env' .env", SECRET],
+      ["Get-Content '.codex/config.toml'", ALLOW],
+      ["cat ~/.codex/hooks.json | Select-String verid", ALLOW],
+      ["Set-Content .codex/config.toml x", HOOK],
+      ["cat .codex/config.toml > x.toml", HOOK],
+      ["cat ~/.codex/auth.json", SECRET],
+      ["cat ~/.codex/sessions/x.jsonl", TRANSCRIPT],
     ]);
   });
 

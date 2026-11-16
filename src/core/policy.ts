@@ -309,7 +309,7 @@ const BASH_RULES: [RuleCode, string, (command: string, ctx: PolicyContext) => bo
   [
     "VERID_BURNT_STATE_PROTECTED",
     "mentions .state or writes the verid root",
-    (c) => withoutExclusions(c).includes(".state") || bashWriteTargets(c).some(isProtectedWrite),
+    (c) => c.includes(".state") || bashWriteTargets(c).some(isProtectedWrite),
   ],
   [
     "VERID_BURNT_SECRET_PROTECTED",
@@ -337,7 +337,8 @@ const BASH_RULES: [RuleCode, string, (command: string, ctx: PolicyContext) => bo
       /\.claude[\\/](settings|agents(?![\w.-])|plugins(?![\w.-])|commands[\\/]verid(?![\w.-]))/.test(
         c,
       ) ||
-      /\.codex(?:[\\/]|$)/.test(c) ||
+      // Codex reads its config through the shell; its secrets and transcripts have their own rules.
+      (/\.codex(?:[\\/]|$)/.test(c) && !plainRead(c)) ||
       ((ctx.protectedWriteDirs ?? []).some((p) => c.includes(slashPath(p))) && !plainRead(c)) ||
       configMentions(
         c,
@@ -412,8 +413,10 @@ function decideBash(
   });
   const data = literalData(command);
   const spoken = [data, unquote(data)].map((c) => c.toLowerCase());
+  // A path named only to exclude it is not reached: every protected-path rule reads without it.
+  const reached = forms.map(withoutExclusions);
   for (const [code, reason, matches] of BASH_RULES) {
-    const texts = code.startsWith("VERID_BURNT_BASH_NESTED_") ? spoken : forms;
+    const texts = code.startsWith("VERID_BURNT_BASH_NESTED_") ? spoken : reached;
     if (!lifted.has(code) && texts.some((c) => matches(c, ctx))) return deny(code, target, reason);
   }
   const danger = lifted.has("VERID_BURNT_BASH_DANGEROUS") ? null : dangerousCommand(command);
