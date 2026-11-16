@@ -32,7 +32,7 @@ import type { State } from "../core/state.js";
 import { cycleHint, cycleLabel } from "../core/tdd.js";
 import { checkedRepos } from "./architecture.js";
 import type { Work } from "./git.js";
-import { bilingual } from "./i18n.js";
+import { bilingual, t } from "./i18n.js";
 import { auditLines } from "./rule-audit.js";
 import { errno, readFileHash } from "./state-store.js";
 import { checkSetupPath } from "./workspace.js";
@@ -650,11 +650,14 @@ function autoMenuLines(
     .filter(([, n]) => n > 0)
     .map(([ac, n]) => `${ac} ${n}`);
   // Only Stop's holds have a limit; failed rounds and reviews never stop the drive.
+  const language = state.language ?? "en";
   const counters = [
     ...(rounds.length > 0 ? [`rounds ${rounds.join(", ")}`] : []),
-    `module reviews ${auto.module_reviews}`,
-    ...(roles?.security ? [`security reviews ${auto.security_reviews}`] : []),
-    `plan reviews ${auto.plan_reviews}`,
+    t(language, "auto.failed_module_reviews", { count: String(auto.module_reviews) }),
+    ...(roles?.security
+      ? [t(language, "auto.failed_security_reviews", { count: String(auto.security_reviews) })]
+      : []),
+    t(language, "auto.failed_plan_reviews", { count: String(auto.plan_reviews) }),
     `stops ${auto.stop_holds}/${LIMIT}`,
   ];
   return [
