@@ -88,6 +88,9 @@ export const CODEX_TOOLS = [
   "collaborationspawn_agent",
   "collaborationwait_agent",
   "update_plan",
+  // Asking the developer a question writes nothing.
+  "request_user_input",
+  "request_user_input_async",
   "Read",
   "Grep",
   "Glob",

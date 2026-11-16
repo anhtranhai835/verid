@@ -119,7 +119,8 @@ export function renderInstructions(
 ): string {
   const agents = (role: RoleName): string => manifest.roles?.[role]?.join(", ") ?? "main";
   const skill = (name: string): string => `${skillsRoot.replaceAll("\\", "/")}/${name}/SKILL.md`;
-  const routing = `${skillsRoot.replaceAll("\\", "/")}/../templates/skill-routing.md`;
+  // The templates folder beside skills/, named without a `..` segment.
+  const routing = `${skillsRoot.replaceAll("\\", "/").replace(/\/?[^/]*$/, "") || "."}/templates/skill-routing.md`;
   const codex = provider === "codex";
   // Codex: the main agent writes; skills are read by path.
   const single = provider !== "claude-code";

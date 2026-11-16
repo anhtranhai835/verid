@@ -284,7 +284,13 @@ const READ_PROGRAMS = new Set([
 const plainRead = (c: string): boolean =>
   // rg --pre runs a program on every file it searches.
   !/[<>`$(){}\r\n]|(?<!&)&(?!&)|\s--pre\b/.test(c) &&
-  c.split(/;|&&|\|\|?/).every((command) => READ_PROGRAMS.has(command.trim().split(/\s+/)[0] ?? ""));
+  c.split(/;|&&|\|\|?/).every((command) => {
+    const [program = "", ...args] = command.trim().split(/\s+/);
+    // verid's status commands only read; `menu --file` writes a review packet.
+    if (program === "verid")
+      return /^(?:context|menu|peek|usage)$/.test(args[0] ?? "") && !args.includes("--file");
+    return READ_PROGRAMS.has(program);
+  });
 
 // An exclusion filter only hides files: `rg --files -g '!.verid/.state/**'` reads nothing there.
 // Only rg's negated globs and grep's --exclude/--exclude-dir values are dropped, and only a value

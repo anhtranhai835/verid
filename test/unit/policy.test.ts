@@ -394,6 +394,9 @@ describe("decide: file tools", () => {
         ALLOW,
       ],
       [`rg -n step ${skill}`, ALLOW],
+      [`Get-Content ${skill}; verid context; verid menu; verid peek`, ALLOW],
+      [`cat ${skill}; verid menu --commits --file`, HOOK],
+      [`cat ${skill}; verid order x`, HOOK],
       [`rg --pre ./x.sh step ${skill}`, HOOK],
       [`rg --pre=./x.sh step ${skill}`, HOOK],
     ] as const;

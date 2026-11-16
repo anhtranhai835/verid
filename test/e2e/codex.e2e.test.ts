@@ -457,6 +457,9 @@ describe("Codex hook transport and policy", () => {
       ["collaborationwait_agent", { timeout_ms: 30000 }, "allow"],
       // Codex's plan tool only updates the plan shown to the developer.
       ["update_plan", { plan: [{ step: "write the test", status: "in_progress" }] }, "allow"],
+      // Asking the developer writes nothing.
+      ["request_user_input", { questions: [{ question: "Which?" }] }, "allow"],
+      ["request_user_input_async", { questions: [{ question: "Which?" }] }, "allow"],
       ["Read", { file_path: "notes.txt" }, "allow"],
       [
         "mcp__files__write",
