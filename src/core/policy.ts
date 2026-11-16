@@ -250,8 +250,9 @@ const VERID_HOOK = /\bdist[\\/]+hook\b|\bhook\.js\b/;
 const PLUGIN_COMMAND =
   /(?:\bverid(?:@[^\s"'\\/]*)?(?:\.(?:cmd|ps1|exe|mjs))?|\bcli(?:\.js)?)["']?\s+(?:--\s+)?plugin\b/;
 
-// Codex has no file-read tool: it reads its installed skills through the shell. A pipeline of
-// plain read programs, with no redirect, variable, subshell or second command, writes nothing.
+// Codex has no file-read tool: it reads its installed skills through the shell. Commands that are
+// all plain read programs, chained by `;`, `&&`, `||` or pipes, with no redirect, variable,
+// subshell or background job, write nothing.
 const READ_PROGRAMS = new Set([
   "get-content",
   "gc",
@@ -274,8 +275,21 @@ const READ_PROGRAMS = new Set([
   "measure-object",
 ]);
 const plainRead = (c: string): boolean =>
-  !/[;&<>`$(){}\r\n]/.test(c) &&
-  c.split("|").every((stage) => READ_PROGRAMS.has(stage.trim().split(/\s+/)[0] ?? ""));
+  !/[<>`$(){}\r\n]|(?<!&)&(?!&)/.test(c) &&
+  c.split(/;|&&|\|\|?/).every((command) => READ_PROGRAMS.has(command.trim().split(/\s+/)[0] ?? ""));
+
+// An exclusion filter only hides files: `rg --files -g '!.verid/.state/**'` reads nothing there.
+// Only rg's negated globs and grep's --exclude/--exclude-dir values are dropped, and only a value
+// with no quote, expansion or separator inside, so every other mention still counts.
+const EXCLUSION =
+  /(\s)(?:(?:-g|--i?glob)(?:\s+|=)(['"]?)!(?!!)|--exclude(?:-dir)?=(['"]?))[^\s'"`$;&|<>()]*(?:\2|\3)(?=$|[\s;&|])/g;
+const withoutExclusions = (c: string): string =>
+  c
+    .split(/(;|&&?|\|\|?|\n)/)
+    .map((part) =>
+      /^\s*(?:rg|grep)(?:\.exe)?\s/.test(part) ? part.replace(EXCLUSION, "$1") : part,
+    )
+    .join("");
 
 // In priority order, invariants first. Each rule gets the command lowercased.
 const BASH_RULES: [RuleCode, string, (command: string, ctx: PolicyContext) => boolean][] = [
@@ -287,7 +301,7 @@ const BASH_RULES: [RuleCode, string, (command: string, ctx: PolicyContext) => bo
   [
     "VERID_BURNT_STATE_PROTECTED",
     "mentions .state or writes the verid root",
-    (c) => c.includes(".state") || bashWriteTargets(c).some(isProtectedWrite),
+    (c) => withoutExclusions(c).includes(".state") || bashWriteTargets(c).some(isProtectedWrite),
   ],
   [
     "VERID_BURNT_SECRET_PROTECTED",

@@ -384,6 +384,11 @@ describe("decide: file tools", () => {
       [`Get-Content ${skill} | python`, HOOK],
       [`node ${plugin}/skills/ba/x.js`, HOOK],
       [`Get-Content $(${skill})`, HOOK],
+      [`Get-Content -LiteralPath '.verid/workflow.md'; Get-Content -LiteralPath ${skill}`, ALLOW],
+      [`cat a.md && cat ${skill}`, ALLOW],
+      [`cat ${skill}; node ${plugin}/skills/ba/x.js`, HOOK],
+      [`cat ${skill} & node x.js`, HOOK],
+      [`cat ${skill};`, HOOK],
     ] as const;
     for (const [command, want] of rows) {
       const denied = codex("Bash", { command })
@@ -750,6 +755,25 @@ describe("decide: bash", () => {
       ["echo x > .verid/manifest.yaml", MANIFEST],
       ["echo {} > .claude/settings.local.json", HOOK],
       ["type C:\\proj\\.Claude\\Settings.json", HOOK],
+    ]);
+  });
+
+  it("lets rg and grep exclude verid's state while every reach into it stays denied", () => {
+    expectBash([
+      [
+        "rg --files --hidden -g 'AGENTS.md' -g '.verid/**' -g '!.verid/.state/**' -g '!.git/**'; git status --short",
+        ALLOW,
+      ],
+      ["rg -n plan --glob=!.verid/.state .verid", ALLOW],
+      ["grep -rn plan --exclude-dir=.state .verid", ALLOW],
+      ["rg --files -g '.verid/.state/**'", STATE],
+      ["rg -g '!!.verid/.state/**' --files", STATE],
+      ["rg --files -g '!x' .verid/.state", STATE],
+      ["rg -g '!.verid/.state/**' --files; cat .verid/.state/state.json", STATE],
+      ['rg -g "!$(cat .verid/.state/state.json)" x', STATE],
+      ["cat -g '!.verid/.state/state.json'", STATE],
+      ["cat 'a;rg -g !.verid/.state/state.json'", STATE],
+      ["grep -rn x --include=.state .verid", STATE],
     ]);
   });
 
