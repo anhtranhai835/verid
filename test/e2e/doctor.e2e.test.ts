@@ -235,6 +235,9 @@ describe("verid doctor", () => {
     expect(result.out).not.toContain("! plugin.");
     // Codex's re-trust note is a warning: counted apart from problems, and never blocking.
     expect(result.out).toMatch(/No problems; [1-9]\d* warning\(s\), which never block a step\./);
+    // There Codex's sandbox stops verid taste from starting a runner: doctor says how to run it.
+    if (process.platform === "win32")
+      expect(result.out).toContain('sandbox_mode = "danger-full-access"');
     expect(snapshot()).toEqual(before);
   });
 

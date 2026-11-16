@@ -328,6 +328,11 @@ export async function doctorCommand(project: string, ci = false): Promise<CliRes
         warnings++;
         lines.push(say("doctor.codex.version_warning", { version: actual }));
       } else lines.push(say("doctor.codex.version_ok"));
+      // Codex's Windows workspace-write sandbox refuses every process verid starts.
+      if (process.platform === "win32") {
+        warnings++;
+        lines.push(say("doctor.codex.windows_sandbox"));
+      }
     }
   }
   for (const repo of [

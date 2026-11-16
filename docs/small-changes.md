@@ -29,3 +29,6 @@ asserts it.
 
 After a module is served, its code is locked again. A fix to served work means editing that
 module's section of `.verid/plan.md` and ordering it again.
+
+On Codex a prompt cannot open an exception. The developer runs `verid tip "<reason>"` in
+their own terminal instead: it allows the last blocked action once, and refuses inside an agent.

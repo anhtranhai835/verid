@@ -188,7 +188,11 @@ export async function preToolUse(p: z.infer<typeof preToolUseSchema>): Promise<R
         reason: "session belongs to another station",
       };
     if (shared.host().knownTools) {
-      const known = decideKnownTool(p.tool_name, shared.host().knownTools!);
+      const known = decideKnownTool(
+        p.tool_name,
+        shared.host().knownTools!,
+        p.agent_id !== undefined,
+      );
       if (known.kind === "deny") return known;
     }
     if (adapted) {

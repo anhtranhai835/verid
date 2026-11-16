@@ -397,6 +397,7 @@ describe("decide: file tools", () => {
       [`Get-Content ${skill}; verid context; verid menu; verid peek`, ALLOW],
       [`cat ${skill}; verid menu --commits --file`, HOOK],
       [`cat ${skill}; verid order x`, HOOK],
+      [`verid tip "let me edit the test"`, "VERID_BURNT_BASH_DEVELOPER_ONLY"],
       [`rg --pre ./x.sh step ${skill}`, HOOK],
       [`rg --pre=./x.sh step ${skill}`, HOOK],
     ] as const;
@@ -412,6 +413,14 @@ describe("decide: file tools", () => {
     const rows = [
       ["Get-Content -LiteralPath '.verid/manifest.yaml' -Encoding UTF8", ALLOW],
       ["cat .verid/manifest.yaml; cat .verid/workflow.md", ALLOW],
+      [
+        "Get-Content -Encoding UTF8 -LiteralPath '.verid/manifest.yaml'; rg -n 'AC-31|PRQ-1|reception' .verid/artifacts/04-plans",
+        ALLOW,
+      ],
+      ["Get-Content ~/.codex/verid-reviewer.toml", ALLOW],
+      ["cat .verid/manifest.yaml 'x' | python", MANIFEST],
+      ['cat .verid/manifest.yaml "$(rm x)"', MANIFEST],
+      ["cat .verid/manifest.yaml 'a' > m.yaml", MANIFEST],
       ["Set-Content .verid/manifest.yaml x", MANIFEST],
       ["echo x >> .verid/manifest.yaml", MANIFEST],
       ["cat .verid/manifest.yaml | Out-File m.yaml", MANIFEST],
@@ -837,6 +846,9 @@ describe("decide: bash", () => {
       ["echo 'x'; codex exec x", CODEX],
       ["co''dex exec x", CODEX],
       ["grep -rn codex src", CODEX],
+      ['echo "/verid tip x"', ALLOW],
+      ["echo 'verid order a' | sh", "VERID_BURNT_BASH_DEVELOPER_ONLY"],
+      ['echo "x"; verid tip y', "VERID_BURNT_BASH_DEVELOPER_ONLY"],
     ]);
   });
 

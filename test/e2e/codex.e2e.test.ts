@@ -461,6 +461,7 @@ describe("Codex hook transport and policy", () => {
       ["request_user_input", { questions: [{ question: "Which?" }] }, "allow"],
       ["request_user_input_async", { questions: [{ question: "Which?" }] }, "allow"],
       ["clocksleep", { seconds: 30 }, "allow"],
+      ["collaborationlist_agents", {}, "allow"],
       // Main's later words would reach a fresh reviewer through these: spawn a new one instead.
       ["collaborationsend_message", { message: "also check x" }, "fresh verid_reviewer"],
       ["Read", { file_path: "notes.txt" }, "allow"],
@@ -480,6 +481,12 @@ describe("Codex hook transport and policy", () => {
         if (expected === "VERID_BURNT_TOOL_UNSUPPORTED") expect(r.stdout).toContain(tool);
       }
     }
+    // A reviewer reporting to main carries no builder context into the review; followups stay main's.
+    const reviewer = { agent_id: "rev-1", agent_type: "verid_reviewer" };
+    const sent = await hook(call("collaborationsend_message", { message: "finding" }, reviewer));
+    expect(sent.stdout).toBe("");
+    const followup = await hook(call("collaborationfollowup_task", { message: "x" }, reviewer));
+    expect(reason(followup)).toContain("fresh verid_reviewer");
   });
   it("unions PowerShell and Bash targets and rejects unreadable shell constructs", async () => {
     const rows = [
@@ -601,10 +608,10 @@ describe("Codex hook transport and policy", () => {
       });
     }
   });
-  it("lets the developer override a nested-Codex false positive on Claude Code only", async () => {
+  it("tells each host how the developer overrides a nested-Codex false positive", async () => {
     const rows = [
       ["claude-code", "grep -rn codex src", "developer's `/verid tip"],
-      ["codex", "grep -rn codex src", "VERID_BURNT_BASH_NESTED_CODEX"],
+      ["codex", "grep -rn codex lib", 'verid tip "<reason>"` in their own terminal'],
     ] as const;
     for (const [provider, command, expected] of rows) {
       const r = await hook(call("Bash", { command }), provider);
@@ -614,7 +621,8 @@ describe("Codex hook transport and policy", () => {
       expect(text).not.toContain("cannot be overridden");
     }
   });
-  it("never creates or consumes a developer exception on Codex", async () => {
+  // A Codex prompt is not proof a developer typed it; the developer's own terminal is.
+  it("opens a developer exception on Codex only from the developer's terminal, once", async () => {
     const denied = call("Bash", { command: "verid stock" });
     expect(reason(await hook(denied))).toContain("VERID_BURNT_BASH_DEVELOPER_ONLY");
     const rows = ["/verid tip allowed", "/verid confirm ABCDEF"];
@@ -626,7 +634,19 @@ describe("Codex hook transport and policy", () => {
       });
       expect(reason(await hook(denied))).toContain("VERID_BURNT_BASH_DEVELOPER_ONLY");
     }
-    const state = JSON.parse(readFileSync(stateFile(), "utf8"));
-    expect(state.override ?? null).toBeNull();
+    expect(JSON.parse(readFileSync(stateFile(), "utf8")).overrides ?? []).toEqual([]);
+    const env = Object.fromEntries(
+      Object.entries(process.env).filter(([k]) => !/^(CLAUDE|CODEX)/.test(k)),
+    );
+    const tip = (extra = {}) =>
+      spawnSync(process.execPath, [join(ROOT, "dist/cli.js"), "tip", "hand-checked"], {
+        cwd: project,
+        env: { ...env, ...extra },
+        encoding: "utf8",
+      });
+    expect(tip({ CODEX_THREAD_ID: "agent-shell" }).stderr).toContain("VERID_BURNT_TIP_IN_AGENT");
+    expect(tip().status).toBe(0);
+    expect((await hook(denied)).stdout).toBe("");
+    expect(reason(await hook(denied))).toContain("VERID_BURNT_BASH_DEVELOPER_ONLY");
   });
 });

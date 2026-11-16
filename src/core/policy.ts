@@ -249,7 +249,7 @@ const NESTED_CODEX = /(^|[\s;&|(`'"\\/])codex(\.exe|\.cmd|\.ps1)?(?=$|[\s;&|)`'"
 // `/verid tip` can allow those commands.
 const CLAUDECODE_VAR = /\bclaudecode\b/;
 const DEVELOPER_COMMAND =
-  /(?:\bverid(?:@[^\s"'\\/]*)?(?:\.(?:cmd|ps1|exe|mjs))?|\bcli(?:\.js)?)["']?\s+(?:--\s+)?(?:cook|upgrade|setup-codex|garnish|stock|order|serve|halt|resume|board|station)\b/;
+  /(?:\bverid(?:@[^\s"'\\/]*)?(?:\.(?:cmd|ps1|exe|mjs))?|\bcli(?:\.js)?)["']?\s+(?:--\s+)?(?:cook|upgrade|setup-codex|garnish|stock|order|serve|halt|resume|board|station|tip)\b/;
 // The agent's Bash inherits CLAUDE_CODE_SESSION_ATTENDED, so a `/verid tip` piped into the hook
 // would hand it the confirmation code. A copy or a path built at run time still gets through.
 const VERID_HOOK = /\bdist[\\/]+hook\b|\bhook\.js\b/;
@@ -281,16 +281,22 @@ const READ_PROGRAMS = new Set([
   "wc",
   "measure-object",
 ]);
-const plainRead = (c: string): boolean =>
-  // rg --pre runs a program on every file it searches.
-  !/[<>`$(){}\r\n]|(?<!&)&(?!&)|\s--pre\b/.test(c) &&
-  c.split(/;|&&|\|\|?/).every((command) => {
-    const [program = "", ...args] = command.trim().split(/\s+/);
-    // verid's status commands only read; `menu --file` writes a review packet.
-    if (program === "verid")
-      return /^(?:context|menu|peek|usage)$/.test(args[0] ?? "") && !args.includes("--file");
-    return READ_PROGRAMS.has(program);
-  });
+// One classifier for every protected path, run once on the command as typed: a literal quoted
+// word is data (a `|` in an rg pattern splits nothing); a double-quoted word that expands is not.
+const plainRead = (command: string): boolean => {
+  const c = command.toLowerCase().replace(/'[^']*'|"[^"$`]*"/g, "_");
+  return (
+    // rg --pre runs a program on every file it searches.
+    !/[<>`$(){}'"\r\n]|(?<!&)&(?!&)|\s--pre\b/.test(c) &&
+    c.split(/;|&&|\|\|?/).every((part) => {
+      const [program = "", ...args] = part.trim().split(/\s+/);
+      // verid's status commands only read; `menu --file` writes a review packet.
+      if (program === "verid")
+        return /^(?:context|menu|peek|usage)$/.test(args[0] ?? "") && !args.includes("--file");
+      return READ_PROGRAMS.has(program);
+    })
+  );
+};
 
 // An exclusion filter only hides files: `rg --files -g '!.verid/.state/**'` reads nothing there.
 // Only rg's negated globs and grep's --exclude/--exclude-dir values are dropped, and only a value
@@ -305,8 +311,13 @@ const withoutExclusions = (c: string): string =>
     )
     .join("");
 
-// In priority order, invariants first. Each rule gets the command lowercased.
-const BASH_RULES: [RuleCode, string, (command: string, ctx: PolicyContext) => boolean][] = [
+// In priority order, invariants first. Each rule gets the command lowercased, and whether the
+// whole command, as typed, only reads.
+const BASH_RULES: [
+  RuleCode,
+  string,
+  (command: string, ctx: PolicyContext, read: boolean) => boolean,
+][] = [
   [
     "VERID_BURNT_PLUGIN_PROTECTED",
     "runs a plugin command or names plugin registration, code or data",
@@ -339,13 +350,13 @@ const BASH_RULES: [RuleCode, string, (command: string, ctx: PolicyContext) => bo
   [
     "VERID_BURNT_HOOK_PROTECTED",
     "mentions Claude Code settings, agents, plugins or verid's commands, or writes skills or commands",
-    (c, ctx) =>
+    (c, ctx, read) =>
       /\.claude[\\/](settings|agents(?![\w.-])|plugins(?![\w.-])|commands[\\/]verid(?![\w.-]))/.test(
         c,
       ) ||
       // Codex reads its config through the shell; its secrets and transcripts have their own rules.
-      (/\.codex(?:[\\/]|$)/.test(c) && !plainRead(c)) ||
-      ((ctx.protectedWriteDirs ?? []).some((p) => c.includes(slashPath(p))) && !plainRead(c)) ||
+      (/\.codex(?:[\\/]|$)/.test(c) && !read) ||
+      ((ctx.protectedWriteDirs ?? []).some((p) => c.includes(slashPath(p))) && !read) ||
       configMentions(
         c,
         ctx,
@@ -360,7 +371,7 @@ const BASH_RULES: [RuleCode, string, (command: string, ctx: PolicyContext) => bo
   [
     "VERID_BURNT_MANIFEST_PROTECTED",
     "mentions the verid manifest",
-    (c) => c.includes("manifest.yaml") && !plainRead(c),
+    (c, _ctx, read) => c.includes("manifest.yaml") && !read,
   ],
   [
     "VERID_BURNT_GIT_INTERNALS",
@@ -421,9 +432,15 @@ function decideBash(
   const spoken = [data, unquote(data)].map((c) => c.toLowerCase());
   // A path named only to exclude it is not reached: every protected-path rule reads without it.
   const reached = forms.map(withoutExclusions);
+  const read = plainRead(command);
   for (const [code, reason, matches] of BASH_RULES) {
-    const texts = code.startsWith("VERID_BURNT_BASH_NESTED_") ? spoken : reached;
-    if (!lifted.has(code) && texts.some((c) => matches(c, ctx))) return deny(code, target, reason);
+    // Command-name rules read literal text written to a file as data: `echo "/verid tip x"`.
+    const texts =
+      code.startsWith("VERID_BURNT_BASH_NESTED_") || code === "VERID_BURNT_BASH_DEVELOPER_ONLY"
+        ? spoken
+        : reached;
+    if (!lifted.has(code) && texts.some((c) => matches(c, ctx, read)))
+      return deny(code, target, reason);
   }
   const danger = lifted.has("VERID_BURNT_BASH_DANGEROUS") ? null : dangerousCommand(command);
   if (danger) return deny("VERID_BURNT_BASH_DANGEROUS", target, danger);

@@ -87,6 +87,8 @@ export const CODEX_TOOLS = [
   "apply_patch",
   "collaborationspawn_agent",
   "collaborationwait_agent",
+  // Lists spawned agents; sends them nothing.
+  "collaborationlist_agents",
   "update_plan",
   // Asking the developer a question writes nothing.
   "request_user_input",

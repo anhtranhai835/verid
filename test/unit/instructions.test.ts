@@ -115,7 +115,7 @@ describe("provider instruction blocks", () => {
         expect(text).toContain("C:/install/plugin/skills/build/SKILL.md");
       if (provider === "codex") {
         expect(text).toContain("main agent writes tests and code");
-        expect(text).toContain("exceptions require Claude Code");
+        expect(text).toContain('opens exceptions: verid tip "<reason>" in their own terminal');
         expect(text).toContain("Advisory");
       }
       expect(text).toContain("write detail once in its dossier");

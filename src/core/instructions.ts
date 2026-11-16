@@ -136,7 +136,7 @@ export function renderInstructions(
       : "- Claude Code hooks enforce TDD (RAW → COOKING → PLATED), module approval, roles and protected files.",
     "- Never bypass a denial; follow its reason.",
     codex
-      ? "- Only the developer edits the manifest; /verid tip and confirm do nothing; exceptions require Claude Code."
+      ? "- Only the developer edits the manifest or opens exceptions: verid tip \"<reason>\" in their own terminal."
       : "- Only the developer edits the manifest or opens exceptions with /verid tip and /verid confirm.",
     manifest.resources === "repo"
       ? "- Read skills and agents from .verid/skills/ and .verid/agents/ in this repo. Local verid-<name> entries route there; calls written verid:<name> in those files mean verid-<name> here. Resolve supporting files relative to the repo copy."

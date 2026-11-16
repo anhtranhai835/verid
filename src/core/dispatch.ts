@@ -84,9 +84,16 @@ export function decideAgentContext(
 // reviewers spawned fresh (fork_turns "none"); later messages would carry the builder's view.
 const REVIEWER_CONTEXT = new Set(["collaborationsend_message", "collaborationfollowup_task"]);
 
-export function decideKnownTool(tool: string, known: readonly string[]): PolicyDecision {
+export function decideKnownTool(
+  tool: string,
+  known: readonly string[],
+  fromSubagent = false,
+): PolicyDecision {
   if (tool.startsWith("mcp__") || known.includes(tool))
     return { kind: "allow", reason: "known tool" };
+  // A spawned reviewer reporting back sends no builder context into a review.
+  if (fromSubagent && tool === "collaborationsend_message")
+    return { kind: "allow", reason: "subagent reports to main" };
   return {
     kind: "deny",
     code: "VERID_BURNT_TOOL_UNSUPPORTED",
