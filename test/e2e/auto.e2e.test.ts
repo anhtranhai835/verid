@@ -601,6 +601,12 @@ describe("menu, peek and session start in an auto drive", () => {
     await hook(fixture("session-start")); // the module opens on its own branch
     seed({ auto: { coder_rounds: { "AC-1": 2 }, module_reviews: 1 } });
     const open = (await cli("menu")).stdout.split("\n");
+    // A counted stop says what it is and what happens at the limit.
+    seed({ auto: { stop_holds: 3 } });
+    const stops = (await cli("menu")).stdout;
+    expect(stops).toContain("stops 3/3");
+    expect(stops).toContain("verid held the agent from ending its turn");
+    seed({ auto: { stop_holds: 0 } });
     appendFileSync(join(project, ".verid", "design.md"), "\nmore");
     const stuck = (await cli("menu")).stdout;
     expect({

@@ -667,6 +667,10 @@ function autoMenuLines(
     ),
     ...views.map((v) => moduleLine(v, views, unitState(project, state, v.name))),
     ...(auto.signed === null ? [] : [`  ${counters.join(" · ")}`]),
+    // A stop counted without a word on what it means reads like an error.
+    ...(auto.signed !== null && auto.stop_holds > 0
+      ? [`  ${bilingual("auto.stops_hint", { limit: String(LIMIT) })}`]
+      : []),
     ...questionLines(project),
     ...(manifest ? auditLines(project, manifest, state, false) : []),
     step,

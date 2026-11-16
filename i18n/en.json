@@ -265,6 +265,7 @@
   "auto.done": "Next: the product module was served last, so the no-brain drive is done and you may stop. More work: add a module to `.verid/plan.md` before `product`, and the plan is reviewed again.",
   "auto.stuck.blocked": "The no-brain drive is blocked: {detail} (`.verid/blocked.md`). You may stop. Once it is settled, delete the file and the drive goes on; nothing is locked.",
   "auto.stuck.no_progress": "Stop held the agent {detail} times in a row and nothing progressed, so verid lets it stop. Nothing is locked: the next prompt continues the drive from `{verid} menu`.",
+  "auto.stops_hint": "stops: times in a row verid held the agent from ending its turn while no-brain work was left and nothing progressed; at {limit}/{limit} it lets the agent stop, nothing is locked, and the next prompt continues the drive. Progress resets the count.",
   "cook.providers": "Choose providers",
   "cook.provider_found": "installed on this machine",
   "cook.provider_missing": "not found on PATH — install it before cooking",
