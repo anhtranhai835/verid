@@ -151,12 +151,9 @@ describe("Codex configuration", () => {
     ] as const;
     for (const [part, present] of rows) expect(text.includes(part), part).toBe(present);
   });
-  // `sudo npm install -g` leaves the bundle's folder owned by root.
-  it("keeps the reviewer file beside the bundle, or beside Codex's config when that folder is not the user's to write", () => {
-    expect(reviewerOverlay(() => true).replaceAll("\\", "/")).toMatch(
-      /\/dist\/codex-reviewer\.toml$/,
-    );
-    expect(reviewerOverlay(() => false)).toBe(join(codexHome(), "verid-reviewer.toml"));
+  // A reinstall replaces the bundle's folder, and `sudo npm install -g` leaves it owned by root.
+  it("keeps the reviewer file beside Codex's config, outside the bundle", () => {
+    expect(reviewerOverlay()).toBe(join(codexHome(), "verid-reviewer.toml"));
     const here = import.meta.dirname;
     expect(writable(join(here, "codex-settings.test.ts"))).toBe(true);
     expect(writable(join(here, "not-written-yet.toml"))).toBe(true);
