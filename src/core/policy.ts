@@ -292,7 +292,9 @@ const plainRead = (command: string): boolean => {
       const [program = "", ...args] = part.trim().split(/\s+/);
       // verid's status commands only read; `menu --file` writes a review packet.
       if (program === "verid")
-        return /^(?:context|menu|peek|usage)$/.test(args[0] ?? "") && !args.includes("--file");
+        return (
+          /^(?:context|doctor|menu|peek|usage)$/.test(args[0] ?? "") && !args.includes("--file")
+        );
       return READ_PROGRAMS.has(program);
     })
   );

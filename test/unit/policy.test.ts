@@ -395,6 +395,11 @@ describe("decide: file tools", () => {
       ],
       [`rg -n step ${skill}`, ALLOW],
       [`Get-Content ${skill}; verid context; verid menu; verid peek`, ALLOW],
+      [
+        `Get-Content -LiteralPath '.verid/workflow.md'; Get-Content -LiteralPath ${skill}; verid doctor; verid menu; verid peek`,
+        ALLOW,
+      ],
+      [`cat ${skill} && verid doctor --ci && verid menu && verid peek`, ALLOW],
       [`cat ${skill}; verid menu --commits --file`, HOOK],
       [`cat ${skill}; verid order x`, HOOK],
       [`verid tip "let me edit the test"`, "VERID_BURNT_BASH_DEVELOPER_ONLY"],
