@@ -1,0 +1,19 @@
+{
+  "name": "docs-seeker-scripts",
+  "version": "3.0.0",
+  "description": "Documentation discovery scripts for docs-seeker skill",
+  "private": true,
+  "keywords": [
+    "documentation",
+    "llms.txt",
+    "context7",
+    "docs-discovery"
+  ],
+  "author": "ClaudeKit",
+  "license": "MIT",
+  "dependencies": {},
+  "devDependencies": {},
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "title": "Receipt",
+  "family": "tools",
+  "parent": "calc",
+  "behaviors": [
+    { "input": "total of 2 items at 5", "result": "10" },
+    { "input": "empty basket", "result": "0" }
+  ]
+}

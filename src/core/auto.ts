@@ -1,0 +1,348 @@
+import { canonicalJson } from "./canonical-json.js";
+import type { MessageKey } from "./errors.js";
+import {
+  acsInName,
+  moduleProblem,
+  modulePhases,
+  openModule,
+  PRODUCT,
+  uncoveredAcs,
+  type Approval,
+  type Evidence,
+  type ModuleView,
+  type PlanModule,
+} from "./plan.js";
+import type { Roles } from "./manifest.js";
+import type { AutoState, State } from "./state.js";
+
+/** Stop holds the agent this many times in a row with no progress, then lets it stop. */
+export const LIMIT = 3;
+
+export type Verdict = "pass" | "fail";
+
+// The verdict sits alone on its line, so prose that merely mentions one does not count; a bold
+// label or value, a quote mark or a list dash around it does. `pass | fail`, the template's own
+// line, matches neither.
+const VERDICT = /^[ \t>*_-]*verdict[*_]*[ \t]*:[*_ \t]*(pass|fail)[*_ \t.]*$/gim;
+
+/** The last `Verdict: pass|fail` line of a reviewer's report; fail when it has none. */
+export function parseVerdict(report: string): Verdict {
+  const last = [...report.replace(/\r/g, "").matchAll(VERDICT)].pop();
+  return last?.[1]?.toLowerCase() === "pass" ? "pass" : "fail";
+}
+
+/** Why an auto drive cannot start building from this plan, or null when it can. */
+export function autoPlanProblem(modules: readonly PlanModule[]): string | null {
+  if (!modules.some((m) => m.name === PRODUCT)) return "the plan has no product module";
+  if (modules[modules.length - 1]?.name !== PRODUCT) return "the product module must come last";
+  for (const m of modules) {
+    const problem = moduleProblem(m);
+    if (problem !== null) return `${m.name}: ${problem}`;
+  }
+  return null;
+}
+
+/** When the module was served for the section the plan has now; null otherwise. */
+const servedAt = (
+  name: string,
+  hashes: Readonly<Record<string, string>>,
+  approvals: Readonly<Record<string, Approval>>,
+): string | null => {
+  const approval = approvals[name];
+  return approval !== undefined && approval.sha256 === hashes[name] ? approval.served_at : null;
+};
+
+/**
+ * Where each module stands when auto orders them itself: in plan order, the first one not served
+ * is the one being built, and every module after it waits. The product module says the whole
+ * product works, so it stands only when served last: a module served after it opens it again.
+ * Design changes are audited separately and never alter a module phase.
+ */
+export function autoModules(
+  modules: readonly PlanModule[],
+  hashes: Readonly<Record<string, string>>,
+  approvals: Readonly<Record<string, Approval>>,
+  evidence: Pick<Evidence, "passedAcs" | "passedE2eAcs">,
+): ModuleView[] {
+  const at = modules.map((m) => servedAt(m.name, hashes, approvals));
+  const p = modules.findIndex((m) => m.name === PRODUCT);
+  const productAt = at[p] ?? null;
+  if (productAt !== null && at.some((t, i) => i !== p && (t === null || t > productAt)))
+    at[p] = null;
+  const first = at.indexOf(null);
+  return modules.map(({ name, acs, e2e }, i) => {
+    const uncovered = uncoveredAcs(acs, e2e, evidence);
+    const phase =
+      at[i] !== null
+        ? "done"
+        : i > first
+          ? "planned"
+          : uncovered.length > 0
+            ? "cooking"
+            : "evaluating";
+    return {
+      name,
+      phase,
+      acs,
+      uncovered,
+      designChanged: false,
+      servedAt: phase === "done" ? (at[i] ?? null) : null,
+    };
+  });
+}
+
+/**
+ * Served modules whose section differs from the one served: edited after the fact, or gone from
+ * the plan (renamed or deleted), which has a hash for each module it holds.
+ */
+export function changedServed(
+  hashes: Readonly<Record<string, string>>,
+  approvals: Readonly<Record<string, Approval>>,
+): string[] {
+  return Object.entries(approvals)
+    .filter(([name, a]) => a.served_at !== null && a.sha256 !== hashes[name])
+    .map(([name]) => name);
+}
+
+type StuckReason = "blocked" | "reheat_gate";
+
+type AutoPlanRead =
+  | { ok: true; modules: PlanModule[]; hashes: Record<string, string> }
+  | { ok: false; detail: string }
+  | null; // no plan.md
+
+/** Everything auto decides from, read by the caller: this file does no I/O. */
+export interface AutoFacts {
+  /** The coordinator delegates modules; a station evaluates only its own module. */
+  parallel?: boolean;
+  station?: string;
+  auto: AutoState;
+  researchHash: string | null;
+  specHash: string | null;
+  designHash: string | null;
+  /** sha256 of plan.md's bytes; null when it is missing. */
+  planHash: string | null;
+  plan: AutoPlanRead;
+  approvals: Readonly<Record<string, Approval>>;
+  evidence: Pick<Evidence, "passedAcs" | "passedE2eAcs">;
+  /** Trimmed text of `.verid/blocked.md`; null when it is missing or empty. */
+  blockedFile: string | null;
+  /**
+   * Mode reheat: the units whose gate has not passed on what they hold now, and the ones with no
+   * parity signature. Absent in every other mode.
+   */
+  reheat?: { ungated: ReadonlySet<string>; unsigned: ReadonlySet<string> };
+}
+
+export type AutoPhase =
+  | { kind: "stations" }
+  /** `planned`: a `.verid/plan.md` is already written, as when a drive switches to no-brain. */
+  | { kind: "unsigned"; planned?: boolean }
+  | { kind: "stuck"; reason: StuckReason; detail: string }
+  | { kind: "plan"; missing: boolean; problem: string | null }
+  | { kind: "module"; view: ModuleView }
+  | { kind: "done" };
+
+/**
+ * Where an auto drive stands, the first that applies: not signed yet (verid signs research and
+ * design itself once both exist); blocked by the agent's own `.verid/blocked.md`; the plan not yet
+ * written or passed by the reviewer (and unchanged since); a module to build; done. No count and
+ * no edit stops the drive: failed rounds and reviews only shape the next step, and a served
+ * module whose section changed opens again.
+ */
+export function autoPhase(f: AutoFacts): AutoPhase {
+  const { auto, plan } = f;
+  if (auto.signed === null) return { kind: "unsigned", planned: plan !== null };
+  if (f.blockedFile !== null) return { kind: "stuck", reason: "blocked", detail: f.blockedFile };
+  if (plan === null) return { kind: "plan", missing: true, problem: null };
+  if (!plan.ok) return { kind: "plan", missing: false, problem: plan.detail };
+  const problem = autoPlanProblem(plan.modules);
+  if (problem !== null || auto.plan_sha256 === null || auto.plan_sha256 !== f.planHash)
+    return { kind: "plan", missing: false, problem };
+  if (f.parallel) return { kind: "stations" };
+  if (f.station) {
+    const module = plan.modules.find((module) => module.name === f.station);
+    if (!module) return { kind: "stuck", reason: "blocked", detail: "station module is missing" };
+    const view = modulePhases([module], plan.hashes, f.approvals, {
+      ...f.evidence,
+      designHash: f.designHash,
+    })[0]!;
+    return view.phase === "done" ? { kind: "done" } : { kind: "module", view };
+  }
+  const view = openModule(autoModules(plan.modules, plan.hashes, f.approvals, f.evidence));
+  if (view === undefined) return { kind: "done" };
+  // A legacy unit opens only once the adapter's gate passed on its current spec.
+  if (f.reheat?.ungated.has(view.name))
+    return { kind: "stuck", reason: "reheat_gate", detail: view.name };
+  return { kind: "module", view };
+}
+
+/**
+ * The rounds each AC has had after a coder stopped: one a red test still names has had one more
+ * round, however many red tests name it, even when another test of it passes; an AC that passes
+ * with no red test left starts over. A new object, never the one given: state shares the
+ * default, and a count written into it would leak into other projects.
+ */
+export function coderRoundsAfter(
+  rounds: Readonly<Record<string, number>>,
+  redTestIds: readonly string[],
+  passedAcs: readonly string[],
+): Record<string, number> {
+  const red = new Set(redTestIds.flatMap(acsInName));
+  const next = Object.fromEntries(
+    Object.entries(rounds).filter(([ac]) => red.has(ac) || !passedAcs.includes(ac)),
+  );
+  for (const ac of red) next[ac] = (next[ac] ?? 0) + 1;
+  return next;
+}
+
+/**
+ * The clean-tree answer once signing has said whether the project uses git: a project signed inside
+ * a repository does not lose the check by losing the repository, which counts as not clean. null
+ * (no git to ask, skip the check) only for a project signed outside git.
+ */
+export function gitCleanOf(view: { clean: boolean } | null, signedInGit: boolean): boolean | null {
+  return view !== null ? view.clean : signedInGit ? false : null;
+}
+
+/** Every repository keeps option-C semantics, including one removed from the manifest. */
+export function gitCleanAcross(
+  views: Readonly<Record<string, { clean: boolean } | null>>,
+  signed: Readonly<Record<string, boolean>>,
+): boolean | null {
+  let result: boolean | null = null;
+  for (const repo of new Set([...Object.keys(views), ...Object.keys(signed)])) {
+    const clean = gitCleanOf(views[repo] ?? null, signed[repo] ?? false);
+    if (clean === false) return false;
+    if (clean === true) result = true;
+  }
+  return result;
+}
+
+/**
+ * Close on passing ACs, current passing test evidence and passing required reviews. Hook-observed
+ * code/test writes clear reviews and dirty the evidence; convention audits never feed this gate.
+ */
+export function closeReady(
+  view: ModuleView,
+  tdd: Pick<State["tdd"], "last_run" | "failing" | "dirty">,
+  review: State["review"],
+  security?: State["security"],
+): boolean {
+  return (
+    view.phase === "evaluating" &&
+    tdd.last_run !== null &&
+    tdd.failing.length === 0 &&
+    !tdd.dirty &&
+    passed(review, view.name) &&
+    (security === undefined || passed(security, view.name))
+  );
+}
+
+const passed = (report: State["review"], module: string): boolean =>
+  report?.module === module && report.verdict === "pass";
+const failed = (report: State["review"], module: string): boolean =>
+  report?.module === module && report.verdict === "fail";
+
+/**
+ * The security report as the gates take it: undefined when no security reviewer is mapped, so
+ * none is needed; null when one is mapped and has not reported yet.
+ */
+export const securityOf = (
+  state: Pick<State, "security">,
+  roles: Roles | undefined,
+): State["security"] | undefined => (roles?.security ? state.security : undefined);
+
+/**
+ * What has progressed, as a string: equal while the outcome is. Time, order and the number of
+ * holds are not outcomes, so they stay out; a counter is, because a failed round or review is a
+ * change the drive can act on.
+ */
+export function progressKey(f: {
+  tdd: Pick<State["tdd"], "state" | "stub" | "failing" | "passed_acs">;
+  planHash: string | null;
+  auto: AutoState;
+  served: readonly string[];
+  head: string | null;
+}): string {
+  const { tdd, auto } = f;
+  return canonicalJson({
+    state: tdd.state,
+    stub: tdd.stub,
+    failing: [...tdd.failing].sort(),
+    passed: [...tdd.passed_acs].sort(),
+    planHash: f.planHash,
+    plan: auto.plan_sha256,
+    served: [...f.served].sort(),
+    head: f.head,
+    plan_reviews: auto.plan_reviews,
+    coder_rounds: auto.coder_rounds,
+    module_reviews: auto.module_reviews,
+    security_reviews: auto.security_reviews,
+  });
+}
+
+/** The hold count after Stop held again: one more while the key is the last one, else from zero. */
+export function stopHolds(auto: AutoState, key: string): { stop_holds: number; progress: string } {
+  return { stop_holds: auto.progress === key ? auto.stop_holds + 1 : 0, progress: key };
+}
+
+/**
+ * The one thing to do next. Role names ({tester}, {coder}, {reviewer}) are not params here: the
+ * hook adds them where the project maps agents. An architecture check that has not passed on the
+ * files as they are comes before the review, since fixing it voids a review. From the second failed
+ * review of the module, the fix starts from the read-only debugger's root cause; the limit stays.
+ */
+export function autoNextStep(
+  phase: AutoPhase,
+  hasResearch: boolean,
+  hasDesign: boolean,
+  review: State["review"],
+  security?: State["security"],
+  hasSpec = true,
+  failedReviews = 0,
+): { key: MessageKey; params: Record<string, string> } {
+  switch (phase.kind) {
+    case "stations":
+      return { key: "auto.stations", params: {} };
+    case "unsigned":
+      return {
+        key: !hasResearch
+          ? "menu.research"
+          : !hasDesign && !hasSpec
+            ? "menu.spec"
+            : !hasDesign
+              ? "menu.design"
+              : phase.planned
+                ? "auto.adopt"
+                : "auto.plan",
+        params: {},
+      };
+    case "stuck":
+      return { key: `auto.stuck.${phase.reason}`, params: { detail: phase.detail } };
+    case "plan":
+      if (phase.missing) return { key: "auto.plan", params: {} };
+      return phase.problem === null
+        ? { key: "auto.plan_review", params: {} }
+        : { key: "auto.plan_fix", params: { detail: phase.problem } };
+    case "module": {
+      const { name, phase: at } = phase.view;
+      // A failed review stands until the next write, which is the start of its fix.
+      if (failed(review, name))
+        return {
+          key: failedReviews >= 2 ? "auto.fix_debug" : "auto.fix",
+          params: { module: name },
+        };
+      if (security !== undefined && failed(security, name))
+        return { key: "auto.security_fix", params: { module: name } };
+      if (at === "cooking") return { key: "menu.cook", params: { module: name } };
+      if (!passed(review, name)) return { key: "auto.review", params: { module: name } };
+      // The security reviewer reads the module once the reviewer has passed it.
+      if (security !== undefined && !passed(security, name))
+        return { key: "auto.security", params: { module: name } };
+      return { key: "auto.review", params: { module: name } };
+    }
+    case "done":
+      return { key: "auto.done", params: {} };
+  }
+}

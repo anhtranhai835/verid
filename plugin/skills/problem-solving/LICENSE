@@ -1,0 +1,4 @@
+ClaudeKit problem-solving skill, version 2.0.0, adapted for verid.
+Source: the user's installed ClaudeKit Engineer skill at ~/.claude/skills/problem-solving/.
+The techniques derive from Microsoft Amplifier (https://github.com/microsoft/amplifier), commit 2adb63f858e7d760e188197c8e8d4c1ef721e2a6, licensed under MIT.
+The reference files are copied from ClaudeKit; SKILL.md is rewritten to fit verid's workflow.

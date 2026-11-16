@@ -1,0 +1,71 @@
+{
+  "name": "@anhtranhai835/verid",
+  "version": "1.0.0",
+  "publishConfig": {
+    "access": "public"
+  },
+  "description": "Evidence-verified, hook-enforced TDD harness for Claude Code and Codex",
+  "author": "Anh Tran",
+  "license": "MIT",
+  "type": "module",
+  "keywords": [
+    "claude-code",
+    "tdd",
+    "test-driven-development",
+    "hooks",
+    "superpowers"
+  ],
+  "homepage": "https://github.com/anhtranhai835/verid#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/anhtranhai835/verid.git"
+  },
+  "bugs": {
+    "url": "https://github.com/anhtranhai835/verid/issues"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "bin": {
+    "verid": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "i18n",
+    "plugin/skills",
+    "!plugin/skills/*/scripts/tests",
+    "!plugin/skills/**/.env*",
+    "plugin/agents",
+    "plugin/codex",
+    "plugin/templates",
+    "docs",
+    "README.vi.md",
+    "CHANGELOG.md"
+  ],
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome lint .",
+    "deadcode": "knip",
+    "graphify:build": "graphify extract . --code-only --max-workers 1 --no-cluster && graphify cluster-only . --no-label",
+    "graphify:query": "graphify query",
+    "graphify:watch": "graphify watch .",
+    "test": "npm run build && vitest run --exclude test/e2e/installers.e2e.test.ts",
+    "test:full": "npm run build && vitest run",
+    "test:coverage": "npm run build && vitest run --coverage",
+    "format": "prettier --write ."
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.6.7",
+    "@types/node": "^22.20.5",
+    "@vitest/coverage-v8": "^5.0.5",
+    "esbuild": "^0.28.2",
+    "fast-xml-parser": "^5.11.2",
+    "knip": "^6.45.1",
+    "prettier": "^3.9.10",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5",
+    "yaml": "^2.9.1",
+    "zod": "^4.6.7"
+  }
+}

@@ -1,0 +1,196 @@
+# Every test of the repo with a coverage floor, on Windows: verid's main platform, and the one
+# the recorded hook payloads in test/e2e/hook.e2e.test.ts come from. The full suite also runs on
+# Ubuntu with Node 22 for every push and pull request, so Linux failures surface before a release
+# tag. Node 24 and macOS run by hand and before a release to cover the broader platform matrix.
+name: CI
+
+# Branches run through their pull request; pushes run only on main, so a PR is tested once.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  # release.yml runs these same checks before it packages a tag.
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Each check is its own job, so a failure names what broke. Typecheck and format do not depend
+  # on the system, so they run on Linux minutes.
+  typecheck:
+    name: Typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+
+  # Lint (Biome) and unused files, exports and dependencies (knip): neither depends on the system.
+  lint:
+    name: Lint and dead code
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run deadcode
+
+  format:
+    name: Format
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx prettier --check .
+
+  # The Windows suite is the slowest job, so it runs in three shards. The sequencer in
+  # vitest.config.ts gives installers, station, and doctor with tdd a shard each.
+  test-shard:
+    name: Windows tests, shard ${{ matrix.shard }}/3
+    runs-on: windows-latest
+    timeout-minutes: 30
+    strategy:
+      matrix:
+        shard: [1, 2, 3]
+    steps:
+      # Byte-exact checkout: the runner's default CRLF conversion would change hashed and
+      # size-budgeted files.
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      # Unit, end-to-end and installer tests (install.ps1 and install.sh via Git Bash). The blob
+      # holds this shard's results and coverage for the merge job. A shard covers only part of
+      # src/, so its floors are off here; the merge job applies them to the whole.
+      - run: >-
+          npx vitest run --coverage --shard=${{ matrix.shard }}/3 --reporter=blob
+          --coverage.thresholds.lines=0 --coverage.thresholds.statements=0
+          --coverage.thresholds.branches=0 --coverage.thresholds.functions=0
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: vitest-blob-${{ matrix.shard }}
+          path: .vitest/blob/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 1
+
+  # Merges the shards' results and fails when coverage of src/ drops under the thresholds in
+  # vitest.config.ts. On Windows, because the blobs hold the shards' Windows source paths.
+  test:
+    name: All tests and coverage (Windows)
+    needs: test-shard
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: vitest-blob-*
+          path: .vitest/blob
+          merge-multiple: true
+      - run: npx vitest --merge-reports --coverage
+
+  linux:
+    name: All tests (Ubuntu), then the packed tarball
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npx vitest run
+      - name: Install the packed tarball and run it in a fresh repository
+        run: |
+          npm pack --ignore-scripts
+          npm install -g --prefix "$RUNNER_TEMP/prefix" ./*.tgz
+          export PATH="$RUNNER_TEMP/prefix/bin:$PATH"
+          cd "$(mktemp -d)"
+          git init -q
+          verid --help
+          verid cook --mode prep --provider claude-code --dry-run --yes
+
+  posix:
+    name: Tests on ${{ matrix.os }}, Node ${{ matrix.node }}
+    # By hand, and from release.yml on a version tag or its own manual run.
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            node: 24
+          # macOS minutes cost ten times Linux, and Ubuntu already runs the full suite on POSIX.
+          # macOS runs what differs there: the case-insensitive file system, the /var symlink
+          # under the temp folder, the BSD tools install.sh calls, and the gate tests.
+          - os: macos-latest
+            node: 22
+            tests: >-
+              test/e2e/tdd.e2e.test.ts
+              test/e2e/hook.e2e.test.ts
+              test/e2e/review-freshness.e2e.test.ts
+              test/e2e/provider-security.e2e.test.ts
+              test/e2e/case-insensitive-paths.e2e.test.ts
+              test/e2e/install.e2e.test.ts
+              test/e2e/installers.e2e.test.ts
+              test/e2e/init.e2e.test.ts
+              test/e2e/setup.e2e.test.ts
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npx vitest run ${{ matrix.tests }}

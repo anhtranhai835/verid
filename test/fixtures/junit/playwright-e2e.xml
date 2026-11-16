@@ -1,0 +1,6 @@
+<testsuites id="" name="" tests="1" failures="0" skipped="0" errors="0" time="0.71">
+<testsuite name="e2e\calc.spec.ts" timestamp="2026-10-22T09:00:00.000Z" hostname="" tests="1" failures="0" skipped="0" time="0.01" errors="0">
+<testcase name="AC-2 logs in" classname="e2e\calc.spec.ts" time="0.009">
+</testcase>
+</testsuite>
+</testsuites>

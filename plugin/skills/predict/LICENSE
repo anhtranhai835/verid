@@ -1,0 +1,4 @@
+ClaudeKit ck:predict skill, version 1.0.0, adapted for verid.
+Source: the user's installed ClaudeKit Engineer skill at ~/.claude/skills/ck-predict/.
+The original skill attributes its multi-persona prediction pattern to Udit Goenka's autoresearch (https://github.com/uditgoenka/autoresearch), licensed under MIT.
+This verid adaptation retains the five perspectives and the risk verdict, and omits ClaudeKit-only chain modes and commands.

@@ -1,0 +1,5 @@
+{
+  "title": "Calculator",
+  "family": "tools",
+  "behaviors": [{ "input": "1 + 2", "result": "3" }]
+}

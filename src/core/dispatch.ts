@@ -1,0 +1,104 @@
+import type { Manifest } from "./manifest.js";
+import type { PolicyDecision, RuleCode } from "./errors.js";
+
+const DEFAULT_ALLOWED_SKILLS = ["verid:*"] as const;
+const DEFAULT_ALLOWED_AGENTS = [
+  "verid:brainstormer",
+  "verid:technical-researcher",
+  "verid:code-simplifier",
+  "verid:docs-manager",
+  "verid:ui-ux-designer",
+  "verid:project-manager",
+  "verid:debugger",
+] as const;
+type DispatchManifest = Pick<Manifest, "roles" | "allowed_skills" | "allowed_agents" | "resources">;
+
+export const skillAllowlist = (manifest?: DispatchManifest | null): string[] => [
+  ...DEFAULT_ALLOWED_SKILLS,
+  ...(manifest?.allowed_skills ?? []),
+];
+const agentAllowlist = (manifest?: DispatchManifest | null): string[] => [
+  ...new Set([
+    ...DEFAULT_ALLOWED_AGENTS.map((name) =>
+      manifest?.resources === "repo" ? name.replace(/^verid:/, "verid-") : name,
+    ),
+    ...Object.values(manifest?.roles ?? {}).flatMap((agents) => agents ?? []),
+    ...(manifest?.allowed_agents ?? []),
+  ]),
+];
+
+/** Additive dispatch rules: existing path, shell, role and TDD decisions still apply. */
+export function decideDispatch(
+  tool: string,
+  input: Record<string, unknown>,
+  manifest: DispatchManifest | null,
+  lifted: ReadonlySet<RuleCode>,
+): PolicyDecision {
+  const skill = tool === "Skill";
+  if (!skill && tool !== "Agent" && tool !== "Task")
+    return { kind: "allow", reason: "not a dispatch" };
+  const code = skill ? "VERID_BURNT_SKILL_NOT_ALLOWED" : "VERID_BURNT_AGENT_NOT_ALLOWED";
+  const name = input[skill ? "skill" : "subagent_type"];
+  const dispatched =
+    skill && manifest?.resources === "repo" && typeof name === "string"
+      ? name.replace(/^verid-/, "verid:")
+      : name;
+  const list = skill ? skillAllowlist(manifest) : agentAllowlist(manifest);
+  const allowed =
+    typeof name === "string" &&
+    name !== "" &&
+    list.some((entry) =>
+      skill && entry.endsWith(":*")
+        ? typeof dispatched === "string" &&
+          dispatched.startsWith(entry.slice(0, -1)) &&
+          dispatched.length > entry.length - 1
+        : name === entry,
+    );
+  if (allowed || lifted.has(code)) return { kind: "allow", reason: "allowed dispatch" };
+  return {
+    kind: "deny",
+    code,
+    target: `${typeof name === "string" && name !== "" ? name : "<missing>"}; ${skill ? "allowed_skills" : "roles + allowed_agents"}: ${list.join(", ") || "(empty)"}`,
+    reason: "dispatch outside the developer's allowlist",
+  };
+}
+
+/** A reviewer starts with only the requested ACs, design path and diff. */
+export function decideAgentContext(
+  type: unknown,
+  context: unknown,
+  reviewers: readonly string[],
+): PolicyDecision {
+  return typeof type === "string" && reviewers.includes(type) && context !== "none"
+    ? {
+        kind: "deny",
+        code: "VERID_BURNT_AGENT_CONTEXT",
+        target: type,
+        reason: "reviewer requires fork_turns none",
+      }
+    : { kind: "allow", reason: "fresh reviewer context" };
+}
+
+/** Unknown host tools cannot acquire write or dispatch permissions by default. */
+// Codex tools that hand a running agent more of main's words. verid's agents there are read-only
+// reviewers spawned fresh (fork_turns "none"); later messages would carry the builder's view.
+const REVIEWER_CONTEXT = new Set(["collaborationsend_message", "collaborationfollowup_task"]);
+
+export function decideKnownTool(
+  tool: string,
+  known: readonly string[],
+  fromSubagent = false,
+): PolicyDecision {
+  if (tool.startsWith("mcp__") || known.includes(tool))
+    return { kind: "allow", reason: "known tool" };
+  // A spawned reviewer reporting back sends no builder context into a review.
+  if (fromSubagent && tool === "collaborationsend_message")
+    return { kind: "allow", reason: "subagent reports to main" };
+  return {
+    kind: "deny",
+    code: "VERID_BURNT_TOOL_UNSUPPORTED",
+    target: tool,
+    reason: "unknown tool",
+    params: { detail_key: REVIEWER_CONTEXT.has(tool) ? "tool.reviewer_context" : "tool.unknown" },
+  };
+}

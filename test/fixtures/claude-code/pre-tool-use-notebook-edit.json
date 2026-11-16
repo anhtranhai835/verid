@@ -1,0 +1,20 @@
+{
+  "session_id": "{{SESSION_ID}}",
+  "transcript_path": "{{TRANSCRIPT_PATH}}",
+  "cwd": "{{CWD}}",
+  "scratchpad_dir": "{{SCRATCHPAD_DIR}}",
+  "prompt_id": "709a82a9-1639-4bfe-9967-d0186b8818f9",
+  "permission_mode": "acceptEdits",
+  "effort": {
+    "level": "medium"
+  },
+  "hook_event_name": "PreToolUse",
+  "tool_name": "NotebookEdit",
+  "tool_input": {
+    "notebook_path": "{{CWD}}\\nb.ipynb",
+    "cell_id": "cell-0",
+    "new_source": "print(2)",
+    "edit_mode": "replace"
+  },
+  "tool_use_id": "toolu_01Gz8jyE8eyGVD7oKGo24aY8"
+}

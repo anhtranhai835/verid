@@ -1,0 +1,13 @@
+{
+  "name": "sample",
+  "version": "1.0.0",
+  "veridApi": "1",
+  "description": "Append workflow events to the shared plugin log",
+  "requires": [{ "bin": "node", "version": ">=22.0.0" }],
+  "hooks": {
+    "after-order": "node hook.mjs",
+    "on-state": "node hook.mjs",
+    "after-serve": "node hook.mjs"
+  },
+  "config": {}
+}

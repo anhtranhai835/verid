@@ -1,0 +1,1 @@
+{"session_id":"01a17293-7185-7a90-99a8-ff0baefaba9a","turn_id":"01a17293-73aa-7cf2-bd54-3025fde69a4e","transcript_path":null,"cwd":"{{CWD}}","hook_event_name":"PreToolUse","model":"gpt-6-luna","permission_mode":"bypassPermissions","tool_name":"collaborationwait_agent","tool_input":{"timeout_ms":30000},"tool_use_id":"call_0875ee3964ee406192c46caec62d85ab"}

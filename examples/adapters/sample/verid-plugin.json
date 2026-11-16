@@ -1,0 +1,17 @@
+{
+  "name": "screens",
+  "version": "1.0.0",
+  "veridApi": "1",
+  "description": "Sample reheat adapter for a fake screen format",
+  "requires": [{ "bin": "node", "version": ">=22.0.0" }],
+  "skills": ["skills/spec"],
+  "adapter": {
+    "unitKind": "screen",
+    "commands": {
+      "inventory": "node adapter.mjs inventory \"{legacyRoot}\"",
+      "extract": "node adapter.mjs extract \"{legacyRoot}\" {unit} \"{unitDir}\"",
+      "gate": "node adapter.mjs gate \"{legacyRoot}\" {unit} \"{specPath}\""
+    },
+    "skill": "spec"
+  }
+}

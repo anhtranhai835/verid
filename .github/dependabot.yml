@@ -1,0 +1,22 @@
+# Monthly update pull requests. Minor and patch updates come as one PR per ecosystem; a major
+# update gets its own PR. Each PR still has to pass CI; nothing merges automatically.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      npm-minor-and-patch:
+        update-types: [minor, patch]
+    ignore:
+      # The types describe the oldest Node verid runs on (engines in package.json), not the newest.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions-minor-and-patch:
+        update-types: [minor, patch]
