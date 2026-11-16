@@ -148,9 +148,14 @@ describe("verid doctor", () => {
     }
   });
   it("reports missing and edited managed instructions without changing the file", async () => {
+    // A block with sound markers that differs from this install's text is usually just older.
     const rows = [
-      { content: null },
-      { content: "developer text\n<!-- verid:begin -->\nedited\n<!-- verid:end -->\n" },
+      { content: null, says: "missing" },
+      {
+        content: "developer text\n<!-- verid:begin -->\nedited\n<!-- verid:end -->\n",
+        says: "differs from this verid's template",
+      },
+      { content: "<!-- verid:begin -->\nbroken", says: "malformed markers" },
     ];
     for (const row of rows) {
       healthy();
@@ -162,6 +167,7 @@ describe("verid doctor", () => {
       expect(r.code, r.err + r.out).toBe(1);
       expect(r.out).toContain("! instructions.CLAUDE.md:");
       expect(r.out).toContain("upgrade");
+      expect(r.out).toContain(row.says);
       expect(snapshot()).toEqual(before);
     }
   });

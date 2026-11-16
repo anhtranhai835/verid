@@ -233,8 +233,13 @@ export async function doctorCommand(project: string, ci = false): Promise<CliRes
       problem(`instructions.${file}`, "doctor.instructions.missing", "doctor.instructions.fix", {
         file,
       });
-    else if (!block.ok || block.block !== expected)
+    else if (!block.ok)
       problem(`instructions.${file}`, "doctor.instructions.edited", "doctor.instructions.fix", {
+        file,
+      });
+    // Sound markers around other text: the hook keeps agents out, so this is mostly an older verid.
+    else if (block.block !== expected)
+      problem(`instructions.${file}`, "doctor.instructions.outdated", "doctor.instructions.fix", {
         file,
       });
     else lines.push(say("doctor.instructions.ok", { file }));
