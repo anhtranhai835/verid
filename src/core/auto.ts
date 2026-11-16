@@ -136,7 +136,8 @@ export interface AutoFacts {
 
 export type AutoPhase =
   | { kind: "stations" }
-  | { kind: "unsigned" }
+  /** `planned`: a `.verid/plan.md` is already written, as when a drive switches to no-brain. */
+  | { kind: "unsigned"; planned?: boolean }
   | { kind: "stuck"; reason: StuckReason; detail: string }
   | { kind: "plan"; missing: boolean; problem: string | null }
   | { kind: "module"; view: ModuleView }
@@ -151,7 +152,7 @@ export type AutoPhase =
  */
 export function autoPhase(f: AutoFacts): AutoPhase {
   const { auto, plan } = f;
-  if (auto.signed === null) return { kind: "unsigned" };
+  if (auto.signed === null) return { kind: "unsigned", planned: plan !== null };
   if (f.blockedFile !== null) return { kind: "stuck", reason: "blocked", detail: f.blockedFile };
   if (plan === null) return { kind: "plan", missing: true, problem: null };
   if (!plan.ok) return { kind: "plan", missing: false, problem: plan.detail };
@@ -312,7 +313,9 @@ export function autoNextStep(
             ? "menu.spec"
             : !hasDesign
               ? "menu.design"
-              : "auto.plan",
+              : phase.planned
+                ? "auto.adopt"
+                : "auto.plan",
         params: {},
       };
     case "stuck":
