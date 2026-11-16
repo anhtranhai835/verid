@@ -487,6 +487,10 @@ describe("Codex hook transport and policy", () => {
       ["pwsh -EncodedCommand AAA=", "VERID_BURNT_SHELL_UNSUPPORTED"],
       ["[ScriptBlock]::Create($text)", "VERID_BURNT_SHELL_UNSUPPORTED"],
       ["& $program 'text'", "VERID_BURNT_SHELL_UNSUPPORTED"],
+      [
+        "$text = @'\nresearch\n'@\nSet-Content .verid/research.md $text",
+        "VERID_BURNT_SHELL_UNSUPPORTED",
+      ],
       ["codex exec 'write code'", "VERID_BURNT_BASH_NESTED_CODEX"],
       // Codex applies a patch handed to the shell from a workdir or `cd` the hook never sees, so
       // only the apply_patch tool, resolved against the hook's cwd, may carry one.
@@ -529,6 +533,11 @@ describe("Codex hook transport and policy", () => {
       else expect(reason(r), command).toContain(expected);
       if (expected === "VERID_BURNT_PATCH_UNSUPPORTED")
         expect(reason(r), command).toContain("apply_patch tool");
+      // Codex has no Bash tool: the way out is apply_patch.
+      if (expected === "VERID_BURNT_SHELL_UNSUPPORTED") {
+        expect(reason(r), command).toContain("apply_patch");
+        expect(reason(r), command).not.toContain("Bash tool");
+      }
     }
   });
   // Spawned: verid protects its own plugin folder next to the built hook, which only dist/ has.

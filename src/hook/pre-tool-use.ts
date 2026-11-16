@@ -201,7 +201,15 @@ export async function preToolUse(p: z.infer<typeof preToolUseSchema>): Promise<R
         ["unsupported", "VERID_BURNT_SHELL_UNSUPPORTED", "unreadable shell"],
       ] as const) {
         const target = adapted[field];
-        if (target) return { kind: "deny", code, target, reason };
+        // Only Codex's shell is adapted here, and Codex writes files with apply_patch, not Bash.
+        if (target)
+          return {
+            kind: "deny",
+            code,
+            target,
+            reason,
+            ...(field === "unsupported" && { params: { detail_key: "shell_unsupported.codex" } }),
+          };
       }
     }
     const instructions = decideInstructions(p, writes, project, lifted);

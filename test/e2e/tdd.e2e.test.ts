@@ -814,6 +814,7 @@ describe("the hook enforces the cycle", () => {
     const r = await hook(powershell);
     expect(r.code).toBe(2);
     expect(r.stderr).toContain("verid [VERID_BURNT_SHELL_UNSUPPORTED]");
+    expect(r.stderr).toContain("Use the Bash tool");
     const terminal = await hook(tool("mcp__terminal__run_in_terminal", { command: "verid order" }));
     expect(terminal.code).toBe(2);
     expect(terminal.stderr).toContain("verid [VERID_BURNT_SHELL_UNSUPPORTED]");

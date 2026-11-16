@@ -389,6 +389,13 @@ describe("decide: file tools", () => {
       [`cat ${skill}; node ${plugin}/skills/ba/x.js`, HOOK],
       [`cat ${skill} & node x.js`, HOOK],
       [`cat ${skill};`, HOOK],
+      [
+        `rg --files --hidden .verid/docs .verid/templates; Get-Content -Encoding UTF8 -LiteralPath ${skill}`,
+        ALLOW,
+      ],
+      [`rg -n step ${skill}`, ALLOW],
+      [`rg --pre ./x.sh step ${skill}`, HOOK],
+      [`rg --pre=./x.sh step ${skill}`, HOOK],
     ] as const;
     for (const [command, want] of rows) {
       const denied = codex("Bash", { command })

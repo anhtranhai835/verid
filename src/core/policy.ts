@@ -87,7 +87,13 @@ export function decide(
       "shell writes cannot be confined to a station",
     );
   if (action.kind === "shell" && !lifted.has("VERID_BURNT_SHELL_UNSUPPORTED"))
-    return deny("VERID_BURNT_SHELL_UNSUPPORTED", action.tool, "shell verid cannot read");
+    return {
+      kind: "deny",
+      code: "VERID_BURNT_SHELL_UNSUPPORTED",
+      target: action.tool,
+      reason: "shell verid cannot read",
+      params: { detail_key: "shell_unsupported.tool" },
+    };
   return allow("no rule for this tool");
 }
 
@@ -270,12 +276,14 @@ const READ_PROGRAMS = new Set([
   "dir",
   "test-path",
   "grep",
+  "rg",
   "findstr",
   "wc",
   "measure-object",
 ]);
 const plainRead = (c: string): boolean =>
-  !/[<>`$(){}\r\n]|(?<!&)&(?!&)/.test(c) &&
+  // rg --pre runs a program on every file it searches.
+  !/[<>`$(){}\r\n]|(?<!&)&(?!&)|\s--pre\b/.test(c) &&
   c.split(/;|&&|\|\|?/).every((command) => READ_PROGRAMS.has(command.trim().split(/\s+/)[0] ?? ""));
 
 // An exclusion filter only hides files: `rg --files -g '!.verid/.state/**'` reads nothing there.
