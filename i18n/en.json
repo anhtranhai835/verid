@@ -245,6 +245,7 @@
   "menu.iteration_late": "  {module} · iteration {number} · late",
   "auto.signed": "Research and design signed. Agents review the plan, then build, review and serve modules in order. verid also signs by itself whenever research or design changes; a change sends the plan back to review.",
   "auto.plan": "Next: write `.verid/plan.md` from the design (verid:plan): `## Module: <name>` per module in build order, `- AC-1: …` per criterion, `product` last with all ACs `(e2e)`. Answer each `[NEEDS CLARIFICATION]` yourself with the recommended option and a reason.",
+  "auto.adopt": "Next: no-brain adopts the existing `.verid/plan.md`. verid signs research, spec and design at the agent's next tool call; then the reviewer checks the plan against the design (verid:review), and no module opens until that review passes. Do not rewrite the plan.",
   "auto.plan_fix": "Next: fix `.verid/plan.md` ({detail}), then have the reviewer check it again. Until the plan passes review, no module is open.",
   "auto.plan_review": "Next: have reviewer ({reviewer}) check .verid/plan.md against .verid/design.md via verid:review. A reviewer shown as — needs roles.reviewer mapped; no module opens until the review passes.",
   "auto.review": "Next: review module {module} with reviewer ({reviewer}) via verid:review. Required passing reviews of the latest work let verid serve it; commits are advisory.",

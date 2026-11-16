@@ -35,7 +35,10 @@ const LEADING_NAME = /^\s*([A-Za-z_$][\w.$]*)\s*:/;
 // `SystemExit`, `DeprecationWarning`. Any other name (`failure`, `REQUIRE`) is the runner's own.
 const CRASH_NAME = /(Error|Exception|Exit|Warning|Interrupt)$/;
 const ASSERTION_LINE = /^\s*assert\b|expect\(|Snapshot .* mismatched/;
-const LOAD_ERROR = /Cannot find module|ModuleNotFoundError|ImportError/;
+// node:test names a test file that failed outside its tests (it could not load, as on
+// ERR_MODULE_NOT_FOUND) only `test failed`; the cause is on stderr, not in the report.
+const LOAD_ERROR =
+  /Cannot find module|ModuleNotFoundError|ImportError|^\s*(?:\[Error: )?test failed\b/;
 
 /**
  * Whether a failure reached an assertion, read from the report's tag (`<failure>` or `<error>`),

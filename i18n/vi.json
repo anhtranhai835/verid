@@ -245,6 +245,7 @@
   "menu.iteration_late": "  {module} · iteration {number} · trễ",
   "auto.signed": "Đã ký research và design. Agent review plan rồi build, review và đóng module theo thứ tự. verid cũng tự ký lại mỗi khi research hoặc design đổi; thay đổi đó đưa plan về review lại.",
   "auto.plan": "Tiếp theo: viết `.verid/plan.md` từ design (verid:plan): `## Module: <tên>` cho mỗi module theo thứ tự làm, `- AC-1: …` cho mỗi tiêu chí, `product` cuối cùng với mọi AC `(e2e)`. Tự trả lời mỗi `[NEEDS CLARIFICATION]` bằng phương án khuyến nghị kèm lý do.",
+  "auto.adopt": "Tiếp theo: no-brain dùng lại `.verid/plan.md` đã có. verid ký research, spec và design ở lần gọi tool kế tiếp của agent; sau đó reviewer kiểm plan so với design (verid:review), và không module nào mở cho tới khi review đó qua. Đừng viết lại plan.",
   "auto.plan_fix": "Tiếp theo: sửa `.verid/plan.md` ({detail}), rồi nhờ reviewer duyệt lại. Cho tới khi plan qua review, không có module nào mở.",
   "auto.plan_review": "Tiếp: nhờ reviewer ({reviewer}) kiểm .verid/plan.md theo .verid/design.md qua verid:review. Reviewer là — thì cần ánh xạ roles.reviewer; chưa module nào mở tới khi review pass.",
   "auto.review": "Tiếp: review module {module} với reviewer ({reviewer}) qua verid:review. Các review bắt buộc pass trên bản mới nhất thì verid đóng module; commit là quy ước.",

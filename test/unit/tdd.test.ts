@@ -127,6 +127,15 @@ describe("isAssertion: a failure that reached an assertion, not a test that coul
         false,
       ],
       ["vitest crash", "failure", "TypeError", "add is not a function", false],
+      // node:test reports a file that cannot load (ERR_MODULE_NOT_FOUND) only as the file failing.
+      ["node:test file that cannot load", "failure", "testCodeFailure", "test failed", false],
+      [
+        "node:test assertion",
+        "failure",
+        "testCodeFailure",
+        "Expected values to be strictly equal:\n\n2 !== 1",
+        true,
+      ],
       ["pytest assert", "failure", "", "assert add(1, 2) == 3", true],
       ["pytest collection error", "error", "", "collection failure", false],
       ["pytest NameError", "failure", "", "NameError: name 'add' is not defined", false],
