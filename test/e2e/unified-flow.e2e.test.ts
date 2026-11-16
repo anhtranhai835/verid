@@ -500,7 +500,12 @@ it("AC-28, AC-29, AC-30: upgrade is previewable and idempotent, fills partial te
     "Custom pending contract\n",
   );
   expect((await cli("menu")).stdout).toContain("served · done");
-  expect((await cli("doctor")).stdout).toContain("Module pending dossier is not ready");
+  const doctor = (await cli("doctor")).stdout;
+  expect(doctor).toContain("Module pending dossier is not ready");
+  // The fix names the dossier to finish; upgrading verid has nothing to do with a draft.
+  const finding = doctor.split("\n").find((l) => l.includes("Module pending dossier"));
+  expect(finding).toContain(".verid/artifacts/03-modules/pending/");
+  expect(finding).not.toContain("upgrade");
   const again = await planCook(project, { src: [], tests: [], upgrade: true }, true);
   expect(again.files.filter((file) => file.action !== "kept")).toEqual([]);
   for (const input of MODULE_INPUTS)

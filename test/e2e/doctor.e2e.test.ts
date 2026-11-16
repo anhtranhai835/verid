@@ -168,6 +168,11 @@ describe("verid doctor", () => {
       expect(r.out).toContain("! instructions.CLAUDE.md:");
       expect(r.out).toContain("upgrade");
       expect(r.out).toContain(row.says);
+      // Only broken or missing markers need a look at the file; an older block needs only upgrade.
+      const finding = r.out.split("\n").find((l) => l.startsWith("! instructions.CLAUDE.md:"));
+      expect(finding?.includes("Review the file"), row.says).toBe(
+        row.says !== "differs from this verid's template",
+      );
       expect(snapshot()).toEqual(before);
     }
   });

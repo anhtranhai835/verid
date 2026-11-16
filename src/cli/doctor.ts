@@ -239,9 +239,14 @@ export async function doctorCommand(project: string, ci = false): Promise<CliRes
       });
     // Sound markers around other text: the hook keeps agents out, so this is mostly an older verid.
     else if (block.block !== expected)
-      problem(`instructions.${file}`, "doctor.instructions.outdated", "doctor.instructions.fix", {
-        file,
-      });
+      problem(
+        `instructions.${file}`,
+        "doctor.instructions.outdated",
+        "doctor.instructions.upgrade",
+        {
+          file,
+        },
+      );
     else lines.push(say("doctor.instructions.ok", { file }));
   }
   for (const provider of ci ? [] : (manifest?.providers ?? [])) {
