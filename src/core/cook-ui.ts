@@ -1,3 +1,5 @@
+import { stripVTControlCharacters } from "node:util";
+
 /** A 24-bit colour: red, green, blue. */
 export type Rgb = [number, number, number];
 
@@ -108,6 +110,45 @@ export function usageLines(
     "",
     `   ${footer}`,
   ];
+}
+
+/** East Asian wide/fullwidth blocks, including supplementary CJK and Kana. */
+function isWide(code: number): boolean {
+  return (
+    (code >= 0x1100 && code <= 0x115f) ||
+    code === 0x2329 ||
+    code === 0x232a ||
+    (code >= 0x2e80 && code <= 0xa4cf && code !== 0x303f) ||
+    (code >= 0xa960 && code <= 0xa97c) ||
+    (code >= 0xac00 && code <= 0xd7a3) ||
+    (code >= 0xf900 && code <= 0xfaff) ||
+    (code >= 0xfe10 && code <= 0xfe19) ||
+    (code >= 0xfe30 && code <= 0xfe6f) ||
+    (code >= 0xff01 && code <= 0xff60) ||
+    (code >= 0xffe0 && code <= 0xffe6) ||
+    (code >= 0x16fe0 && code <= 0x18dff) ||
+    (code >= 0x1aff0 && code <= 0x1b2ff) ||
+    (code >= 0x1f200 && code <= 0x1f251) ||
+    (code >= 0x20000 && code <= 0x3fffd)
+  );
+}
+
+/** Screen rows occupied by newline-terminated lines; unknown terminal widths keep one per line. */
+export function screenRows(lines: readonly string[], columns?: number): number {
+  if (columns === undefined || !Number.isFinite(columns) || columns <= 0) return lines.length;
+  return lines.reduce((rows, line) => {
+    let width = 0;
+    const chars = [...stripVTControlCharacters(line)];
+    for (const [index, char] of chars.entries()) {
+      if (/\p{Mark}|\u200d/u.test(char)) continue;
+      const wide =
+        /\p{Emoji_Presentation}/u.test(char) ||
+        chars[index + 1] === "\ufe0f" ||
+        isWide(char.codePointAt(0)!);
+      width += wide ? 2 : 1;
+    }
+    return rows + Math.max(1, Math.ceil(width / columns));
+  }, 0);
 }
 
 /** The question and the keys to use, then numbered options with the selected one marked ❯. */

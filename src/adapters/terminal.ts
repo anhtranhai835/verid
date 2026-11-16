@@ -1,10 +1,10 @@
 import { createInterface } from "node:readline";
-import { keysOf, move, selectLines, type Option } from "../core/cook-ui.js";
+import { keysOf, move, screenRows, selectLines, type Option } from "../core/cook-ui.js";
 
 /** The developer's terminal: keys in, screen out, and whether colour may be used. */
 export interface Io {
   input: NodeJS.ReadableStream & { isTTY?: boolean; setRawMode?: (on: boolean) => unknown };
-  output: NodeJS.WritableStream;
+  output: NodeJS.WritableStream & { columns?: number };
   color: boolean;
   /** Where Ctrl+C arrives outside raw mode, as SIGINT: the process, in a real terminal. */
   interrupts?: NodeJS.EventEmitter;
@@ -28,7 +28,7 @@ export function select(
       const lines = selectLines(question, options, index, io.color);
       // Back to the first line of the last drawing, clear down, draw again.
       io.output.write(`${drawn > 0 ? `\x1b[${drawn}A\x1b[0J` : ""}${lines.join("\n")}\n`);
-      drawn = lines.length;
+      drawn = screenRows(lines, io.output.columns);
     };
     const done = (picked: number | null) => {
       io.input.removeListener("data", onData);

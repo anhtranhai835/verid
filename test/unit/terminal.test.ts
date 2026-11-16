@@ -37,6 +37,52 @@ describe("select: one option out of a list, with the arrow keys", () => {
     expect(t.text()).toContain("? Pick? (↑/↓, 1-2, Enter)\n  ❯ 1. a\n    2. b\n");
     expect(t.text()).toContain("\x1b[3A\x1b[0J? Pick? (↑/↓, 1-2, Enter)\n    1. a\n  ❯ 2. b\n");
   });
+
+  it("moves up by the occupied screen rows when a hint wraps", async () => {
+    const rows: [number | undefined, boolean, number][] = [
+      [32, false, 4],
+      [32, true, 4],
+      [16, false, 6],
+      [80, false, 3],
+      [undefined, false, 3],
+    ];
+    const got = [];
+    for (const [columns, color] of rows) {
+      const t = fakeTerminal();
+      Object.assign(t.io.output, { columns });
+      t.io.color = color;
+      const picked = select(
+        t.io,
+        "Ai đứng bếp?",
+        [{ label: "brain" }, { label: "no-brain", hint: "x".repeat(30) }],
+        0,
+      );
+      t.type("\x1b[B");
+      t.type("\r");
+      got.push([await picked, t.text().match(/\x1b\[(\d+)A\x1b\[0J/)?.[1]]);
+    }
+    expect(got).toEqual(rows.map(([, , want]) => [1, String(want)]));
+  });
+
+  it("reads terminal columns on every draw after a resize", async () => {
+    const t = fakeTerminal();
+    const output = Object.assign(t.io.output, { columns: 32 });
+    const picked = select(
+      t.io,
+      "Ai đứng bếp?",
+      [{ label: "brain" }, { label: "no-brain", hint: "x".repeat(30) }],
+      0,
+    );
+    for (const columns of [16, 80, 32]) {
+      output.columns = columns;
+      t.type("\x1b[B");
+    }
+    t.type("\r");
+    await picked;
+    expect([...t.text().matchAll(/\x1b\[(\d+)A\x1b\[0J/g)].map((m) => Number(m[1]))).toEqual([
+      4, 6, 3,
+    ]);
+  });
 });
 
 describe("ask: a line of free text", () => {

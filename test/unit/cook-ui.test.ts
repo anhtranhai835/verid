@@ -7,6 +7,7 @@ import {
   paint,
   parsePick,
   pickLines,
+  screenRows,
   selectLines,
   usageLines,
 } from "../../src/core/cook-ui.js";
@@ -27,6 +28,43 @@ describe("paint", () => {
       "\x1b[38;2;1;2;3mx\x1b[0m",
       "x",
     ]);
+  });
+});
+
+describe("screenRows: terminal rows occupied by a drawing", () => {
+  it("counts visible columns, ignoring ANSI escapes and combining marks", () => {
+    const rows: [string, readonly string[], number, number][] = [
+      ["plain wrapping", ["abcdef"], 4, 2],
+      ["ANSI colour", ["\x1b[38;2;255;165;0mabcdef\x1b[0m"], 4, 2],
+      ["ANSI hyperlink", ["\x1b]8;;https://example.com\x07abcdef\x1b]8;;\x07"], 4, 2],
+      ["emoji", ["🍳😀a"], 4, 2],
+      ["selection marker is one column", ["❯a"], 2, 1],
+      ["arrows are one column each", ["↑↓"], 2, 1],
+      ["text-default dingbat is one column", ["✂a"], 2, 1],
+      ["text-default heart is one column", ["❤a"], 2, 1],
+      ["emoji presentation is two columns", ["🍳a"], 2, 2],
+      ["VS16 selects two columns", ["❤️a"], 2, 2],
+      ["VS16 after a narrow symbol selects two columns", ["✂️a"], 2, 2],
+      ["East Asian wide and fullwidth", ["中한Ａ"], 4, 2],
+      ["supplementary CJK", ["𠀀a"], 2, 2],
+      ["Vietnamese precomposed", ["Ai đứng bếp?"], 12, 1],
+      ["Vietnamese combining marks", ["Ai đứng bếp?".normalize("NFD")], 12, 1],
+      ["exact multiple", ["abcdefgh"], 4, 2],
+      ["empty line", [""], 4, 1],
+      ["only colour and marks", ["\x1b[0m\u0301"], 4, 1],
+      ["multiple lines", ["abcde", "", "🍳😀"], 4, 4],
+      ["no lines", [], 4, 0],
+    ];
+    expect(rows.map(([name, lines, columns]) => [name, screenRows(lines, columns)])).toEqual(
+      rows.map(([name, , , want]) => [name, want]),
+    );
+  });
+
+  it("keeps one row per line when terminal columns are unknown or invalid", () => {
+    const columns = [undefined, 0, -1, Number.NaN, Number.POSITIVE_INFINITY];
+    expect(columns.map((width) => screenRows(["a".repeat(100), "🍳", ""], width))).toEqual(
+      columns.map(() => 3),
+    );
   });
 });
 

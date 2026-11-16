@@ -7,7 +7,7 @@
   "plugins": [
     {
       "name": "verid",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "source": "./plugin",
       "description": "Self-contained verid BA, onboard, design, planning, TDD, debugging and review skills with architect, planner, tester, coder, QA, reviewer and security agents"
     }

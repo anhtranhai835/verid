@@ -369,9 +369,38 @@ describe("decide: file tools", () => {
 
   it("lets the shell plainly read installed skills in protected folders, never write or run them", () => {
     const plugin = "c:/users/u/appdata/roaming/npm/node_modules/verid/plugin";
-    const guarded: PolicyContext = { ...ctx, protectedWriteDirs: [plugin] };
+    const installed = "C:/Users/Tranh/AppData/Roaming/npm/node_modules/@anhtranhai835/verid";
+    const guarded: PolicyContext = { ...ctx, protectedWriteDirs: [plugin, installed] };
     const skill = `'C:/Users/u/AppData/Roaming/npm/node_modules/verid/plugin/skills/ba/SKILL.md'`;
+    const inspection = [
+      `Get-Content -Raw -Encoding UTF8 '${installed}/plugin/templates/skill-routing.md'`,
+      `Get-Content -Raw -Encoding UTF8 '${installed}/plugin/skills/ba/SKILL.md'`,
+      "Get-Content -Raw -Encoding UTF8 '.verid/workflow.md'",
+      "verid doctor",
+      "verid context",
+      "verid menu",
+    ].join("\n");
     const rows = [
+      [inspection, ALLOW],
+      [inspection.toLowerCase(), ALLOW],
+      [inspection.replaceAll("/", "\\"), ALLOW],
+      [inspection.toLowerCase().replaceAll("/", "\\").replaceAll("\n", "\r\n"), ALLOW],
+      [`\n\n${inspection}\n\n`, ALLOW],
+      [inspection.replaceAll("\n", "\r\n\r\n"), ALLOW],
+      [`${inspection}\nSet-Content '${installed}/f' x`, HOOK],
+      [`${inspection}\ncp x '${installed}/f'`, HOOK],
+      [`${inspection}\nrm '${installed}/f'`, HOOK],
+      [`${inspection}\necho x > '${installed}/f'`, HOOK],
+      [`${inspection}\ncat < '${installed}/f'`, HOOK],
+      [`${inspection}\nverid menu --file`, HOOK],
+      [`${inspection}\nverid menu --file\nverid context`, HOOK],
+      [`${inspection}\ncat x \\\nrm '${installed}/f'`, HOOK],
+      [`${inspection}\nrg --pre=\\\ncat '${installed}/f'`, HOOK],
+      [`${inspection}\ncat x \\\ncat '${installed}/f'`, HOOK],
+      [`${inspection}\r\ncat x \\\r\ncat '${installed}/f'`, HOOK],
+      [`${inspection}\nGet-Content x \u0060\nSet-Content '${installed}/f' x`, HOOK],
+      [`cat ${skill}\rcat x`, HOOK],
+      [`cat ${skill}\ncat x;`, HOOK],
       [`Get-Content -LiteralPath ${skill}`, ALLOW],
       [`Get-Content -Raw ${skill} | Select-Object -First 40`, ALLOW],
       [`cat ${skill}`, ALLOW],
@@ -423,6 +452,14 @@ describe("decide: file tools", () => {
         ALLOW,
       ],
       ["Get-Content ~/.codex/verid-reviewer.toml", ALLOW],
+      ["cat .verid/manifest.yaml\nverid context\nverid menu", ALLOW],
+      ["\r\ncat .verid/manifest.yaml\r\n\r\nverid doctor\r\n", ALLOW],
+      ["cat .verid/manifest.yaml\necho x > .verid/manifest.yaml", MANIFEST],
+      ["cat .verid/manifest.yaml\nverid menu --file", MANIFEST],
+      ["cat .verid/manifest.yaml \\\ncat x", MANIFEST],
+      ["cat ~/.codex/verid-reviewer.toml\nverid context", ALLOW],
+      ["cat ~/.codex/verid-reviewer.toml\nSet-Content ~/.codex/config.toml x", HOOK],
+      ["cat ~/.codex/verid-reviewer.toml\nverid menu --file", HOOK],
       ["cat .verid/manifest.yaml 'x' | python", MANIFEST],
       ['cat .verid/manifest.yaml "$(rm x)"', MANIFEST],
       ["cat .verid/manifest.yaml 'a' > m.yaml", MANIFEST],

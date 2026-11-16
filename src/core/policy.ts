@@ -257,7 +257,7 @@ const PLUGIN_COMMAND =
   /(?:\bverid(?:@[^\s"'\\/]*)?(?:\.(?:cmd|ps1|exe|mjs))?|\bcli(?:\.js)?)["']?\s+(?:--\s+)?plugin\b/;
 
 // Codex has no file-read tool: it reads its installed skills through the shell. Commands that are
-// all plain read programs, chained by `;`, `&&`, `||` or pipes, with no redirect, variable,
+// all plain read programs, chained by newlines, `;`, `&&`, `||` or pipes, with no redirect, variable,
 // subshell or background job, write nothing.
 const READ_PROGRAMS = new Set([
   "get-content",
@@ -287,16 +287,21 @@ const plainRead = (command: string): boolean => {
   const c = command.toLowerCase().replace(/'[^']*'|"[^"$`]*"/g, "_");
   return (
     // rg --pre runs a program on every file it searches.
-    !/[<>`$(){}'"\r\n]|(?<!&)&(?!&)|\s--pre\b/.test(c) &&
-    c.split(/;|&&|\|\|?/).every((part) => {
-      const [program = "", ...args] = part.trim().split(/\s+/);
-      // verid's status commands only read; `menu --file` writes a review packet.
-      if (program === "verid")
-        return (
-          /^(?:context|doctor|menu|peek|usage)$/.test(args[0] ?? "") && !args.includes("--file")
-        );
-      return READ_PROGRAMS.has(program);
-    })
+    !/[<>`$(){}'"]|\r(?!\n)|\\\r?\n|(?<!&)&(?!&)|\s--pre\b/.test(c) &&
+    c
+      .split(/\r?\n/)
+      // Blank lines are harmless; empty commands around other operators remain rejected.
+      .filter((line) => line.trim() !== "")
+      .flatMap((line) => line.split(/;|&&|\|\|?/))
+      .every((part) => {
+        const [program = "", ...args] = part.trim().split(/\s+/);
+        // verid's status commands only read; `menu --file` writes a review packet.
+        if (program === "verid")
+          return (
+            /^(?:context|doctor|menu|peek|usage)$/.test(args[0] ?? "") && !args.includes("--file")
+          );
+        return READ_PROGRAMS.has(program);
+      })
   );
 };
 
