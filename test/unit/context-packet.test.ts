@@ -174,10 +174,21 @@ describe("context command and task prompt", () => {
     rmSync(join(p.root, ".verid/research.md"));
   });
 
-  it("fails shortly when no module is open or the module is unknown", async () => {
-    const none = await runCli(["context"]);
-    expect(none.exit).toBe(2);
-    expect(none.stderr.length).toBeLessThan(400);
+  it("gives the whole plan for review before any order, and fails shortly on an unknown module", async () => {
+    const plan = await runCli(["context"]);
+    expect(plan.exit, plan.stderr).toBe(0);
+    for (const part of [
+      "stage plan review",
+      ".verid/plan.md",
+      ".verid/spec.md",
+      ".verid/design.md",
+      "add: planned",
+      "sub: planned",
+      ".verid/artifacts/03-modules/sub/",
+    ])
+      expect(plan.stdout).toContain(part);
+    // The reviewer's snapshot before order is this packet, and menu --commits says so.
+    expect((await runCli(["menu", "--commits", "--file"])).stdout).toContain("verid context");
     expect((await runCli(["context", "nope"])).exit).toBe(2);
     expect((await runCli(["context", "sub", "--bad"])).exit).toBe(2);
   });
