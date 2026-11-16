@@ -287,6 +287,11 @@ describe("provider instruction blocks", () => {
         renderInstructions(parsed.manifest, provider).split("\n").includes(note),
       ),
     ).toEqual([false, true]);
+    // Codex cannot pick a plugin agent, so the design's fresh builder check names its reviewer.
+    const design = renderInstructions(parsed.manifest, "codex")
+      .split("\n")
+      .find((l) => l.startsWith("- Design: verid:design"));
+    expect(design).toContain("builder check: spawn verid_reviewer as for review");
   });
 
   it("gives the main thread alone a scoped, append-only verid feedback log", () => {

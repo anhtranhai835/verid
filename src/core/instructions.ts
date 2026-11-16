@@ -131,16 +131,16 @@ export function renderInstructions(
     "",
     "### Rules",
     codex
-      ? "- Codex hooks enforce TDD, gates and protected files as strictly as the host allows; run verid doctor and trust the hooks in /hooks."
+      ? "- Codex hooks enforce TDD, gates and protected files where the host allows; run verid doctor; trust them in /hooks."
       : "- Claude Code hooks enforce TDD (RAW → COOKING → PLATED), module approval, roles and protected files.",
     "- Never bypass a denial; follow its reason.",
     codex
-      ? "- Only the developer edits the manifest; /verid tip and /verid confirm have no effect on Codex; exceptions require Claude Code."
+      ? "- Only the developer edits the manifest; /verid tip and confirm do nothing; exceptions require Claude Code."
       : "- Only the developer edits the manifest or opens exceptions with /verid tip and /verid confirm.",
     manifest.resources === "repo"
       ? "- Read skills and agents from .verid/skills/ and .verid/agents/ in this repo. Local verid-<name> entries route there; calls written verid:<name> in those files mean verid-<name> here. Resolve supporting files relative to the repo copy."
       : single
-        ? "- Call the installed skills by absolute path; do not copy their text."
+        ? "- Call installed skills by absolute path; do not copy their text."
         : "- Call the installed skills; do not copy their text.",
     ...(manifest.resources === "repo"
       ? [
@@ -176,7 +176,7 @@ export function renderInstructions(
     ...(single
       ? [
           `- Research/spec: verid:ba → ${skill("ba")}.`,
-          `- Design: verid:design → ${skill("design")}.`,
+          `- Design: verid:design → ${skill("design")}; builder check: spawn verid_reviewer as for review.`,
           `- Plan: verid:plan → ${skill("plan")}.`,
           `- Build: verid:build → ${skill("build")}; the main agent writes tests and code under the TDD gate.`,
           `- TDD: verid:tdd → ${skill("tdd")}.`,
