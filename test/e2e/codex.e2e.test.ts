@@ -552,6 +552,11 @@ describe("Codex hook transport and policy", () => {
         expected,
       );
     }
+    // Codex has no read tool: it reads the installed skills AGENTS.md names through the shell.
+    const skill = join(ROOT, "plugin/skills/ba/SKILL.md").replaceAll("\\", "/");
+    expect(spawnHook(call("Bash", { command: `Get-Content -LiteralPath '${skill}'` })).stdout).toBe(
+      "",
+    );
     // Codex's home also keeps prompt history and thread databases beside the sessions.
     const reads = [
       [join(home, ".codex/auth.json"), "VERID_BURNT_SECRET_PROTECTED"],

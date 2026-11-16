@@ -250,6 +250,33 @@ const VERID_HOOK = /\bdist[\\/]+hook\b|\bhook\.js\b/;
 const PLUGIN_COMMAND =
   /(?:\bverid(?:@[^\s"'\\/]*)?(?:\.(?:cmd|ps1|exe|mjs))?|\bcli(?:\.js)?)["']?\s+(?:--\s+)?plugin\b/;
 
+// Codex has no file-read tool: it reads its installed skills through the shell. A pipeline of
+// plain read programs, with no redirect, variable, subshell or second command, writes nothing.
+const READ_PROGRAMS = new Set([
+  "get-content",
+  "gc",
+  "cat",
+  "type",
+  "head",
+  "tail",
+  "select-string",
+  "sls",
+  "select-object",
+  "select",
+  "get-childitem",
+  "gci",
+  "ls",
+  "dir",
+  "test-path",
+  "grep",
+  "findstr",
+  "wc",
+  "measure-object",
+]);
+const plainRead = (c: string): boolean =>
+  !/[;&<>`$(){}\r\n]/.test(c) &&
+  c.split("|").every((stage) => READ_PROGRAMS.has(stage.trim().split(/\s+/)[0] ?? ""));
+
 // In priority order, invariants first. Each rule gets the command lowercased.
 const BASH_RULES: [RuleCode, string, (command: string, ctx: PolicyContext) => boolean][] = [
   [
@@ -289,7 +316,7 @@ const BASH_RULES: [RuleCode, string, (command: string, ctx: PolicyContext) => bo
         c,
       ) ||
       /\.codex(?:[\\/]|$)/.test(c) ||
-      (ctx.protectedWriteDirs ?? []).some((p) => c.includes(slashPath(p))) ||
+      ((ctx.protectedWriteDirs ?? []).some((p) => c.includes(slashPath(p))) && !plainRead(c)) ||
       configMentions(
         c,
         ctx,
@@ -361,8 +388,12 @@ function decideBash(
       .replace(/(?<=[^/\s'"`;|&<>()])\/(?:\.?\/)+/g, "/");
     return [raw, ...shared, normalizedShare];
   });
-  for (const [code, reason, matches] of BASH_RULES)
-    if (!lifted.has(code) && forms.some((c) => matches(c, ctx))) return deny(code, target, reason);
+  const data = literalData(command);
+  const spoken = [data, unquote(data)].map((c) => c.toLowerCase());
+  for (const [code, reason, matches] of BASH_RULES) {
+    const texts = code.startsWith("VERID_BURNT_BASH_NESTED_") ? spoken : forms;
+    if (!lifted.has(code) && texts.some((c) => matches(c, ctx))) return deny(code, target, reason);
+  }
   const danger = lifted.has("VERID_BURNT_BASH_DANGEROUS") ? null : dangerousCommand(command);
   if (danger) return deny("VERID_BURNT_BASH_DANGEROUS", target, danger);
   if (ctx.station) {
@@ -447,6 +478,23 @@ function dangerousCommand(command: string): string | null {
   const run = RUN_RULES.find(([, rule]) => rule.test(unquoted));
   const flag = FLAG_RULES.find(([, rule]) => rule.test(masked));
   return (run ?? flag)?.[0] ?? null;
+}
+
+// Literal text a command only prints or writes to a file is data, not a session it starts:
+// `Add-Content notes.md -Value 'Codex denied'`. Expansion, escaped quotes or a pipe into a
+// shell can run that text, so those commands keep every quoted word.
+const DATA_PROGRAM =
+  /^(?:echo|printf|write-output|write-host|add-content|ac|set-content|sc|out-file)$/;
+function literalData(command: string): string {
+  if (/[$`]|\\['"]/.test(command)) return command;
+  if (new RegExp(INTO_PROGRAM).test(unquote(command.toLowerCase()))) return command;
+  let program: string | null = null; // the first word of the current simple command
+  return command.replace(/'[^']*'|"[^"]*"|[;&|\r\n(]|[^\s;&|\r\n('"]+/g, (word) => {
+    if (/^[;&|\r\n(]$/.test(word)) program = null;
+    else if (program === null) program = word.toLowerCase();
+    else if (DATA_PROGRAM.test(program) && /^['"]/.test(word)) return "_";
+    return word;
+  });
 }
 
 const unquote = (command: string) => command.replace(/\\(.)|["']/gs, "$1");

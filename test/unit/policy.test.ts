@@ -367,6 +367,32 @@ describe("decide: file tools", () => {
     ]);
   });
 
+  it("lets the shell plainly read installed skills in protected folders, never write or run them", () => {
+    const plugin = "c:/users/u/appdata/roaming/npm/node_modules/verid/plugin";
+    const guarded: PolicyContext = { ...ctx, protectedWriteDirs: [plugin] };
+    const skill = `'C:/Users/u/AppData/Roaming/npm/node_modules/verid/plugin/skills/ba/SKILL.md'`;
+    const rows = [
+      [`Get-Content -LiteralPath ${skill}`, ALLOW],
+      [`Get-Content -Raw ${skill} | Select-Object -First 40`, ALLOW],
+      [`cat ${skill}`, ALLOW],
+      [`Select-String -Path ${skill} -Pattern step`, ALLOW],
+      [`Set-Content -LiteralPath ${skill} x`, HOOK],
+      [`Get-Content ${skill} | Set-Content ${skill}`, HOOK],
+      [`Get-Content ${skill} | Out-File x.md`, HOOK],
+      [`Get-Content ${skill} > x.md`, HOOK],
+      [`cat ${skill}; rm -r ${plugin}`, HOOK],
+      [`Get-Content ${skill} | python`, HOOK],
+      [`node ${plugin}/skills/ba/x.js`, HOOK],
+      [`Get-Content $(${skill})`, HOOK],
+    ] as const;
+    for (const [command, want] of rows) {
+      const denied = codex("Bash", { command })
+        .map((a) => decide(a, guarded))
+        .find((d) => d.kind === "deny");
+      expect(denied?.kind === "deny" ? denied.code : ALLOW, command).toBe(want);
+    }
+  });
+
   it("adds config-directory protection without moving the existing home protections", () => {
     vi.stubEnv("CLAUDE_CONFIG_DIR", join(homedir(), "verid-custom-config"));
     try {
@@ -734,6 +760,22 @@ describe("decide: bash", () => {
       ["C:\\tools\\claude.exe -p hi", NESTED],
       ["CLAUDE -p hi", NESTED],
       ["echo ok && claude", NESTED],
+    ]);
+  });
+
+  it("reads literal text written to a file as data, not as a nested session", () => {
+    const CODEX = "VERID_BURNT_BASH_NESTED_CODEX";
+    expectBash([
+      ["Add-Content -LiteralPath 'notes.md' -Value '- bug | Codex PreToolUse denied'", ALLOW],
+      ['echo "ask claude later" >> notes.md', ALLOW],
+      ["printf 'codex; claude\\n' > notes.md", ALLOW],
+      ['Add-Content notes.md -Value "$(codex exec x)"', CODEX],
+      ['echo "x `claude -p hi`" > notes.md', NESTED],
+      ["echo 'codex exec x' | sh", CODEX],
+      ["echo 'claude -p hi' | iex", NESTED],
+      ["echo 'x'; codex exec x", CODEX],
+      ["co''dex exec x", CODEX],
+      ["grep -rn codex src", CODEX],
     ]);
   });
 
