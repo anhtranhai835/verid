@@ -42,6 +42,8 @@ export async function doctorCommand(project: string, ci = false): Promise<CliRes
   const say = (key: MessageKey, params: Record<string, string> = {}) => bilingual(key, params);
   const lines = [say("doctor.header", { project }), ...(ci ? [say("doctor.ci.scope")] : [])];
   let problems = 0;
+  // Warnings inform; only problems fail doctor and block a step.
+  let warnings = 0;
   const problem = (
     key: string,
     detail: MessageKey | ErrorCode,
@@ -269,6 +271,7 @@ export async function doctorCommand(project: string, ci = false): Promise<CliRes
         problem("codex.hook_trust", "doctor.codex.hooks_untrusted", "doctor.codex.hooks_fix");
       else lines.push(say("doctor.codex.trust_ok"));
       // Codex's internal definition hash serialization is not part of the captured contract.
+      warnings++;
       lines.push(say("doctor.codex.retrust"));
       const overlay = local
         ? join(project, ".verid/agents/verid-reviewer.toml")
@@ -308,9 +311,10 @@ export async function doctorCommand(project: string, ci = false): Promise<CliRes
         shell: true,
       });
       const actual = version.status === 0 ? version.stdout.trim() : "unavailable";
-      if (!/^codex-cli 0\.164\.0$/.test(actual))
+      if (!/^codex-cli 0\.164\.0$/.test(actual)) {
+        warnings++;
         lines.push(say("doctor.codex.version_warning", { version: actual }));
-      else lines.push(say("doctor.codex.version_ok"));
+      } else lines.push(say("doctor.codex.version_ok"));
     }
   }
   for (const repo of [
@@ -396,7 +400,9 @@ export async function doctorCommand(project: string, ci = false): Promise<CliRes
     else
       try {
         const state = readState(statePaths(project));
-        lines.push(...auditLines(project, manifest, state));
+        const audit = auditLines(project, manifest, state);
+        warnings += Number(/(\d+) warning/.exec(audit[0] ?? "")?.[1] ?? 0);
+        lines.push(...audit);
         if (planned(manifest)) {
           const plan = readPlan(
             project,
@@ -447,7 +453,8 @@ export async function doctorCommand(project: string, ci = false): Promise<CliRes
     problems++;
     lines.push(`! plugins.json: ${error instanceof Error ? error.message : String(error)}`);
   }
-  lines.push(say(problems ? "doctor.problems" : "doctor.ok", { count: String(problems) }));
+  const summary = problems ? "doctor.problems" : warnings ? "doctor.ok_warnings" : "doctor.ok";
+  lines.push(say(summary, { count: String(problems), warnings: String(warnings) }));
   return { exit: problems ? 1 : 0, stdout: `${lines.join("\n")}\n`, stderr: "" };
 }
 

@@ -222,6 +222,8 @@ describe("verid doctor", () => {
     expect(result.out).toContain("Codex hooks point at this install");
     expect(result.out).not.toContain("! hooks:");
     expect(result.out).not.toContain("! plugin.");
+    // Codex's re-trust note is a warning: counted apart from problems, and never blocking.
+    expect(result.out).toMatch(/No problems; [1-9]\d* warning\(s\), which never block a step\./);
     expect(snapshot()).toEqual(before);
   });
 
@@ -230,7 +232,7 @@ describe("verid doctor", () => {
     const before = snapshot();
     const r = await cli(["doctor"], { CLAUDECODE: "1" });
     expect(r.code, r.err + r.out).toBe(0);
-    expect(r.out).toContain("No problems found.");
+    expect(r.out).toMatch(/No problems(?: found\.|; \d+ warning\(s\))/);
     expect(snapshot()).toEqual(before);
   });
 
