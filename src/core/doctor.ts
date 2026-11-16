@@ -4,6 +4,9 @@ export function node22OrLater(version: string): boolean {
   return match !== null && Number(match[1]) >= 22;
 }
 
+export const GIT_SANDBOX_MESSAGE =
+  "this sandbox cannot start Git (inside Codex, run verid doctor from a terminal)";
+
 /**
  * A probe that could not start its process at all: Codex's sandbox refuses the spawn with EPERM
  * or EACCES, which says nothing about the install being probed.

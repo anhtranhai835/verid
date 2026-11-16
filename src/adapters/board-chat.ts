@@ -1,4 +1,4 @@
-import { spawn, type ChildProcess } from "node:child_process";
+import { spawn, type ChildProcess, type SpawnOptions } from "node:child_process";
 import { ownEntry } from "../core/station.js";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -224,17 +224,21 @@ export type Spawner = (launch: Launch, cwd: string) => ChildProcess;
 const spawnLaunch: Spawner = (launch, cwd) => {
   const win = process.platform === "win32";
   // claude and codex are .cmd shims on Windows, which need cmd.exe.
-  const shell = win;
-  return spawn(
-    launch.command,
-    shell ? windowsArgs(launch.args, languageOf(cwd) ?? systemLanguage()) : launch.args,
-    {
-      cwd,
-      shell,
-      windowsHide: true,
-      stdio: [launch.stdin === null ? "ignore" : "pipe", "pipe", "pipe"],
-    },
-  );
+  const options: SpawnOptions = {
+    cwd,
+    shell: win,
+    windowsHide: true,
+    stdio: [launch.stdin === null ? "ignore" : "pipe", "pipe", "pipe"],
+  };
+  // One validated command string avoids Node's shell-plus-args deprecation (DEP0190).
+  return win
+    ? spawn(
+        [launch.command, ...windowsArgs(launch.args, languageOf(cwd) ?? systemLanguage())].join(
+          " ",
+        ),
+        options,
+      )
+    : spawn(launch.command, launch.args, options);
 };
 
 export interface ChatStatus {

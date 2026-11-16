@@ -135,8 +135,13 @@ export function renderInstructions(
       ? "- Codex hooks enforce TDD, gates and protected files where the host allows; run verid doctor; trust them in /hooks."
       : "- Claude Code hooks enforce TDD (RAW → COOKING → PLATED), module approval, roles and protected files.",
     "- Never bypass a denial; follow its reason.",
+    ...(codex
+      ? [
+          "- On Windows, read files with `Get-Content -Raw -Encoding UTF8`; PowerShell 5.1 misreads UTF-8 (e.g. →).",
+        ]
+      : []),
     codex
-      ? "- Only the developer edits the manifest or opens exceptions: verid tip \"<reason>\" in their own terminal."
+      ? '- Only the developer edits the manifest or opens exceptions: verid tip "<reason>" in their own terminal.'
       : "- Only the developer edits the manifest or opens exceptions with /verid tip and /verid confirm.",
     manifest.resources === "repo"
       ? "- Read skills and agents from .verid/skills/ and .verid/agents/ in this repo. Local verid-<name> entries route there; calls written verid:<name> in those files mean verid-<name> here. Resolve supporting files relative to the repo copy."

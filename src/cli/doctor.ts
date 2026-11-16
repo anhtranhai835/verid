@@ -447,10 +447,12 @@ export async function doctorCommand(project: string, ci = false): Promise<CliRes
       } catch (err) {
         if (err instanceof VeridError && err.code !== "VERID_BURNT_STATE_MISSING")
           problem("state", err.code, "doctor.architecture.fix", err.params);
-        else
+        else {
+          warnings++;
           lines.push(
             `verid: audit unavailable: ${err instanceof Error ? err.message : String(err)}`,
           );
+        }
       }
   }
   // The hash chain detects an edited or removed entry; nothing else ever checks it.

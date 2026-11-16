@@ -72,7 +72,8 @@ describe("provider instruction blocks", () => {
   });
 
   it("keeps workflow references short with the effective allowlists", () => {
-    const CAPS = { "claude-code": 2850, codex: 3399 } as const;
+    // Allow room for Codex's Windows UTF-8 rule in the measured budget.
+    const CAPS = { "claude-code": 2850, codex: 3502 } as const;
     const parsed = parseManifest({
       schemaVersion: 1,
       mode: "prep",
@@ -292,6 +293,31 @@ describe("provider instruction blocks", () => {
       .split("\n")
       .find((l) => l.startsWith("- Design: verid:design"));
     expect(design).toContain("builder check: spawn verid_reviewer as for review");
+  });
+
+  it("gives only Codex the Windows UTF-8 reading rule, including in the shared block", () => {
+    const rows = [
+      { providers: ["codex"], prefix: "- " },
+      { providers: ["claude-code"], prefix: null },
+      { providers: ["claude-code", "codex"], prefix: "- (Codex) " },
+      { providers: ["codex", "claude-code"], prefix: "- (Codex) " },
+    ];
+    const rule =
+      "On Windows, read files with `Get-Content -Raw -Encoding UTF8`; PowerShell 5.1 misreads UTF-8 (e.g. →).";
+    for (const { providers, prefix } of rows) {
+      const parsed = parseManifest({
+        schemaVersion: 1,
+        mode: "prep",
+        providers,
+        repos: [{ path: ".", source_globs: ["src/**"], test_globs: ["test/**"] }],
+      });
+      if (!parsed.ok) throw new Error(parsed.detail);
+      const text = instructionBlocks(parsed.manifest)[0]!.block;
+      const rules = text.split("### Rules\n")[1]!.split("\n### TDD cycle")[0]!;
+      expect(rules.split("\n").filter((line) => line.includes("Get-Content"))).toEqual(
+        prefix === null ? [] : [`${prefix}${rule}`],
+      );
+    }
   });
 
   it("gives the main thread alone a scoped, append-only verid feedback log", () => {
