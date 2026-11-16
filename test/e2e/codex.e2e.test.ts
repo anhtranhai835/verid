@@ -460,13 +460,16 @@ describe("Codex hook transport and policy", () => {
       // Asking the developer writes nothing.
       ["request_user_input", { questions: [{ question: "Which?" }] }, "allow"],
       ["request_user_input_async", { questions: [{ question: "Which?" }] }, "allow"],
+      ["clocksleep", { seconds: 30 }, "allow"],
+      // Main's later words would reach a fresh reviewer through these: spawn a new one instead.
+      ["collaborationsend_message", { message: "also check x" }, "fresh verid_reviewer"],
       ["Read", { file_path: "notes.txt" }, "allow"],
       [
         "mcp__files__write",
         { target: { path: ".codex/config.toml" } },
         "VERID_BURNT_HOOK_PROTECTED",
       ],
-      ["collaborationfollowup_task", { message: "work" }, "VERID_BURNT_TOOL_UNSUPPORTED"],
+      ["collaborationfollowup_task", { message: "work" }, "fresh verid_reviewer"],
       ["unknown_writer", { file_path: "src/code.ts" }, "VERID_BURNT_TOOL_UNSUPPORTED"],
     ] as const;
     for (const [tool, input, expected] of rows) {

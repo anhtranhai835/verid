@@ -91,6 +91,8 @@ export const CODEX_TOOLS = [
   // Asking the developer a question writes nothing.
   "request_user_input",
   "request_user_input_async",
+  // Waiting changes nothing.
+  "clocksleep",
   "Read",
   "Grep",
   "Glob",
