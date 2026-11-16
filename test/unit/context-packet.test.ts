@@ -1,3 +1,5 @@
+import { rmSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { contextPacket, type ContextInput } from "../../src/core/context-packet.js";
 import { parsePlan } from "../../src/core/plan.js";
@@ -148,6 +150,28 @@ describe("context command and task prompt", () => {
     expect(r.stdout.length).toBeLessThanOrEqual(4000);
     expect([p.read(".verid/.state/state.json")]).toEqual(before);
     expect((await runCli(["context", "sub", "--ac", "AC-2"])).stdout).toContain("AC-2");
+  });
+
+  it("gives the current stage's context before a plan exists, and still needs a plan for a module", async () => {
+    const plan = p.read(".verid/plan.md");
+    const design = p.read(".verid/design.md");
+    rmSync(join(p.root, ".verid/plan.md"));
+    rmSync(join(p.root, ".verid/design.md"));
+    p.put(".verid/research.md", "# Research\n");
+    const r = await runCli(["context"]);
+    expect(r.exit, r.stderr).toBe(0);
+    for (const part of [
+      "stage design",
+      "research.md: ok",
+      "spec.md: ok",
+      "design.md: missing",
+      "verid:design",
+    ])
+      expect(r.stdout).toContain(part);
+    expect((await runCli(["context", "add"])).stderr).toContain("VERID_BURNT_PLAN_MISSING");
+    p.put(".verid/design.md", design);
+    p.put(".verid/plan.md", plan);
+    rmSync(join(p.root, ".verid/research.md"));
   });
 
   it("fails shortly when no module is open or the module is unknown", async () => {
