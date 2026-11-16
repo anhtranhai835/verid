@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, openSync, closeSync, fstatSync, readSync } from "node:fs";
 import { join } from "node:path";
+import { sandboxBlocked } from "../core/doctor.js";
 import { closeHistory, isWorkBranch, isConventionalCommit } from "../core/git-convention.js";
 import type { Manifest } from "../core/manifest.js";
 import { dependencyProblems, parsePlan } from "../core/plan.js";
@@ -106,7 +107,14 @@ export function auditWarnings(project: string, manifest: Manifest, state: State)
     if (manifest.drive === "auto" && signedResearch && signedResearch !== readFileHash(research))
       warn("RESEARCH_CHANGED", ".verid/research.md changed since approval");
   } catch (err) {
-    warn("AUDIT_UNAVAILABLE", err instanceof Error ? err.message : String(err));
+    warn(
+      "AUDIT_UNAVAILABLE",
+      sandboxBlocked(err)
+        ? "this sandbox cannot start Git (inside Codex, run verid doctor from a terminal)"
+        : err instanceof Error
+          ? err.message
+          : String(err),
+    );
   }
   return [...new Set(warnings)];
 }

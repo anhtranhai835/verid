@@ -5,7 +5,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
-import { node22OrLater } from "../core/doctor.js";
+import { node22OrLater, sandboxBlocked } from "../core/doctor.js";
 import { instructionBlock, instructionBlocks } from "../core/instructions.js";
 import { hasCurrentVeridHooks } from "../adapters/claude-settings.js";
 import {
@@ -321,7 +321,10 @@ export async function doctorCommand(project: string, ci = false): Promise<CliRes
         shell: true,
       });
       const actual = version.status === 0 ? version.stdout.trim() : "unavailable";
-      if (!/^codex-cli 0\.164\.0$/.test(actual)) {
+      if (sandboxBlocked(version.error)) {
+        warnings++;
+        lines.push(say("doctor.codex.version_sandboxed"));
+      } else if (!/^codex-cli 0\.164\.0$/.test(actual)) {
         warnings++;
         lines.push(say("doctor.codex.version_warning", { version: actual }));
       } else lines.push(say("doctor.codex.version_ok"));
