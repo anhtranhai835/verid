@@ -163,6 +163,7 @@
   "hint.overridable": "Làm theo từ chối; ngoại lệ cần developer gõ `/verid tip <lý do>`.",
   "hint.overridable_terminal": "Làm theo từ chối; nếu nó sai, developer cho phép đúng hành động này một lần bằng cách chạy `verid tip \"<lý do>\"` trong terminal của mình.",
   "hint.not_overridable": "Bảo vệ này không cho phép mở ngoại lệ.",
+  "hint.plain_read": "Nếu lệnh này chỉ đọc, hãy tách thành các lệnh đọc đơn giản (Get-Content, cat, Select-String, rg…) nối bằng `;`, không dùng `if`, `{}`, `$()` hay chuyển hướng, hoặc dùng công cụ đọc tệp.",
   "deny.repeat": "Như lần trước: {reason}",
   "override.risk_warning": "CẢNH BÁO RỦI RO. Bạn sắp cho agent vượt rule {rule} đúng 1 lần cho hành động: {tool} {target}. Lý do: {reason}. Override chỉ dùng được 1 lần, cho đúng hành động này, và được ghi vào audit. Nếu chấp nhận rủi ro, hãy gõ: /verid confirm {code}",
   "override.created": "verid: developer đã cho phép 1 lần hành động {tool} {target}. Hãy thực hiện lại đúng hành động đó, không thay đổi gì. Mọi hành động khác vẫn bị chặn.",

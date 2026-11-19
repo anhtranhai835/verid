@@ -453,8 +453,16 @@ function decideBash(
       code.startsWith("VERID_BURNT_BASH_NESTED_") || code === "VERID_BURNT_BASH_DEVELOPER_ONLY"
         ? spoken
         : reached;
-    if (!lifted.has(code) && texts.some((c) => matches(c, ctx, read, command)))
-      return deny(code, target, reason);
+    if (!lifted.has(code) && texts.some((c) => matches(c, ctx, read, command))) {
+      const hint =
+        !read &&
+        (code === "VERID_BURNT_MANIFEST_PROTECTED" || code === "VERID_BURNT_HOOK_PROTECTED") &&
+        !texts.some((c) => matches(c, ctx, true, command));
+      return {
+        ...deny(code, target, reason),
+        ...(hint && { params: { hint_key: "hint.plain_read" } }),
+      };
+    }
   }
   const danger = lifted.has("VERID_BURNT_BASH_DANGEROUS") ? null : dangerousCommand(command);
   if (danger) return deny("VERID_BURNT_BASH_DANGEROUS", target, danger);

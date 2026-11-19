@@ -182,7 +182,8 @@ export function deny(code: ErrorCode, params: Record<string, string>): Result {
           : "hint.overridable"
         : "hint.not_overridable"
       : undefined;
-  const line = (lang: Lang) => `${t(lang, code, params)}${hint ? ` ${t(lang, hint, params)}` : ""}`;
+  const line = (lang: Lang) =>
+    `${t(lang, code, params)}${hint ? ` ${t(lang, hint, params)}` : ""}${params.hint_key === "hint.plain_read" ? ` ${t(lang, "hint.plain_read", params)}` : ""}`;
   return { exit: 2, stderr: `verid [${code}]\n${inLanguage(line)}\n` };
 }
 

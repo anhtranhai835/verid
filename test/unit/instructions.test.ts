@@ -10,6 +10,32 @@ import { parseManifest } from "../../src/core/manifest.js";
 const block = "<!-- verid:begin -->\nnew instructions\n<!-- verid:end -->";
 
 describe("provider instruction blocks", () => {
+  it("tells every provider to read verid files with file tools or plain commands", () => {
+    const rule =
+      "- Read .verid/* (including the manifest) with the file-read tool or one plain read command per file; never use `if`, `{}`, `$()` or scripts: the hook blocks them.";
+    const rows = [["claude-code"], ["codex"], ["claude-code", "codex"]] as const;
+    for (const providers of rows) {
+      const parsed = parseManifest({
+        schemaVersion: 1,
+        mode: "prep",
+        providers: [...providers],
+        repos: [{ path: ".", source_globs: ["**"], test_globs: ["**/*.test.ts"] }],
+      });
+      if (!parsed.ok) throw new Error(parsed.detail);
+      const texts = providers.map((provider) => renderInstructions(parsed.manifest, provider));
+      texts.push(instructionBlocks(parsed.manifest)[0]!.block);
+      for (const text of texts) {
+        const rules = text.split("### Rules\n")[1]!.split("\n### TDD cycle")[0]!;
+        expect
+          .soft(
+            rules.split("\n").filter((line) => line === rule),
+            providers.join(", "),
+          )
+          .toEqual([rule]);
+      }
+    }
+  });
+
   it("inserts or updates only the marked block and preserves every outside byte", () => {
     const rows = [
       { old: undefined, want: "<!-- verid:begin -->\nnew instructions\n<!-- verid:end -->\n" },
@@ -72,8 +98,8 @@ describe("provider instruction blocks", () => {
   });
 
   it("keeps workflow references short with the effective allowlists", () => {
-    // Allow room for Codex's Windows UTF-8 rule in the measured budget.
-    const CAPS = { "claude-code": 2850, codex: 3502 } as const;
+    // Allow 163 characters for the shared read-safety rule, including its newline.
+    const CAPS = { "claude-code": 3013, codex: 3665 } as const;
     const parsed = parseManifest({
       schemaVersion: 1,
       mode: "prep",
