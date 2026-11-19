@@ -29,9 +29,11 @@ discovers local skill entries under `.agents/skills/`.
 The onboard skill inventories repos and runners, reports health and gives the next
 step. It proposes manifest changes for the developer to apply.
 
-On Windows, Codex's `workspace-write` sandbox blocks every process verid starts, so
-`verid taste` cannot run the test runner there (`VERID_BURNT_RUN_SANDBOXED`). Run Codex
-with `sandbox_mode = "danger-full-access"` for TDD steps, or run taste from a terminal.
+On Windows, `verid doctor` warns about Codex's sandbox only when a test runner exists
+and the sandbox mode is not `danger-full-access`, prints an ok line with full access,
+and prints an informational "not verified" line when no test runner exists yet.
+Use `sandbox_mode = "danger-full-access"` for TDD steps, or run `verid taste` from a
+terminal if the sandbox blocks the test runner (`VERID_BURNT_RUN_SANDBOXED`).
 
 ## Protection and audit
 

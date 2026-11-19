@@ -865,6 +865,65 @@ describe("decide: bash", () => {
     ]);
   });
 
+  it("allows a lone version or help query", () => {
+    expectBash([
+      ["codex --version", ALLOW],
+      ["codex --version\v", ALLOW],
+      ["\uFEFFcodex --version", ALLOW],
+      ["codex -V", ALLOW],
+      ["codex --help", ALLOW],
+      ["codex -h", ALLOW],
+      ["claude --version", ALLOW],
+      ["claude --version\v", ALLOW],
+      ["\uFEFFclaude --version", ALLOW],
+      ["claude -v", ALLOW],
+      ["claude --help", ALLOW],
+      ["claude -h", ALLOW],
+      ...[".exe", ".cmd", ".ps1"].flatMap((suffix): [string, typeof ALLOW][] =>
+        ["--version", "-V", "--help", "-h"].flatMap((flag) => [
+          [`codex${suffix} ${flag}`, ALLOW],
+          [`claude${suffix} ${flag}`, ALLOW],
+        ]),
+      ),
+      [" \tCoDeX.CmD --VERSION\t ", ALLOW],
+      [" \tCLAUDE.PS1 -v\t ", ALLOW],
+    ]);
+  });
+
+  it("keeps nested sessions and info-query bypasses denied", () => {
+    for (const [program, code] of [
+      ["codex", "VERID_BURNT_BASH_NESTED_CODEX"],
+      ["claude", NESTED],
+    ] as const) {
+      expectBash([
+        [program, code],
+        [`${program} exec x`, code],
+        [`${program} resume`, code],
+        [`${program} other`, code],
+        [`${program} --version exec x`, code],
+        [`${program}\u00A0--version exec`, code],
+        [`${program} --version\u2028${program} exec`, code],
+        [`${program} --help exec`, code],
+        [`${program} --version; ${program} exec x`, code],
+        [`${program} --version && ${program}`, code],
+        [`${program} --version | ${program} exec x`, code],
+        [`${program} --version\n${program} exec x`, code],
+        [`${program} --version\r\n${program} exec x`, code],
+        [`echo '${program} exec x' | sh`, code],
+        [`$(${program} exec x)`, code],
+        ["`" + program + " exec x`", code],
+        [`echo "$(${program} --version)"; ${program}`, code],
+        [`${program.slice(0, 2)}''${program.slice(2)} exec x`, code],
+        [`${program.slice(0, 2)}''${program.slice(2)} --version`, code],
+        [`"${program}" --version`, code],
+        [`${program} --ver''sion`, code],
+        [`${program}\n--version`, code],
+        [`${program} --version;`, code],
+        [`${program} --version > version.txt`, code],
+      ]);
+    }
+  });
+
   it("blocks a nested claude session however it is spelled", () => {
     expectBash([
       ["claude -p hi", NESTED],

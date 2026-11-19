@@ -11,6 +11,7 @@ import { hasCurrentVeridHooks } from "../adapters/claude-settings.js";
 import {
   codexHome,
   codexHookKeys,
+  codexSandboxMode,
   codexTrust,
   hasCodexReviewer,
   hasCurrentCodexHooks,
@@ -249,6 +250,7 @@ export async function doctorCommand(project: string, ci = false): Promise<CliRes
       );
     else lines.push(say("doctor.instructions.ok", { file }));
   }
+  let windowsCodexFullAccess: boolean | undefined;
   for (const provider of ci ? [] : (manifest?.providers ?? [])) {
     if (provider === "codex") {
       const local = manifest?.resources === "repo";
@@ -328,13 +330,19 @@ export async function doctorCommand(project: string, ci = false): Promise<CliRes
         warnings++;
         lines.push(say("doctor.codex.version_warning", { version: actual }));
       } else lines.push(say("doctor.codex.version_ok"));
-      // Codex's Windows workspace-write sandbox refuses every process verid starts.
       if (process.platform === "win32") {
-        warnings++;
-        lines.push(say("doctor.codex.windows_sandbox"));
+        let projectConfig = "";
+        try {
+          projectConfig = readFileSync(join(project, ".codex/config.toml"), "utf8");
+        } catch {
+          /* Missing or unreadable project configuration falls back to the user's config. */
+        }
+        windowsCodexFullAccess =
+          (codexSandboxMode(projectConfig) ?? codexSandboxMode(config)) === "danger-full-access";
       }
     }
   }
+  let hasRunner = false;
   for (const repo of [
     ...(manifest?.repos ?? []),
     ...(manifest?.layout === "workspace"
@@ -379,12 +387,22 @@ export async function doctorCommand(project: string, ci = false): Promise<CliRes
         })
           .runners.map((r) => r.name)
           .join(", ");
+    hasRunner ||= Boolean(runners);
     if (!runners)
       problem("repo.runner", "doctor.repo.runner.missing", "doctor.repo.runner.fix", {
         repo: repo.path,
       });
     else if (repo.test_cmd) lines.push(say("doctor.repo.runner.custom", { repo: repo.path }));
     else lines.push(say("doctor.repo.runner.ok", { repo: repo.path, runners }));
+  }
+  // Reuse the repository checks above, including their legacy and workspace exclusions.
+  if (windowsCodexFullAccess !== undefined) {
+    if (!hasRunner) lines.push(say("doctor.codex.windows_sandbox_unverified"));
+    else if (windowsCodexFullAccess) lines.push(say("doctor.codex.windows_sandbox_ok"));
+    else {
+      warnings++;
+      lines.push(say("doctor.codex.windows_sandbox"));
+    }
   }
   if (manifest?.mode === "reheat") {
     if (!manifest.repos.some((repo) => repo.role === "legacy" && repo.read_only === true))
