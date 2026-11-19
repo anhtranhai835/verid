@@ -32,6 +32,71 @@ const readFile = (path: string) =>
   fixture("pre-tool-use-read", (p) => (p.tool_input.file_path = path));
 
 describe("1. the hook really blocks forbidden actions", () => {
+  it("appends bilingual plain-read advice only to recoverable shell denials", async () => {
+    const rows = [
+      {
+        tool: "Bash",
+        input: {
+          command:
+            "if (Test-Path -LiteralPath README.md) { Get-Content -Raw README.md }; Get-Content -Raw .verid/manifest.yaml",
+        },
+        code: "VERID_BURNT_MANIFEST_PROTECTED",
+        hint: true,
+      },
+      {
+        tool: "Bash",
+        input: { command: "$(cat .verid/manifest.yaml)" },
+        code: "VERID_BURNT_MANIFEST_PROTECTED",
+        hint: true,
+      },
+      {
+        tool: "Bash",
+        input: { command: "$(cat .codex/config.toml)" },
+        code: "VERID_BURNT_HOOK_PROTECTED",
+        hint: true,
+      },
+      {
+        tool: "Bash",
+        input: { command: "cat ~/.claude/settings.json" },
+        code: "VERID_BURNT_HOOK_PROTECTED",
+        hint: false,
+      },
+      {
+        tool: "Write",
+        input: { file_path: join(project, ".verid/manifest.yaml"), content: "x" },
+        code: "VERID_BURNT_MANIFEST_PROTECTED",
+        hint: false,
+      },
+      {
+        tool: "Bash",
+        input: { command: "cat .verid/.state/state.json" },
+        code: "VERID_BURNT_STATE_PROTECTED",
+        hint: false,
+      },
+    ];
+    const advice = [
+      "If this command only reads, split it into plain read commands (Get-Content, cat, Select-String, rg…) joined by `;`, with no `if`, `{}`, `$()` or redirect, or use the file-read tool.",
+      "Nếu lệnh này chỉ đọc, hãy tách thành các lệnh đọc đơn giản (Get-Content, cat, Select-String, rg…) nối bằng `;`, không dùng `if`, `{}`, `$()` hay chuyển hướng, hoặc dùng công cụ đọc tệp.",
+    ];
+    for (const { tool, input, code, hint } of rows) {
+      const payload = fixture("pre-tool-use-read", (p) => {
+        p.tool_name = tool;
+        p.tool_input = input;
+      });
+      const result = await runHook(payload, { CLAUDE_PROJECT_DIR: project });
+      expect.soft(result.code, tool).toBe(2);
+      expect.soft(result.stderr, tool).toContain(`verid [${code}]`);
+      for (const sentence of advice)
+        expect.soft(result.stderr.includes(sentence), JSON.stringify(input)).toBe(hint);
+      if (hint) {
+        const repeated = await runHook(payload, { CLAUDE_PROJECT_DIR: project });
+        expect.soft(repeated.code).toBe(2);
+        expect.soft(repeated.stderr).toContain(`verid [${code}]`);
+        for (const sentence of advice) expect.soft(repeated.stderr).not.toContain(sentence);
+      }
+    }
+  });
+
   it("denies a recorded Write into .verid/.state with exit 2 and a stable code", () => {
     const r = hook(fixture("pre-tool-use-write-verid-state"));
     expect(r.code).toBe(2);

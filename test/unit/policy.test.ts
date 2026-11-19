@@ -54,6 +54,57 @@ const TRANSCRIPT = "VERID_BURNT_TRANSCRIPT_PROTECTED";
 const HOOK = "VERID_BURNT_HOOK_PROTECTED";
 const MANIFEST = "VERID_BURNT_MANIFEST_PROTECTED";
 const DOCS = "VERID_BURNT_DOCS_PROTECTED";
+it("hints only when a plain-read rewrite unlocks the denying shell rule", () => {
+  const rows: { action: Action; code: RuleCode; hint: boolean }[] = [
+    {
+      action: {
+        kind: "bash",
+        command:
+          "if (Test-Path -LiteralPath README.md) { Get-Content -Raw README.md }; Get-Content -Raw .verid/manifest.yaml",
+      },
+      code: MANIFEST,
+      hint: true,
+    },
+    {
+      action: { kind: "bash", command: "$(cat .verid/manifest.yaml)" },
+      code: MANIFEST,
+      hint: true,
+    },
+    {
+      action: { kind: "bash", command: "cat .verid/manifest.yaml > x" },
+      code: MANIFEST,
+      hint: true,
+    },
+    {
+      action: { kind: "bash", command: "printf x > .verid/manifest.yaml" },
+      code: MANIFEST,
+      hint: true,
+    },
+    { action: { kind: "bash", command: "$(cat .codex/config.toml)" }, code: HOOK, hint: true },
+    { action: { kind: "bash", command: "cat ~/.claude/settings.json" }, code: HOOK, hint: false },
+    {
+      action: { kind: "bash", command: "$(cat .codex/config.toml); cat ~/.claude/settings.json" },
+      code: HOOK,
+      hint: false,
+    },
+    { action: write(ctx.manifestPath), code: MANIFEST, hint: false },
+    {
+      action: { kind: "bash", command: "$(cat .verid/.state/state.json)" },
+      code: STATE,
+      hint: false,
+    },
+    { action: { kind: "bash", command: "cat .env" }, code: SECRET, hint: false },
+  ];
+  for (const { action, code, hint } of rows) {
+    const decision = decide(action, ctx);
+    expect.soft(decision, JSON.stringify(action)).toMatchObject({ kind: "deny", code });
+    if (decision.kind === "deny")
+      expect
+        .soft(decision.params?.hint_key, JSON.stringify(action))
+        .toBe(hint ? "hint.plain_read" : undefined);
+  }
+});
+
 it("keeps mockup choices readable but reserves writes for the developer", () => {
   const base = "c:/proj/.verid/artifacts/03-modules/screen/ui/mockups";
   expect(decide(read(`${base}/choice.json`), ctx).kind).toBe(ALLOW);

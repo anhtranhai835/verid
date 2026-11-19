@@ -135,6 +135,7 @@ export function renderInstructions(
       ? "- Codex hooks enforce TDD, gates and protected files where the host allows; run verid doctor; trust them in /hooks."
       : "- Claude Code hooks enforce TDD (RAW → COOKING → PLATED), module approval, roles and protected files.",
     "- Never bypass a denial; follow its reason.",
+    "- Read .verid/* (including the manifest) with the file-read tool or one plain read command per file; never use `if`, `{}`, `$()` or scripts: the hook blocks them.",
     ...(codex
       ? [
           "- On Windows, read files with `Get-Content -Raw -Encoding UTF8`; PowerShell 5.1 misreads UTF-8 (e.g. →).",

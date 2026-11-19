@@ -163,6 +163,7 @@
   "hint.overridable": "Follow the refusal; an exception needs the developer's `/verid tip <reason>`.",
   "hint.overridable_terminal": "Follow the refusal; if it is wrong, the developer allows this exact action once by running `verid tip \"<reason>\"` in their own terminal.",
   "hint.not_overridable": "This protection cannot be overridden.",
+  "hint.plain_read": "If this command only reads, split it into plain read commands (Get-Content, cat, Select-String, rg…) joined by `;`, with no `if`, `{}`, `$()` or redirect, or use the file-read tool.",
   "deny.repeat": "Same as before: {reason}",
   "override.risk_warning": "RISK WARNING. You are about to let the agent bypass rule {rule} exactly once for: {tool} {target}. Reason: {reason}. The override works once, for this exact action only, and is recorded in the audit log. To accept the risk, type: /verid confirm {code}",
   "override.created": "verid: the developer allowed {tool} {target} exactly once. Retry exactly that action, unchanged. Every other action is still blocked.",
