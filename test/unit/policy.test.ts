@@ -907,6 +907,34 @@ describe("decide: bash", () => {
     ]);
   });
 
+  it("reads quoted search patterns as data while keeping command-name checks on execution", () => {
+    const CODEX = "VERID_BURNT_BASH_NESTED_CODEX";
+    expectBash([
+      ['rg "verid order" src', ALLOW],
+      ["grep -rn 'verid tip' docs", ALLOW],
+      ["Select-String -Pattern 'verid tip' -Path README.md", ALLOW],
+      ["sls -Pattern 'verid tip' -Path README.md", ALLOW],
+      ['findstr "verid order" README.md', ALLOW],
+      ['rg "codex exec" src', ALLOW],
+      ['rg "verid order | status" src', ALLOW],
+      ['grep "verid order --pre" docs', ALLOW],
+      ['echo "rg uses --pre; verid tip requires approval"', ALLOW],
+      ["verid order m1", DEVELOPER],
+      ["npx verid tip", DEVELOPER],
+      ['rg --pre=sh "verid order" .', DEVELOPER],
+      ['rg --pre sh "verid order" .', DEVELOPER],
+      ['rg --pre-glob "*.ts" "verid order" .', DEVELOPER],
+      ['rg "--pre=sh" "verid order" .', DEVELOPER],
+      ['rg "verid order" | node', DEVELOPER],
+      ["grep 'codex exec' | sh", CODEX],
+      ["rg x | node", DANGEROUS],
+      ["grep x | sh", DANGEROUS],
+      ['rg "x" $(verid order)', DEVELOPER],
+      [String.raw`grep "a\"verid order" f`, DEVELOPER],
+      ["rg x; verid order m1", DEVELOPER],
+    ]);
+  });
+
   // The developer's commands refuse only when CLAUDECODE=1, so the agent may not reach them,
   // nor through the shims `npm link` makes on Windows or the bare entry point (`node dist/cli`).
   it("keeps the developer's verid commands and CLAUDECODE out of the agent's Bash", () => {
@@ -1017,6 +1045,20 @@ describe("decide: bash", () => {
       ["cd dist && node hook.js < p.json", DEVELOPER],
       ["ls src/hooks", ALLOW],
       ["node dist/hooks/x.js", ALLOW],
+    ]);
+  });
+
+  it("lets plain reads inspect the installed hook and blocks its execution", () => {
+    expectBash([
+      ["Get-Content node_modules/@anhtranhai835/verid/dist/hook.js", ALLOW],
+      ["cat node_modules/@anhtranhai835/verid/dist/hook.js", ALLOW],
+      ["node dist/hook.js", DEVELOPER],
+      ["node node_modules/@anhtranhai835/verid/dist/hook.js", DEVELOPER],
+      ["cat payload.json | node dist/hook.js", DEVELOPER],
+      ["Get-Content payload.json | node dist/hook.js", DEVELOPER],
+      ["Get-Content dist/hook.js; node dist/hook.js", DEVELOPER],
+      ['rg x > "dist/hook.js"', DEVELOPER],
+      ['rg "--pre" "node dist/hook.js" .', DEVELOPER],
     ]);
   });
 

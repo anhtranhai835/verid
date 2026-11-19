@@ -147,16 +147,19 @@ function folderFacts(path: string, dir: string): FolderFacts {
     }),
   );
   let deps: string[] = [];
+  let testScript: string | undefined;
   try {
     const pkg = JSON.parse(text("package.json") ?? "{}") as {
       dependencies?: object;
       devDependencies?: object;
+      scripts?: { test?: unknown };
     };
     deps = Object.keys({ ...pkg.dependencies, ...pkg.devDependencies });
+    if (typeof pkg.scripts?.test === "string") testScript = pkg.scripts.test;
   } catch {
     // A package.json that does not parse names no runner.
   }
-  return { dir, files, deps, texts };
+  return { dir, files, deps, texts, ...(testScript === undefined ? {} : { testScript }) };
 }
 
 /** The report folders of a Maven or Gradle runner that exist now, its modules' included. */

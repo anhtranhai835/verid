@@ -11,6 +11,17 @@ const firstLines = (name: string) =>
   read(name)?.map((c) => ({ ...c, message: c.message.split("\n")[0] }));
 
 describe("readJUnit", () => {
+  it.each([["node-red.xml", 1, 1, "test > adds two numbers"]])(
+    "reads the pass and assertion failure from %s",
+    (fixture, passed, failed, failingTest) => {
+      const cases = read(fixture);
+      const failures = cases?.filter((c) => c.status === "failed");
+      expect(cases?.filter((c) => c.status === "passed")).toHaveLength(passed);
+      expect(failures).toHaveLength(failed);
+      expect(failures?.[0]).toMatchObject({ id: failingTest, assertion: true });
+    },
+  );
+
   it("reads a recorded failing vitest run: load error, assertion failure, skip, pass", () => {
     expect(firstLines("vitest-red.xml")).toEqual([
       {

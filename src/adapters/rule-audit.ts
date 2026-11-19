@@ -17,7 +17,10 @@ export function auditWarnings(project: string, manifest: Manifest, state: State)
   try {
     const roots = workRoots(project, manifest, deadline);
     const mains = declaredMains(project, manifest, deadline);
-    if (!Array.isArray(roots)) warn("GIT_UNRESOLVED", roots.error);
+    const signedGitRepos = Object.entries(state.auto.signed?.git_repos ?? {}).filter(
+      ([, wasGit]) => wasGit,
+    );
+    if (!Array.isArray(roots) && signedGitRepos.length === 0) warn("GIT_UNRESOLVED", roots.error);
     for (const { repo, top } of Array.isArray(roots) ? roots : []) {
       const facts = repoFacts(top, manifest.git?.default_branch, () => mains, deadline);
       if ("error" in facts) warn("GIT_UNRESOLVED", `${repo}: ${facts.error}`);
@@ -58,10 +61,16 @@ export function auditWarnings(project: string, manifest: Manifest, state: State)
         );
       else if (status.stdout.trim()) warn("GIT_DIRTY", `${repo}: uncommitted changes`);
     }
-    const present = new Set((Array.isArray(roots) ? roots : []).map((root) => root.repo));
-    for (const [repo, wasGit] of Object.entries(state.auto.signed?.git_repos ?? {}))
-      if (wasGit && !present.has(repo))
-        warn("GIT_UNRESOLVED", `${repo}: repository no longer in Git`);
+    if (Array.isArray(roots)) {
+      const present = new Set(roots.map((root) => root.repo));
+      for (const [repo] of signedGitRepos)
+        if (!present.has(repo)) warn("GIT_UNRESOLVED", `${repo}: repository no longer in Git`);
+    } else {
+      // workRoots already turns a sandbox spawn error into this diagnostic.
+      const detail =
+        roots.error === GIT_SANDBOX_MESSAGE ? roots.error : "could not verify repository in Git";
+      for (const [repo] of signedGitRepos) warn("GIT_UNRESOLVED", `${repo}: ${detail}`);
+    }
     const open =
       state.auto.work ??
       Object.entries(state.modules)

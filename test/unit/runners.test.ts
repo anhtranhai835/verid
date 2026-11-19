@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
+import { findRunners } from "../../src/adapters/test-runner.js";
 import {
   detectRunners,
   goneRunners,
   runnerLabel,
   type FolderFacts,
 } from "../../src/core/runners.js";
+import { tempProject } from "../support/project.js";
+
+const project = tempProject("verid-node-runner-");
 
 const folder = (files: string[], more: Partial<FolderFacts> = {}): FolderFacts => ({
   dir: ".",
@@ -17,6 +21,44 @@ const found = (folders: FolderFacts[], windows = true) =>
   detectRunners(folders, windows).runners.map((r) => `${r.name}@${r.dir}: ${r.command}`);
 
 describe("detectRunners", () => {
+  it("detects a direct node --test script after vitest and jest", () => {
+    const rows = [
+      { test: "node --test", deps: [], want: ["node"] },
+      { test: "node --test test/", deps: [], want: ["node"] },
+      { test: "node --test --experimental-strip-types", deps: [], want: ["node"] },
+      { test: "node --test", deps: ["vitest", "jest"], want: ["vitest"] },
+      { test: "node --test", deps: ["jest"], want: ["jest"] },
+      { test: "node script.js", deps: [], want: [] },
+      { test: "node --test-only", deps: [], want: [] },
+      { test: "echo node --test", deps: [], want: [] },
+      { test: "vitest", deps: [], want: [] },
+      { test: ["node --test"], deps: [], want: [] },
+      { test: undefined, deps: [], want: [] },
+    ];
+    const got = rows.map(({ test, deps }) => {
+      project.put(
+        "package.json",
+        JSON.stringify({
+          scripts: { test, extra: "node --test" },
+          devDependencies: Object.fromEntries(deps.map((name) => [name, "*"])),
+        }),
+      );
+      return findRunners(project.root, {
+        sourceGlobs: ["**"],
+        testGlobs: ["test/**"],
+        ignoreGlobs: [],
+      }).runners.map((r) => r.name);
+    });
+    expect(got).toEqual(rows.map(({ want }) => want));
+  });
+
+  it("uses Node's built-in JUnit reporter and standard test discovery", () => {
+    const facts = folder(["package.json"], { testScript: "node --test test/" });
+    expect(found([facts])).toEqual([
+      "node@.: node --test --test-reporter=junit --test-reporter-destination={junit}",
+    ]);
+  });
+
   it("names the runner of each build file, with a command that writes a JUnit report", () => {
     const rows: [string, FolderFacts, boolean, string[]][] = [
       [
