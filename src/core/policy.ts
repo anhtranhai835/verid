@@ -1,5 +1,6 @@
 import type { PolicyDecision, RuleCode } from "./errors.js";
 import { inBoundary } from "./station.js";
+import { fileRole, relativeTo, type TddLayout } from "./tdd.js";
 
 export type Access = "read" | "write";
 
@@ -50,6 +51,12 @@ export interface PolicyContext {
   protectedWriteDirs?: readonly string[];
   protectedTranscriptDirs?: readonly string[];
   secretPaths?: readonly string[];
+  /** Source and test layouts, with path resolution bound to the tool cwd. */
+  secretSource?: {
+    real: readonly TddLayout[];
+    written: readonly TddLayout[];
+    resolvePath: (path: string) => { real: string; written: string };
+  };
   /** verid's own bundle, which the registered hooks run. */
   distDir: string;
   planPath: string;
@@ -128,7 +135,7 @@ function decideFile(
     [
       "VERID_BURNT_SECRET_PROTECTED",
       "secret file",
-      isSecretPath(a.path) || isSecretPath(a.display) || (ctx.secretPaths ?? []).includes(a.path),
+      fileSecretPath(a, ctx.secretSource) || (ctx.secretPaths ?? []).includes(a.path),
     ],
     [
       "VERID_BURNT_TRANSCRIPT_PROTECTED",
@@ -341,9 +348,7 @@ const BASH_RULES: [
   [
     "VERID_BURNT_SECRET_PROTECTED",
     "mentions a secret file",
-    (c, ctx) =>
-      c.split(/[\s'"`;|&<>()=,]+/).some((t) => t !== "" && isSecretPath(t)) ||
-      (ctx.secretPaths ?? []).some((p) => c.includes(slashPath(p))),
+    (c, ctx) => containsSecretWord(c) || mentionsExplicitSecret(c, ctx),
   ],
   [
     "VERID_BURNT_TRANSCRIPT_PROTECTED",
@@ -416,14 +421,7 @@ const BASH_RULES: [
 // there a backslash may be a Windows path separator. Administrative drive shares also
 // get a drive-form copy for every mention rule. An extra copy collapses repeated separators
 // and dot segments before the share rewrite; keep the originals to retain their matches.
-function decideBash(
-  command: string,
-  ctx: PolicyContext,
-  lifted: ReadonlySet<RuleCode>,
-): PolicyDecision {
-  const target = command.length > 200 ? `${command.slice(0, 200)}…` : command;
-  const legacyWrite = ctx.legacy?.shellWrite(command) ?? null;
-  if (legacyWrite !== null) return deny("VERID_BURNT_LEGACY_READ_ONLY", target, legacyWrite);
+function bashPathForms(command: string): string[] {
   const forms = [command, unquote(command)].flatMap((c) => {
     const raw = c.toLowerCase();
     const slashed = raw.replace(/\\/g, "/");
@@ -443,17 +441,30 @@ function decideBash(
       .replace(/(?<=[^/\s'"`;|&<>()])\/(?:\.?\/)+/g, "/");
     return [raw, ...shared, normalizedShare];
   });
+  // A path named only to exclude it is not reached: every protected-path rule reads without it.
+  return forms.map(withoutExclusions);
+}
+
+function decideBash(
+  command: string,
+  ctx: PolicyContext,
+  lifted: ReadonlySet<RuleCode>,
+): PolicyDecision {
+  const target = command.length > 200 ? `${command.slice(0, 200)}…` : command;
+  const legacyWrite = ctx.legacy?.shellWrite(command) ?? null;
+  if (legacyWrite !== null) return deny("VERID_BURNT_LEGACY_READ_ONLY", target, legacyWrite);
   const data = literalData(command);
   const spoken = [data, unquote(data)].map((c) => c.toLowerCase());
-  // A path named only to exclude it is not reached: every protected-path rule reads without it.
-  const reached = forms.map(withoutExclusions);
+  const reached = bashPathForms(command);
   const read = plainRead(command);
   for (const [code, reason, matches] of BASH_RULES) {
     // Command-name rules read literal text written to a file as data: `echo "/verid tip x"`.
     const texts =
       code.startsWith("VERID_BURNT_BASH_NESTED_") || code === "VERID_BURNT_BASH_DEVELOPER_ONLY"
         ? spoken
-        : reached;
+        : code === "VERID_BURNT_SECRET_PROTECTED"
+          ? bashSecretForms(command, reached, ctx, read)
+          : reached;
     if (!lifted.has(code) && texts.some((c) => matches(c, ctx, read, command))) {
       const hint =
         !read &&
@@ -831,12 +842,92 @@ const SECRET_NAMES = new Set([".env", ".npmrc", ".pypirc", ".netrc"]);
 const SECRET_EXTENSIONS = [".pem", ".key", ".p12", ".pfx"];
 const SECRET_PREFIXES = ["id_rsa", "id_ed25519"];
 const SECRET_SUBSTRINGS = ["credentials", "secret"];
+const SOURCE_EXTENSION =
+  /\.(?:js|mjs|cjs|jsx|ts|mts|cts|tsx|py|go|java|kt|cs|rb|php|rs|swift|scala)$/i;
+type SecretSource = NonNullable<PolicyContext["secretSource"]>;
+
+function isSourcePath(path: string, layouts: readonly TddLayout[]): boolean {
+  return (
+    SOURCE_EXTENSION.test(path) &&
+    layouts.some((layout) => {
+      const rel = relativeTo(path, layout.repoRoot);
+      return rel !== null && rel !== "" && fileRole(rel, layout) !== "free";
+    })
+  );
+}
+
+function fileSecretPath(a: Extract<Action, { kind: "file" }>, source?: SecretSource): boolean {
+  const realSecret = isSecretPath(a.path);
+  const displaySecret = isSecretPath(a.display);
+  if (!realSecret && !displaySecret) return false;
+  if (!source) return true;
+  if (realSecret && (isSecretPath(a.path, true) || !isSourcePath(a.path, source.real))) return true;
+  const written = a.written ?? source.resolvePath(a.display).written;
+  return (
+    isSecretPath(written, true) ||
+    (displaySecret &&
+      (isSecretPath(a.display, true) ||
+        !SOURCE_EXTENSION.test(a.display) ||
+        !isSourcePath(written, source.written)))
+  );
+}
+
+const containsSecretWord = (text: string, skipSubstring = false): boolean =>
+  text.split(/[\s'"`;|&<>()=,]+/).some((token) => isSecretPath(token, skipSubstring));
+const mentionsExplicitSecret = (text: string, ctx: PolicyContext): boolean =>
+  (ctx.secretPaths ?? []).some((path) => text.includes(slashPath(path)));
+
+// Keep whole shell words together when deciding if a legacy match names a literal path.
+const SHELL_WORD = /(?:\\[^\r\n]|"(?:\\.|[^"\\])*"|'[^']*'|[^\s'"`\\;|&<>()])+|[^\s]/gs;
+const QUOTED_SOURCE_WORD = /^(['"])([^'"\r\n]*)\1$/;
+const SHELL_CWD_CHANGE =
+  /(?:^|[\s'"`;|&<>()])(?:cd|chdir|pushd|popd|set-location|push-location|pop-location|sl|sp|chroot|-c|--chdir)(?=$|[\s'"`;|&<>()=])/i;
+
+function bashSecretForms(
+  command: string,
+  reached: string[],
+  ctx: PolicyContext,
+  read: boolean,
+): string[] {
+  const source = ctx.secretSource;
+  if (
+    !source ||
+    // A relative token is only classifiable when the shell keeps the tool cwd.
+    (!read && (SHELL_CWD_CHANGE.test(command) || /[$`(){}]/.test(command))) ||
+    reached.some((text) => containsSecretWord(text, true) || mentionsExplicitSecret(text, ctx))
+  )
+    return reached;
+
+  // Remove only verified, whole path words before generating the legacy matching forms.
+  const masked = command.replace(SHELL_WORD, (word) => {
+    const [, quote, token = word] = QUOTED_SOURCE_WORD.exec(word) ?? [];
+    if (
+      !SOURCE_EXTENSION.test(token) ||
+      !isSecretPath(token) ||
+      isSecretPath(token, true) ||
+      /^[-~]|[\0*?[$`%]/.test(token) ||
+      (!quote && /['"=\\]/.test(token)) ||
+      (token.includes("\\") && (process.platform !== "win32" || quote !== "'"))
+    )
+      return word;
+    const { real, written } = source.resolvePath(token);
+    const spellings = [slashPath(real), slashPath(written)];
+    return isSourcePath(real, source.real) &&
+      isSourcePath(written, source.written) &&
+      !isSecretPath(real, true) &&
+      !isSecretPath(written, true) &&
+      !(ctx.secretPaths ?? []).some((path) => spellings.includes(slashPath(path)))
+      ? "_"
+      : word;
+  });
+  return masked === command ? reached : bashPathForms(masked);
+}
 
 /**
  * Default secret patterns. Developers will be able to add patterns in manifest.yaml
  * (Phase 4) but never remove these. Matching is case-insensitive.
  */
-export function isSecretPath(path: string): boolean {
+export function isSecretPath(path: string, skipSubstring = false): boolean {
   const segments = path
     .toLowerCase()
     .split(/[\\/]+/)
@@ -848,7 +939,7 @@ export function isSecretPath(path: string): boolean {
     base.startsWith(".env.") ||
     SECRET_EXTENSIONS.some((e) => base.endsWith(e)) ||
     SECRET_PREFIXES.some((p) => base.startsWith(p)) ||
-    SECRET_SUBSTRINGS.some((s) => base.includes(s)) ||
+    (!skipSubstring && SECRET_SUBSTRINGS.some((s) => base.includes(s))) ||
     segments.includes(".ssh") ||
     (base === "auth.json" && segments.at(-2) === ".codex")
   );

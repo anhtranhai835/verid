@@ -304,7 +304,7 @@ function decideRepoTdd(
 }
 
 /** Repo-relative path with `/` separators, or null when `path` is not inside `root`. */
-function relativeTo(path: string, root: string): string | null {
+export function relativeTo(path: string, root: string): string | null {
   const base = root.replace(/[\\/]+$/, "");
   if (!path.startsWith(base)) return null;
   const rest = path.slice(base.length);
