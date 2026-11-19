@@ -104,6 +104,7 @@ export async function preToolUse(p: z.infer<typeof preToolUseSchema>): Promise<R
     ...(layouts && {
       secretSource: {
         ...layouts,
+        windows: process.platform === "win32",
         resolvePath: (path: string) => {
           const absolute = resolve(p.cwd, path);
           return { real: normalizePath(absolute), written: writtenPath(absolute) };

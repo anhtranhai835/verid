@@ -55,6 +55,7 @@ export interface PolicyContext {
   secretSource?: {
     real: readonly TddLayout[];
     written: readonly TddLayout[];
+    windows: boolean;
     resolvePath: (path: string) => { real: string; written: string };
   };
   /** verid's own bundle, which the registered hooks run. */
@@ -907,7 +908,7 @@ function bashSecretForms(
       isSecretPath(token, true) ||
       /^[-~]|[\0*?[$`%]/.test(token) ||
       (!quote && /['"=\\]/.test(token)) ||
-      (token.includes("\\") && (process.platform !== "win32" || quote !== "'"))
+      (token.includes("\\") && (!source.windows || quote !== "'"))
     )
       return word;
     const { real, written } = source.resolvePath(token);

@@ -45,6 +45,7 @@ const sourceContext: PolicyContext = {
   secretSource: {
     real: [{ repoRoot: normalizePath(project), ...sourceLayout }],
     written: [{ repoRoot: writtenPath(project), ...sourceLayout }],
+    windows: process.platform === "win32",
     resolvePath: (path: string) => ({
       real: normalizePath(projectPath(path)),
       written: writtenPath(projectPath(path)),
