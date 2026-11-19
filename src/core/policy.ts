@@ -401,11 +401,12 @@ const BASH_RULES: [
   [
     "VERID_BURNT_BASH_DEVELOPER_ONLY",
     "changes CLAUDECODE, or runs a developer-only verid command or verid's hook",
-    (c) =>
+    (c, _ctx, read) =>
       CLAUDECODE_VAR.test(c) ||
       /\bcodex_(?:thread_id|session_id|tool_call_id|home|ci)\b/.test(c) ||
       DEVELOPER_COMMAND.test(c) ||
-      VERID_HOOK.test(c),
+      // plainRead masks a quoted --pre, so also check the unquoted form here.
+      (VERID_HOOK.test(c) && (!read || RG_PRE_OPTION.test(unquote(c)))),
   ],
 ];
 
@@ -547,22 +548,40 @@ function dangerousCommand(command: string): string | null {
     .replace(/\\(.)|["']/gs, "$1");
   const run = RUN_RULES.find(([, rule]) => rule.test(unquoted));
   const flag = FLAG_RULES.find(([, rule]) => rule.test(masked));
-  return (run ?? flag)?.[0] ?? null;
+  const matched = run ?? flag;
+  if (matched) return matched[0];
+  return SEARCH_INTO_PROGRAM.test(lower.replace(QUOTED_WORD, "_"))
+    ? "pipes search results into a program"
+    : null;
 }
 
-// Literal text a command only prints or writes to a file is data, not a session it starts:
-// `Add-Content notes.md -Value 'Codex denied'`. Expansion, escaped quotes or a pipe into a
-// shell can run that text, so those commands keep every quoted word.
+// Literal text a command prints, writes or searches for is data. Expansion, escaped quotes,
+// an rg preprocessor or a pipe into a program keep every quoted word.
 const DATA_PROGRAM =
   /^(?:echo|printf|write-output|write-host|add-content|ac|set-content|sc|out-file)$/;
+const SEARCH_NAMES = "(?:rg|grep|select-string|sls|findstr)";
+const SEARCH_PROGRAM = new RegExp(`^${SEARCH_NAMES}$`);
+const SEARCH_INTO_PROGRAM = new RegExp(
+  `(?:^|[;&|\\r\\n(])\\s*${SEARCH_NAMES}(?=\\s|\\|)[^;&|\\r\\n]*${INTO_PROGRAM}`,
+);
+const QUOTED_WORD = /'[^']*'|"[^"]*"/g;
+// Quoted or joined options can also enable rg's preprocessor.
+const RG_PRE_OPTION = /(?:^|[;&|\r\n(])\s*rg(?=\s)[\s\S]*?\s--pre\b/;
 function literalData(command: string): string {
   if (/[$`]|\\['"]/.test(command)) return command;
-  if (new RegExp(INTO_PROGRAM).test(unquote(command.toLowerCase()))) return command;
+  const shell = unquote(command.toLowerCase());
+  if (new RegExp(INTO_PROGRAM).test(shell) || RG_PRE_OPTION.test(shell)) return command;
+  // A quoted redirection target is a shell operand, not a search argument.
+  const searchData = !/[<>]/.test(command.replace(QUOTED_WORD, "_"));
   let program: string | null = null; // the first word of the current simple command
   return command.replace(/'[^']*'|"[^"]*"|[;&|\r\n(]|[^\s;&|\r\n('"]+/g, (word) => {
     if (/^[;&|\r\n(]$/.test(word)) program = null;
     else if (program === null) program = word.toLowerCase();
-    else if (DATA_PROGRAM.test(program) && /^['"]/.test(word)) return "_";
+    else if (
+      /^['"]/.test(word) &&
+      (DATA_PROGRAM.test(program) || (searchData && SEARCH_PROGRAM.test(program)))
+    )
+      return "_";
     return word;
   });
 }

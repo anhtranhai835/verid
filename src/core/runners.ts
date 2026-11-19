@@ -6,6 +6,8 @@ export interface FolderFacts {
   files: readonly string[];
   /** The dependencies and devDependencies of its package.json. */
   deps: readonly string[];
+  /** The test script in package.json, when it is a string. */
+  testScript?: string;
   /** The text of pyproject.toml, setup.cfg, Gemfile and composer.json, when there. */
   texts: Readonly<Record<string, string>>;
 }
@@ -13,6 +15,7 @@ export interface FolderFacts {
 type RunnerName =
   | "vitest"
   | "jest"
+  | "node"
   | "playwright"
   | "pytest"
   | "maven"
@@ -71,6 +74,13 @@ function runnersOf(f: FolderFacts, windows: boolean): Omit<Runner, "dir">[] {
       // Without it, a test file that cannot load is missing from jest-junit's report.
       env: { JEST_JUNIT_OUTPUT_FILE: "{junit}", JEST_JUNIT_REPORT_TEST_SUITE_ERRORS: "true" },
       setup: "npm install -D jest-junit",
+    });
+  else if (/^[ \t]*node[ \t]+--test(?:\s|$)/.test(f.testScript ?? ""))
+    out.push({
+      ...NONE,
+      name: "node",
+      // Node 20.8 added the JUnit reporter, so verid's Node 22 minimum covers it.
+      command: "node --test --test-reporter=junit --test-reporter-destination={junit}",
     });
   // Next to the unit tests, not instead: everything it reports counts as end-to-end.
   if (

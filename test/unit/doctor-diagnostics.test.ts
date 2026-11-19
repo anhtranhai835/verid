@@ -290,6 +290,50 @@ it("explains sandbox Git refusals at every audit probe while preserving real Git
   }
 });
 
+it("distinguishes unverified signed repositories from repositories missing after Git ran", () => {
+  const parsed = parseManifest(projectManifest());
+  if (!parsed.ok) throw new Error(parsed.detail);
+  const state = readState(statePaths(p.root));
+  state.auto.signed = {
+    at: "2026-01-01T00:00:00Z",
+    research_sha256: "",
+    spec_sha256: null,
+    design_sha256: "",
+    git: true,
+    git_repos: { ".": true, api: true, docs: false },
+  };
+  const rows = [
+    {
+      root: result("", "", Object.assign(new Error("spawnSync git EPERM"), { code: "EPERM" })),
+      want: [`[GIT_UNRESOLVED] .: ${sandbox}`, `[GIT_UNRESOLVED] api: ${sandbox}`],
+    },
+    {
+      root: result("", "", Object.assign(new Error("spawnSync git ENOENT"), { code: "ENOENT" })),
+      want: [
+        "[GIT_UNRESOLVED] .: could not verify repository in Git",
+        "[GIT_UNRESOLVED] api: could not verify repository in Git",
+      ],
+    },
+    {
+      root: result(p.root),
+      want: ["[GIT_UNRESOLVED] api: repository no longer in Git"],
+    },
+  ];
+  for (const { root, want } of rows) {
+    vi.mocked(spawnSync).mockImplementation((_file, args) => {
+      if (args?.includes("--absolute-git-dir"))
+        return result(`${p.root}\n${join(p.root, ".git")}\n`);
+      if (args?.includes("--show-toplevel")) return root;
+      if (args?.includes("symbolic-ref")) return result("refs/heads/feat/test\n");
+      if (args?.includes("for-each-ref")) return result("refs/heads/main\0\n");
+      return result();
+    });
+    expect(
+      auditWarnings(p.root, parsed.manifest, state).filter((w) => w.startsWith("[GIT_")),
+    ).toEqual(want);
+  }
+});
+
 it("counts every printed doctor problem and warning, including unique audit entries and unavailable audits", async () => {
   const rows = [
     { state: true, ci: false, probe: "EPERM" },
