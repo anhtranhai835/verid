@@ -194,6 +194,23 @@ export function hasCodexReviewer(text: string, overlay: string): boolean {
   );
 }
 
+/** Resolve the selected profile's sandbox mode, falling back to this file's top-level value. */
+export function codexSandboxMode(text: string): string | undefined {
+  const sections = tomlSections(text);
+  const top = sections[0]?.values;
+  const profile = top?.profile;
+  return (
+    (profile !== undefined
+      ? sections.find(
+          (section) =>
+            section.path.length === 2 &&
+            section.path[0] === "profiles" &&
+            section.path[1] === profile,
+        )?.values.sandbox_mode
+      : undefined) ?? top?.sandbox_mode
+  );
+}
+
 /** Inspect only string settings needed for diagnostics; unsupported syntax fails closed. */
 function tomlSections(text: string): {
   path: string[];

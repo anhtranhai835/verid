@@ -29,6 +29,7 @@ export async function planModule(project: string, command: string, wanted: strin
     manifest.iterations !== undefined,
     planned(manifest),
     servedSections(state),
+    command === "context",
   );
   if (plan === null) throw new VeridError("VERID_BURNT_PLAN_MISSING", { path: file });
   if (!plan.ok)

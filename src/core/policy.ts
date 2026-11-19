@@ -241,6 +241,9 @@ export function stationOutput(path: string, module: string): boolean {
 // optionally with a Windows extension, followed by an argument boundary.
 const NESTED_CLAUDE = /(^|[\s;&|(`'"\\/])claude(\.exe|\.cmd|\.ps1)?(?=$|[\s;&|)`'"])/i;
 const NESTED_CODEX = /(^|[\s;&|(`'"\\/])codex(\.exe|\.cmd|\.ps1)?(?=$|[\s;&|)`'"])/i;
+// Check the original whole command: quote joining must not manufacture this exemption,
+// and a newline between the program and flag starts another command.
+const LONE_AGENT_INFO = /^(codex|claude)(\.exe|\.cmd|\.ps1)?[ \t]+(--version|-v|--help|-h)$/i;
 
 // verid's developer commands refuse only while CLAUDECODE=1, so an agent could clear that variable.
 // Block the variable's name and a direct call to those commands: `verid` (or its Windows shim
@@ -323,7 +326,7 @@ const withoutExclusions = (c: string): string =>
 const BASH_RULES: [
   RuleCode,
   string,
-  (command: string, ctx: PolicyContext, read: boolean) => boolean,
+  (command: string, ctx: PolicyContext, read: boolean, original: string) => boolean,
 ][] = [
   [
     "VERID_BURNT_PLUGIN_PROTECTED",
@@ -385,11 +388,15 @@ const BASH_RULES: [
     "names a path inside .git or a Git configuration file",
     (c) => c.split(/[\s'"`;|&<>()=,]+/).some((t) => t !== "" && isGitInternal(t)),
   ],
-  ["VERID_BURNT_BASH_NESTED_CODEX", "starts a nested Codex session", (c) => NESTED_CODEX.test(c)],
+  [
+    "VERID_BURNT_BASH_NESTED_CODEX",
+    "starts a nested Codex session",
+    (c, _ctx, _read, original) => !LONE_AGENT_INFO.test(original.trim()) && NESTED_CODEX.test(c),
+  ],
   [
     "VERID_BURNT_BASH_NESTED_CLAUDE",
     "starts a nested Claude Code session",
-    (c) => NESTED_CLAUDE.test(c),
+    (c, _ctx, _read, original) => !LONE_AGENT_INFO.test(original.trim()) && NESTED_CLAUDE.test(c),
   ],
   [
     "VERID_BURNT_BASH_DEVELOPER_ONLY",
@@ -447,7 +454,7 @@ function decideBash(
       code.startsWith("VERID_BURNT_BASH_NESTED_") || code === "VERID_BURNT_BASH_DEVELOPER_ONLY"
         ? spoken
         : reached;
-    if (!lifted.has(code) && texts.some((c) => matches(c, ctx, read)))
+    if (!lifted.has(code) && texts.some((c) => matches(c, ctx, read, command)))
       return deny(code, target, reason);
   }
   const danger = lifted.has("VERID_BURNT_BASH_DANGEROUS") ? null : dangerousCommand(command);

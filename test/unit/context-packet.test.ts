@@ -138,6 +138,82 @@ describe("context command", () => {
     },
   });
 
+  const drafts = [
+    {
+      file: "ui/brief.md",
+      text: "[NEEDS CLARIFICATION: pick a UI option]\n",
+      state: "unresolved",
+      problem: "resolve the module draft before order",
+    },
+    { file: "ui/brief.md", text: null, state: "missing", problem: "missing module input" },
+    { file: "ui/brief.md", text: "", state: "empty", problem: "missing module input" },
+    {
+      file: "ba/requirements.md",
+      text: "Path: fix\n\n## Root cause\n\n## Requirements\nAgreed fix\n",
+      state: "ok",
+      problem: "write the Root cause",
+    },
+    {
+      file: "ba/requirements.md",
+      text: "Path: quick\nAgreed quick change\n",
+      state: "ok",
+      problem: "a quick module has one AC",
+    },
+  ] as const;
+
+  function draft(kind: (typeof drafts)[number]) {
+    p.put(".verid/artifacts/03-modules/add/ui/brief.md", "Agreed UI\n");
+    p.put(".verid/artifacts/03-modules/add/ba/requirements.md", "Agreed requirements\n");
+    p.putPlan(
+      ".verid/plan.md",
+      `## Module: add\n- AC-1: adds (REQ-1)\n${kind.text?.startsWith("Path: quick") ? "- AC-3: also adds (REQ-1)\n" : ""}\n## Module: sub\nDepends: add\n- AC-2: subtracts (REQ-2)\n`,
+    );
+    const file = `.verid/artifacts/03-modules/add/${kind.file}`;
+    if (kind.text === null) rmSync(p.path(file));
+    else p.put(file, kind.text);
+  }
+
+  it("prints a named draft module's packet with its pending file states without changing state", async () => {
+    for (const kind of drafts) {
+      draft(kind);
+      const before = p.read(".verid/.state/state.json");
+      const result = await runCli(["context", "add"]);
+      expect(result.exit, `${kind.problem}: ${result.stderr}`).toBe(0);
+      expect(result.stdout).toContain("add");
+      expect(result.stdout).toContain(`${kind.file} ${kind.state}`);
+      expect(p.read(".verid/.state/state.json")).toBe(before);
+    }
+  });
+
+  it("lists draft dossier problems in the plan review packet before any module is open", async () => {
+    for (const kind of drafts.filter((kind) => kind.state !== "ok")) {
+      draft(kind);
+      const result = await runCli(["context"]);
+      expect(result.exit, result.stderr).toBe(0);
+      for (const part of [
+        "stage plan review",
+        "add: planned",
+        "sub: planned",
+        kind.file,
+        kind.problem,
+      ])
+        expect(result.stdout).toContain(part);
+    }
+  });
+
+  it("still refuses to order the same draft dossiers with a plan error", async () => {
+    for (const kind of drafts) {
+      draft(kind);
+      const result = await runCli(["order", "add"]);
+      expect(result.exit).not.toBe(0);
+      expect(result.stderr).toContain("VERID_BURNT_PLAN_INVALID");
+      // Empty inputs use the strict reader's unresolved-draft diagnostic.
+      expect(result.stderr).toContain(
+        kind.state === "empty" ? "resolve the module draft before order" : kind.problem,
+      );
+    }
+  });
+
   it("prints the packet for a named module and changes nothing", async () => {
     const before = [p.read(".verid/.state/state.json")];
     const r = await runCli(["context", "sub"]);

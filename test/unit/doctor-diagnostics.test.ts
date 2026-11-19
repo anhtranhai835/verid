@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
-import { rmSync } from "node:fs";
+import { mkdirSync, rmSync } from "node:fs";
+import * as os from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
 import { stringify } from "yaml";
@@ -7,20 +8,181 @@ import { appendAudit } from "../../src/adapters/audit-log.js";
 import * as git from "../../src/adapters/git.js";
 import { setLanguage } from "../../src/adapters/i18n.js";
 import { auditWarnings } from "../../src/adapters/rule-audit.js";
+import * as ruleAudit from "../../src/adapters/rule-audit.js";
 import { readState, statePaths } from "../../src/adapters/state-store.js";
 import { doctorCommand } from "../../src/cli/doctor.js";
 import { parseManifest } from "../../src/core/manifest.js";
 import { projectManifest, tempProject } from "../support/project.js";
 
 vi.mock("node:child_process", () => ({ spawnSync: vi.fn() }));
+vi.mock("node:os", async (importOriginal) => {
+  const actual = await importOriginal<typeof os>();
+  return { ...actual, homedir: vi.fn(actual.homedir) };
+});
 
 const p = tempProject("verid-doctor-diagnostics-", {
   state: { schemaVersion: 1, language: "en" },
 });
+const platformDescriptor = Object.getOwnPropertyDescriptor(process, "platform")!;
 afterEach(() => {
+  Object.defineProperty(process, "platform", platformDescriptor);
+  vi.restoreAllMocks();
   vi.resetAllMocks();
   vi.unstubAllEnvs();
   setLanguage(null);
+});
+
+type SandboxCase = {
+  runner: "none" | "custom" | "detected" | "legacy" | "workspace";
+  projectConfig?: string | "unreadable";
+  userConfig?: string | "unreadable";
+  defaultHome?: boolean;
+};
+
+async function windowsSandbox(row: SandboxCase) {
+  p.fresh();
+  Object.defineProperty(process, "platform", { ...platformDescriptor, value: "win32" });
+  vi.mocked(os.homedir).mockReturnValue(p.path("home"));
+  vi.stubEnv("CODEX_HOME", row.defaultHome ? "" : p.path("codex-home"));
+  setLanguage("en");
+  vi.spyOn(ruleAudit, "auditLines").mockReturnValue([]);
+  vi.mocked(spawnSync).mockImplementation((file) =>
+    file === "codex --version"
+      ? result("codex-cli 0.164.0\n")
+      : result("", "fatal: not a git repository"),
+  );
+  const repo = { path: ".", source_globs: ["src/**"], test_globs: ["test/**"] };
+  const custom = { test_cmd: "test-runner {junit}" };
+  const repos =
+    row.runner === "legacy"
+      ? [
+          { ...repo, path: "app" },
+          { ...repo, path: "old", role: "legacy", read_only: true, ...custom },
+        ]
+      : [
+          {
+            ...repo,
+            ...(row.runner === "custom" ? custom : {}),
+            ...(row.runner === "workspace" ? { path: "app" } : {}),
+          },
+        ];
+  const manifest = projectManifest({
+    providers: ["codex"],
+    repos,
+    ...(row.runner === "legacy" ? { mode: "reheat" } : {}),
+    ...(row.runner === "workspace" ? { layout: "workspace" } : {}),
+  });
+  const parsed = parseManifest(manifest);
+  if (!parsed.ok) throw new Error(parsed.detail);
+  p.put(".verid/manifest.yaml", stringify(manifest));
+  for (const r of repos) mkdirSync(p.path(r.path), { recursive: true });
+  if (row.runner === "detected") p.put("package.json", '{"devDependencies":{"vitest":"*"}}');
+  if (row.runner === "workspace")
+    p.put(".verid/package.json", '{"devDependencies":{"vitest":"*"}}');
+  if (row.runner === "legacy") p.put("old/package.json", '{"devDependencies":{"vitest":"*"}}');
+  for (const [file, config] of [
+    [".codex/config.toml", row.projectConfig],
+    [row.defaultHome ? "home/.codex/config.toml" : "codex-home/config.toml", row.userConfig],
+  ]) {
+    if (config === "unreadable") mkdirSync(p.path(file!), { recursive: true });
+    else if (config !== undefined) p.put(file!, config);
+  }
+  const r = await doctorCommand(p.root);
+  const lines = r.stdout.trimEnd().split("\n");
+  const summary = /^(\d+) problem\(s\) and (\d+) warning\(s\)/.exec(lines.at(-1)!);
+  expect(summary, r.stdout).not.toBeNull();
+  return { stdout: r.stdout, warnings: Number(summary![2]) };
+}
+
+const fullAccess = 'sandbox_mode = "danger-full-access"\n';
+
+it("reports Windows Codex sandbox verification as information when no test runner exists", async () => {
+  const rows: SandboxCase[] = [
+    { runner: "none" },
+    { runner: "none", projectConfig: fullAccess },
+    { runner: "legacy" },
+    { runner: "workspace" },
+  ];
+  for (const row of rows) {
+    const r = await windowsSandbox(row);
+    expect(r.stdout, JSON.stringify(row)).toContain(
+      "= Codex Windows sandbox not verified (no test runner yet)",
+    );
+    expect(r.warnings, JSON.stringify(row)).toBe(1); // Only the existing hook re-trust notice.
+  }
+});
+
+it("counts a Windows Codex sandbox warning when a runner lacks top-level full access", async () => {
+  const rows: SandboxCase[] = [
+    { runner: "custom" },
+    {
+      runner: "custom",
+      projectConfig:
+        fullAccess + 'profile = "safe"\n[profiles.safe]\nsandbox_mode = "workspace-write"\n',
+      userConfig: fullAccess,
+    },
+    {
+      runner: "detected",
+      userConfig:
+        fullAccess + 'profile = "safe"\n[profiles.safe]\nsandbox_mode = "workspace-write"\n',
+    },
+    { runner: "detected", userConfig: 'sandbox_mode = "workspace-write"\n' },
+    { runner: "custom", projectConfig: 'sandbox_mode = "read-only"\n', userConfig: fullAccess },
+    { runner: "custom", projectConfig: "[agents.reviewer]\n" + fullAccess },
+    { runner: "detected", userConfig: "[profile]\n" + fullAccess },
+    { runner: "custom", projectConfig: "# " + fullAccess },
+    { runner: "custom", projectConfig: 'note = """\n' + fullAccess + '"""\n' },
+    { runner: "custom", projectConfig: "[[profiles]]\n" + fullAccess },
+    { runner: "custom", projectConfig: 'sandbox_mode = "danger-full-access-extra"\n' },
+    { runner: "custom", projectConfig: "unreadable", userConfig: "unreadable" },
+  ];
+  for (const row of rows) {
+    const r = await windowsSandbox(row);
+    expect(r.stdout, JSON.stringify(row)).toContain(
+      "! On Windows, Codex's sandbox may block verid taste from starting the test runner",
+    );
+    expect(r.warnings, JSON.stringify(row)).toBe(2);
+  }
+});
+
+it("reports Windows Codex full access as ok without counting a sandbox warning", async () => {
+  const rows: SandboxCase[] = [
+    { runner: "custom", projectConfig: fullAccess },
+    { runner: "custom", projectConfig: fullAccess + 'profile = "missing"\n' },
+    {
+      runner: "custom",
+      projectConfig: fullAccess + 'profile = "safe"\n[profiles.safe]\nmodel = "test"\n',
+    },
+    {
+      runner: "custom",
+      projectConfig:
+        'sandbox_mode = "workspace-write"\nprofile = "open"\n[profiles.open]\n' + fullAccess,
+    },
+    {
+      runner: "detected",
+      userConfig: 'profile = "open"\n[profiles.open]\n' + fullAccess,
+    },
+    { runner: "detected", userConfig: fullAccess },
+    {
+      runner: "custom",
+      projectConfig: fullAccess,
+      userConfig: 'sandbox_mode = "workspace-write"\n',
+    },
+    { runner: "custom", projectConfig: "[agents.reviewer]\n" + fullAccess, userConfig: fullAccess },
+    { runner: "custom", projectConfig: "unreadable", userConfig: fullAccess },
+    { runner: "custom", userConfig: fullAccess, defaultHome: true },
+    {
+      runner: "custom",
+      projectConfig: "# Sandbox\r\n sandbox_mode = 'danger-full-access' # local\r\n[agents]\r\n",
+    },
+  ];
+  for (const row of rows) {
+    const r = await windowsSandbox(row);
+    expect(r.stdout, JSON.stringify(row)).toContain(
+      '= Codex Windows sandbox: sandbox_mode = "danger-full-access"; test runner configured',
+    );
+    expect(r.warnings, JSON.stringify(row)).toBe(1);
+  }
 });
 
 const sandbox = "this sandbox cannot start Git (inside Codex, run verid doctor from a terminal)";

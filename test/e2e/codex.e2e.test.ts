@@ -462,6 +462,7 @@ describe("Codex hook transport and policy", () => {
       ["request_user_input_async", { questions: [{ question: "Which?" }] }, "allow"],
       ["clocksleep", { seconds: 30 }, "allow"],
       ["collaborationlist_agents", {}, "allow"],
+      ["webrun", { search_query: [{ q: "Codex hooks" }] }, "allow"],
       // Main's later words would reach a fresh reviewer through these: spawn a new one instead.
       ["collaborationsend_message", { message: "also check x" }, "fresh verid_reviewer"],
       ["Read", { file_path: "notes.txt" }, "allow"],

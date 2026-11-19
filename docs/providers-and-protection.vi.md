@@ -29,9 +29,12 @@ Codex nhận diện entry skill local từ `.agents/skills/`.
 Skill onboard kiểm kê repo và runner, báo tình trạng và bước tiếp theo.
 Nó đề xuất các thay đổi manifest để developer áp dụng.
 
-Trên Windows, sandbox `workspace-write` của Codex chặn mọi process verid mở, nên
-`verid taste` không chạy được test runner ở đó (`VERID_BURNT_RUN_SANDBOXED`). Hãy chạy Codex
-với `sandbox_mode = "danger-full-access"` cho các bước TDD, hoặc chạy taste từ terminal.
+Trên Windows, `verid doctor` chỉ cảnh báo về chế độ cách ly của Codex khi đã có bộ
+chạy kiểm thử và chế độ cách ly khác `danger-full-access`, in dòng xác nhận khi có
+toàn quyền truy cập, và in dòng thông tin "chưa xác minh" khi chưa có bộ chạy kiểm thử.
+Hãy dùng `sandbox_mode = "danger-full-access"` cho các bước phát triển hướng kiểm thử,
+hoặc chạy `verid taste` từ cửa sổ dòng lệnh nếu chế độ cách ly chặn bộ chạy kiểm thử
+(`VERID_BURNT_RUN_SANDBOXED`).
 
 ## Bảo vệ và audit
 
