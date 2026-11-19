@@ -95,6 +95,8 @@ export const CODEX_TOOLS = [
   "request_user_input_async",
   // Waiting changes nothing.
   "clocksleep",
+  // Searching the web writes nothing.
+  "webrun",
   "Read",
   "Grep",
   "Glob",

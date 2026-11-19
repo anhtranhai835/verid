@@ -45,7 +45,7 @@ export async function contextCommand(project: string, args: string[]): Promise<C
   const state = readState(statePaths(project));
   let target = wanted ?? state.kanban.active?.module ?? state.auto.work?.module;
   if (target === undefined) {
-    const current = readPlan(project, false, false, servedSections(state));
+    const current = readPlan(project, false, false, servedSections(state), true);
     if (current?.ok) {
       const views = planViews(project, current, state);
       target = openModule(views)?.name;
