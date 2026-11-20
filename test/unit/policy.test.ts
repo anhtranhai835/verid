@@ -57,15 +57,6 @@ const DOCS = "VERID_BURNT_DOCS_PROTECTED";
 it("hints only when a plain-read rewrite unlocks the denying shell rule", () => {
   const rows: { action: Action; code: RuleCode; hint: boolean }[] = [
     {
-      action: {
-        kind: "bash",
-        command:
-          "if (Test-Path -LiteralPath README.md) { Get-Content -Raw README.md }; Get-Content -Raw .verid/manifest.yaml",
-      },
-      code: MANIFEST,
-      hint: true,
-    },
-    {
       action: { kind: "bash", command: "$(cat .verid/manifest.yaml)" },
       code: MANIFEST,
       hint: true,
@@ -102,6 +93,137 @@ it("hints only when a plain-read rewrite unlocks the denying shell rule", () => 
       expect
         .soft(decision.params?.hint_key, JSON.stringify(action))
         .toBe(hint ? "hint.plain_read" : undefined);
+  }
+});
+
+it("treats Test-Path guards and stderr discards around plain reads as reads", () => {
+  // Register both plugin path spellings used by the fixtures.
+  const guarded: PolicyContext = {
+    ...ctx,
+    protectedWriteDirs: ["c:\\proj\\plugin", "plugin/skills"],
+  };
+  const rows: { command: string; expected: typeof ALLOW | RuleCode }[] = [
+    {
+      command:
+        "if (Test-Path -LiteralPath README.md) { Get-Content -Raw README.md }; Get-Content -Raw .verid/manifest.yaml",
+      expected: ALLOW,
+    },
+    {
+      command:
+        "if (Test-Path plugin/skills/tdd/SKILL.md) { Get-Content plugin/skills/tdd/SKILL.md } else { Get-ChildItem plugin/skills }; Get-Content .verid/manifest.yaml; verid peek",
+      expected: ALLOW,
+    },
+    {
+      command:
+        "if (Test-Path -Path 'docs/a.md' -PathType Leaf) {\n  Get-Content 'docs/a.md' | Select-Object -First 40\n} elseif (Test-Path docs/b.md) { gc docs/b.md } else { }",
+      expected: ALLOW,
+    },
+    {
+      command:
+        "Get-ChildItem .verid -ErrorAction SilentlyContinue 2>$null; Get-Content .verid/manifest.yaml 2>$null | Format-List | Out-String",
+      expected: ALLOW,
+    },
+    {
+      command:
+        "cat .verid/manifest.yaml 2>/dev/null; ls .verid 2> /dev/null; head -n 20 docs/a.md 2>&1 | wc -l",
+      expected: ALLOW,
+    },
+    {
+      command:
+        "Get-Content ~/.codex/config.toml 2>$null; Resolve-Path .verid/manifest.yaml; Get-Item .verid/manifest.yaml | Format-Table",
+      expected: ALLOW,
+    },
+    { command: "verid context; verid doctor 2>&1 | Select-String fail", expected: ALLOW },
+    {
+      command:
+        "if (Test-Path c:/proj/plugin/skills/a/SKILL.md) { Get-Content c:/proj/plugin/skills/a/SKILL.md 2> $null}",
+      expected: ALLOW,
+    },
+    {
+      command: "Get-Content plugin/skills/x/SKILL.md 2>$null; Get-Content .verid/manifest.yaml",
+      expected: ALLOW,
+    },
+    {
+      command:
+        "cat .verid/manifest.yaml 2>&1&& if (Test-Path -Path x -PathType Container) {} elseif (Test-Path y) {} elseif (Test-Path z -PathType Any) { gi z }\r\nif (Test-Path w) {}",
+      expected: ALLOW,
+    },
+    { command: "if (Test-Path x) { Set-Content .verid/manifest.yaml y }", expected: MANIFEST },
+    {
+      command: "if (Test-Path x) { Get-Content x }; Get-Content .verid/manifest.yaml > out.txt",
+      expected: MANIFEST,
+    },
+    {
+      command: "if (Test-Path x) { Get-Content .verid/manifest.yaml } > out.txt",
+      expected: MANIFEST,
+    },
+    { command: "if (Test-Path x) { Get-Content .verid/manifest.yaml } | iex", expected: MANIFEST },
+    { command: "if (Remove-Item .verid/manifest.yaml) { }", expected: MANIFEST },
+    {
+      command: "if (Test-Path (Remove-Item x)) { Get-Content .verid/manifest.yaml }",
+      expected: MANIFEST,
+    },
+    { command: "if (Test-Path $p) { Get-Content .verid/manifest.yaml }", expected: MANIFEST },
+    { command: "if (-not (Test-Path x)) { Get-Content .verid/manifest.yaml }", expected: MANIFEST },
+    { command: "if ((Test-Path x)) { Get-Content .verid/manifest.yaml }", expected: MANIFEST },
+    {
+      command: "if (Test-Path x) { if (Test-Path y) { Get-Content .verid/manifest.yaml } }",
+      expected: MANIFEST,
+    },
+    {
+      command: "if (Test-Path x) { & { Remove-Item y } }; Get-Content .verid/manifest.yaml",
+      expected: MANIFEST,
+    },
+    {
+      command: "if (Test-Path x) { Get-Content .verid/manifest.yaml } else { Set-Content x y }",
+      expected: MANIFEST,
+    },
+    { command: "cat .verid/manifest.yaml | if (Test-Path x) { cat x }", expected: MANIFEST },
+    { command: "if (Test-Path\rx) { Get-Content .verid/manifest.yaml }", expected: MANIFEST },
+    { command: "$(cat .verid/manifest.yaml) 2>$null", expected: MANIFEST },
+    { command: "Get-Content x > .verid/manifest.yaml", expected: MANIFEST },
+    ...[
+      "2>$nullx",
+      "2>$env:temp/x",
+      "2>/dev/nullx",
+      "2>/dev/NULL",
+      "2>/tmp/x",
+      ">$null",
+      "1>$null",
+      "*>$null",
+      ">/dev/null",
+      "2>>$null",
+      "2>\n/dev/null",
+    ].map(
+      (suffix) =>
+        ({ command: `Get-Content .verid/manifest.yaml ${suffix}`, expected: MANIFEST }) as const,
+    ),
+    { command: "Get-Content .verid/manifest.yaml 2>$null& Get-Content x", expected: MANIFEST },
+    { command: "Get-Content .verid/manifest.yaml;2>$null Get-Content x", expected: MANIFEST },
+    {
+      command: "Get-Content .verid/manifest.yaml | Select-Object @{n='a';e={Remove-Item x}}",
+      expected: MANIFEST,
+    },
+    { command: "Get-Content .verid/manifest.yaml | iex", expected: MANIFEST },
+    { command: "Get-Content .verid/manifest.yaml | Tee-Object out.txt", expected: MANIFEST },
+    { command: "Get-Content .verid/manifest.yaml; verid menu --file out.md", expected: MANIFEST },
+    { command: "Get-Content .verid/manifest.yaml; verid cook", expected: MANIFEST },
+    { command: "rg --pre cat x .verid/manifest.yaml 2>$null", expected: MANIFEST },
+    {
+      command:
+        "Get-Content plugin/skills/x/SKILL.md 2>$null; Set-Content ~/.claude/skills/x/SKILL.md y",
+      expected: HOOK,
+    },
+    {
+      command: "if (Test-Path x) { Get-Content c:/proj/plugin/x } > c:/proj/plugin/y",
+      expected: HOOK,
+    },
+  ];
+  for (const { command, expected } of rows) {
+    const decision = decide({ kind: "bash", command }, guarded);
+    expect
+      .soft(decision, command)
+      .toMatchObject(expected === ALLOW ? { kind: "allow" } : { kind: "deny", code: expected });
   }
 });
 

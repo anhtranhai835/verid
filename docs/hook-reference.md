@@ -80,6 +80,8 @@ to the station. See [parallel stations](stations.md).
 
 The rules cover file tools, Bash (its plain write targets are judged like a Write), MCP tools, Claude Code's `Skill`, `Agent` and `Task`, and Codex's `apply_patch` and `collaborationspawn_agent`; Codex's read-only web search/fetch tool `webrun` is allowed. Codex also protects project/home `.codex/`, project/home `.agents/skills/` and verid's `plugin/` folder (shell commands that are all plain read programs such as `Get-Content` or `cat` may read them, since Codex has no read tool; project/home `.codex/` may be read the same way, and an `rg -g '!…'` or `grep --exclude-dir=` filter may name any protected path to skip it), treats `~/.codex/sessions/`, `history.jsonl` and its state databases as transcripts and `~/.codex/auth.json` as a secret, including a relocated `CODEX_HOME`. Unexpected errors inside verid block the call.
 
+Plain reads may use simple PowerShell `if`/`elseif` guards with `Test-Path`, an optional `else`, and stderr redirects `2>$null`, `2>/dev/null`, or `2>&1`.
+
 Roles: with a tester and a coder mapped, only the coder writes production code and only the tester (or qa, for end-to-end tests) writes tests; main and unknown agents cannot take either permission. Reviewer and security write nothing. The scope of the drafting roles (architect, planner, qa) and the known skill/agent lists are advisory: departures are audited, not blocked. A role needs the host's subagent identity.
 
 In prep/recipe big-brain drive, `VERID_BURNT_TASK_SESSION` enforces one fresh session per task, selected through `verid order`. No-brain drive uses one session following the module order in `.verid/plan.md`; remix keeps its baseline flow.
