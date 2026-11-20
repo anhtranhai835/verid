@@ -138,9 +138,12 @@ it("reports sandbox-blocked Git commands in work logs without throwing", async (
       return realSpawnSync(command, args, options);
     });
     let lines: string[] = [];
-    expect(() => {
-      lines = readLog(dir, { ".": { main: "main", base } });
-    }, `${readLog.name}: ${target.join(" ")}`).not.toThrow();
+    expect(
+      () => {
+        lines = readLog(dir, { ".": { main: "main", base } });
+      },
+      `${readLog.name}: ${target.join(" ")}`,
+    ).not.toThrow();
     expect(lines.filter((line) => line.includes(GIT_SANDBOX_MESSAGE))).toEqual([
       `(${label} unreadable: ${GIT_SANDBOX_MESSAGE})`,
     ]);
