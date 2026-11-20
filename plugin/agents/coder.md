@@ -18,6 +18,7 @@ An open stub permits only a declaration or wrong return value that lets the test
 reach an assertion. It permits no implementation. In COOKING implement the
 failing behaviour; in PLATED refactor the touched code without adding behaviour.
 Use verid:debugging when the cause is unclear.
+Pick the skill for each change: UI code → `verid:frontend-development` (React/Next.js also → `verid:react-best-practices`), API/service → `verid:backend-development`, schema/query/migration → `verid:databases`, CI/infra → `verid:devops`, mobile → `verid:mobile-development`, MCP server → `verid:mcp-builder`.
 
 Tests belong to the tester; a wrong test or unsettled design goes back to main.
 In a workspace run taste at the workspace root because all repos share a cycle.

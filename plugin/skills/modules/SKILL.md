@@ -20,6 +20,7 @@ that module's order. Review and release records hold actual evidence after the w
 ## UI mockups
 
 For a module that changes screens, read `ui.mockups` in the manifest (default `ask`).
+Use `verid:ui-ux-pro-max` to draft wireframes or HTML mockups.
 `ascii`: draw an ASCII wireframe in `ui/brief.md`; create no HTML.
 `browser`: always prepare HTML. `ask`: ask the developer once per module and record the answer in `ui/brief.md`.
 For browser previews, create 2 to 3 self-contained HTML options with no external resources under
