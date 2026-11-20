@@ -23,6 +23,8 @@ import { bilingual } from "../adapters/i18n.js";
 import { loadManifest } from "../adapters/manifest.js";
 import { planModule } from "./plan-module.js";
 
+export const CONTEXT_OPTIONS = { ac: { type: "string" } } as const;
+
 /** `[module] [--ac <id>]`, either order, nothing else. */
 export function contextArgs(
   args: string[],
@@ -30,7 +32,7 @@ export function contextArgs(
   try {
     const { values, positionals } = parseArgs({
       args,
-      options: { ac: { type: "string" } },
+      options: CONTEXT_OPTIONS,
       allowPositionals: true,
     });
     return positionals.length > 1 ? null : { module: positionals[0], ac: values.ac };

@@ -70,7 +70,8 @@ gói và Git SHA), bản tài nguyên đã sinh và `.verid/.plugin-data/`. Khô
 
 Đồng đội clone rồi chạy `verid cook --yes`: cài lại code thiếu, giữ config, kiểm digest
 đúng bản đã duyệt. Nguồn Git checkout SHA đã ghi dù ref di chuyển; nếu không có `--yes`
-thì hỏi xác nhận trước khi chạy lệnh plugin. Nguồn file tính từ gốc project, nên dùng
+thì hỏi xác nhận trong terminal. Khi chạy không tương tác, cook hoàn tất thiết lập và
+báo từng plugin Git đang chờ xác nhận. Nguồn file tính từ gốc project, nên dùng
 đường dẫn tương đối dùng chung. Nguồn không còn hoặc đã đổi phải do developer xử lý;
 không tự chạy bản mới. `cook --dry-run` không tải/chạy plugin.
 

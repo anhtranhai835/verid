@@ -150,6 +150,33 @@ it("reports sandbox-blocked Git commands in work logs without throwing", async (
   }
 });
 
+it("refuses commit ranges above the history limit", () => {
+  const dir = tmp();
+  const base = "a".repeat(40);
+  const rows = [
+    { readLog: workLog, verb: "rev-list" },
+    { readLog: compactWorkLog, verb: "log" },
+  ];
+  vi.mocked(spawnSync).mockImplementation((_file, args) => {
+    const limit = Number(args?.find((arg) => arg.startsWith("--max-count="))?.split("=")[1]);
+    return {
+      status: 0,
+      stdout: limit ? "a\n".repeat(Math.min(limit, 501)) : "",
+      stderr: "",
+    } as ReturnType<typeof spawnSync>;
+  });
+  for (const { readLog, verb } of rows) {
+    const lines = readLog(dir, { ".": { main: "main", base } });
+    expect(lines, verb).toContain(
+      "(history unreadable: more than 500 commits since the recorded base)",
+    );
+    expect(
+      lines.some((line) => line.startsWith("--- commit ") || line.startsWith("commits  ")),
+      verb,
+    ).toBe(false);
+  }
+});
+
 describe("compactWorkLog", () => {
   const baseOf = (dir: string) => git(dir, "rev-parse", "HEAD");
   const count = (text: string, needle: string) => text.split(needle).length - 1;
@@ -197,12 +224,20 @@ describe("compactWorkLog", () => {
     const base = baseOf(dir);
     write(dir, "src/big-one.ts", "x".repeat(400) + "\n");
     write(dir, "src/big-two.ts", "y".repeat(400) + "\n");
+    write(dir, "src/caf\u00e9.ts", "z".repeat(400) + "\n");
+    write(dir, "src/spaces b/file.ts", "w".repeat(400) + "\n");
+    write(dir, "src/a b.ts", "v".repeat(400) + "\n");
     git(dir, "add", "-A");
     git(dir, "commit", "-q", "-m", "feat: big files");
     const text = compactWorkLog(dir, { ".": { main: "main", base } }, 600).join("\n");
     expect(text).toMatch(/cut.*history\.md/s);
     expect(text).toContain("big-two.ts");
     expect(text).not.toContain("y".repeat(400));
+    const cut = compactWorkLog(dir, { ".": { main: "main", base } }, 0).find((line) =>
+      line.includes("(cut:"),
+    );
+    for (const name of ["src/caf\u00e9.ts", "src/spaces b/file.ts", "src/a b.ts"])
+      expect(cut).toContain(name);
   });
 
   it("never shows secret files", () => {

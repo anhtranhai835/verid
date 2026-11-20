@@ -302,6 +302,7 @@ export function captureWork(
 
 // Enough for any module; a longer range is refused rather than read in part.
 const MAX_COMMITS = 500;
+const HISTORY_LIMIT = `more than ${MAX_COMMITS} commits since the recorded base`;
 
 /**
  * Each recorded root's commits since its base, read again in full every time. With a `branch`,
@@ -344,8 +345,7 @@ export function readHistories(
         const cut = entry.indexOf("\n");
         return { sha: entry.slice(0, cut).trim(), message: entry.slice(cut + 1) };
       });
-    if (commits.length > MAX_COMMITS)
-      return { repo, error: `more than ${MAX_COMMITS} commits since the recorded base` };
+    if (commits.length > MAX_COMMITS) return { repo, error: HISTORY_LIMIT };
     return { repo, ancestor: true, commits };
   });
 }
@@ -396,11 +396,16 @@ export function workLog(project: string, work: Work): string[] {
     const shas = runGit(folder, [
       "rev-list",
       "--reverse",
-      `--max-count=${MAX_COMMITS}`,
+      `--max-count=${MAX_COMMITS + 1}`,
       `${base}..HEAD`,
     ]);
     if (!ok(shas)) lines.push(`(history unreadable: ${failure(shas)})`);
-    for (const sha of ok(shas) ? shas.stdout.split("\n").filter(Boolean) : []) {
+    const commits = ok(shas) ? shas.stdout.split("\n").filter(Boolean) : [];
+    if (commits.length > MAX_COMMITS) {
+      lines.push(`(history unreadable: ${HISTORY_LIMIT})`);
+      continue;
+    }
+    for (const sha of commits) {
       const message = runGit(folder, ["log", "-1", "--format=%B", sha]);
       const diff = runGit(folder, [
         "diff-tree",
@@ -459,6 +464,35 @@ export function workLog(project: string, work: Work): string[] {
 /** Untracked files shown in full are cut after this many characters each. */
 const NEW_FILE_LIMIT = 20_000;
 
+/** Git's quoted paths escape bytes, so decode the octal sequences before reading UTF-8. */
+function diffPath(path: string): string {
+  if (!path.startsWith('"')) return path.replace(/\t$/, "");
+  const parts = path.slice(1, path.lastIndexOf('"')).matchAll(/\\(?:([0-7]{3})|(.))|([^\\]+)/g);
+  const bytes = Array.from(parts, ([match, octal, escaped, literal]) => {
+    // Keep control characters visible so an omitted filename fits on one line.
+    if (octal) {
+      const byte = Number.parseInt(octal, 8);
+      return byte < 32 || byte === 127 ? Buffer.from(match) : Buffer.from([byte]);
+    }
+    return Buffer.from(literal ?? (escaped === '"' || escaped === "\\" ? escaped : match));
+  });
+  return Buffer.concat(bytes).toString("utf8");
+}
+
+function diffChunkName(chunk: string): string {
+  // Patch hunks can contain arbitrary source text. Read only Git's file metadata.
+  const [header = ""] = chunk.split(/^@@/m, 1);
+  const old = /^--- ("?a\/[^\n]+)$/m.exec(header)?.[1];
+  const added = /^\+\+\+ ("?b\/[^\n]+)$/m.exec(header)?.[1];
+  const path = old ?? added;
+  if (path !== undefined) return diffPath(path).slice(2);
+  const renamed = /^(?:rename|copy) from (.+)$/m.exec(header)?.[1];
+  if (renamed !== undefined) return diffPath(renamed);
+  const unchanged = /^diff --git a\/(.+) b\/\1$/m.exec(header)?.[1];
+  const quoted = /^diff --git ("a\/(?:\\.|[^"\\])+") "b\//.exec(header)?.[1];
+  return unchanged ?? (quoted === undefined ? "(unknown)" : diffPath(quoted).slice(2));
+}
+
 /**
  * The short form of `workLog`: per root a count of commits (sha and subject), a per-file stat, and
  * one diff from the base to the working tree, so a file changed in several commits shows once. The
@@ -484,11 +518,15 @@ export function compactWorkLog(project: string, work: Work, limit = LOG_LIMIT): 
     const log = runGit(folder, [
       "log",
       "--reverse",
-      `--max-count=${MAX_COMMITS}`,
+      `--max-count=${MAX_COMMITS + 1}`,
       "--format=%h %s",
       `${base}..HEAD`,
     ]);
     const commitLines = ok(log) ? log.stdout.split("\n").filter(Boolean) : [];
+    if (commitLines.length > MAX_COMMITS) {
+      lines.push(`(history unreadable: ${HISTORY_LIMIT})`);
+      continue;
+    }
     lines.push(
       ok(log) ? `commits  ${commitLines.length}` : `(history unreadable: ${failure(log)})`,
       ...commitLines.map((line) => `  ${line}`),
@@ -529,7 +567,7 @@ export function compactWorkLog(project: string, work: Work, limit = LOG_LIMIT): 
       .split(/^(?=diff --git )/m)
       .filter((chunk) => chunk.trim() !== "")
       .map((chunk) => ({
-        name: /^diff --git a\/(.*?) b\//.exec(chunk)?.[1] ?? "(unknown)",
+        name: diffChunkName(chunk),
         text: chunk.trimEnd(),
       }));
     for (const name of names) {

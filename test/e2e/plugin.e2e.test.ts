@@ -399,12 +399,26 @@ it("requires confirmation for git restoration before setup and retains the regis
   t.gitAt(source, "init", "-q", "-b", "main");
   t.gitAt(source, "add", ".");
   t.gitAt(source, "commit", "-qm", "initial");
-  expect((await add(`git:${source.replaceAll("\\", "/")}#main`)).code).toBe(0);
-  const before = t.read(".verid/plugins.json");
-  rmSync(installed(), { recursive: true });
-  expect((await t.cli("cook")).stderr).toContain("VERID_BURNT_PLUGIN_CONFIRM");
-  expect(t.read(".verid/plugins.json")).toBe(before);
-  expect(existsSync(installed())).toBe(false);
+  const rows = [{ filePlugin: false }, { filePlugin: true }];
+  for (const { filePlugin } of rows) {
+    t.fresh();
+    expect((await add(`git:${source.replaceAll("\\", "/")}#main`)).code).toBe(0);
+    const second = t.path(".verid/.plugins/second");
+    if (filePlugin) {
+      expect((await add(`file:${custom({ name: "second" })}`)).code).toBe(0);
+      rmSync(second, { recursive: true });
+    }
+    const before = t.read(".verid/plugins.json");
+    rmSync(installed(), { recursive: true });
+    const cooked = await t.cli("cook");
+    expect(cooked.stderr).toContain("VERID_BURNT_PLUGIN_CONFIRM");
+    expect(cooked.stderr).toContain("sample");
+    expect(cooked.stderr).toContain("cook --yes");
+    expect(cooked.code).toBe(0);
+    expect(t.read(".verid/plugins.json")).toBe(before);
+    expect(existsSync(installed())).toBe(false);
+    expect(existsSync(second)).toBe(filePlugin);
+  }
 });
 
 it("warns and audits a timed out hook while preserving the recorded gate state", async () => {

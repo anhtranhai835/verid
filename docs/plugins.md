@@ -94,9 +94,10 @@ this ignore entry; cook maintains it when the registry exists.
 
 After cloning, run `verid cook --yes`. Missing packages are restored from the registry,
 including their original config and exact approved digest. Git sources are checked out
-at the recorded SHA even if the named ref has moved; without `--yes`, Git restoration
-asks for confirmation. File sources resolve relative to the project root, so use a
-shared relative source path when possible. An unavailable source or changed local
+at the recorded SHA even if the named ref has moved. Without `--yes`, Git restoration
+asks for confirmation in a terminal. In a non-interactive run, cook finishes setup and
+reports each Git plugin waiting for confirmation. File sources resolve relative to the project
+root, so use a shared relative source path when possible. An unavailable source or changed local
 package needs developer attention; restore refuses to execute the changed version.
 `cook --dry-run` does not fetch or execute plugin code.
 

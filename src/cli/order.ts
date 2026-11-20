@@ -114,13 +114,23 @@ export async function approve(project: string, wanted: string | undefined): Prom
       throw new VeridError("VERID_BURNT_MODULE_OPEN", { module: open.name });
     // A re-order of the open module keeps where its work began, so earlier commits stay checked.
     const before = state.modules[name];
-    const kept = before?.served_at === null ? before.work : undefined;
+    const kept =
+      before?.served_at === null && Object.keys(before.work ?? {}).length > 0
+        ? before.work
+        : undefined;
     const work = kept ?? ("detail" in captured ? {} : captured);
     // A legacy unit is ordered only on a gate that passed on what it holds now.
     const gate = gateProblem(project, state, name);
     if (gate !== null)
       throw new VeridError("VERID_BURNT_REHEAT_GATE", { module: name, detail: gate });
     // Audit first: if it fails, state is untouched and nothing was approved.
+    if (kept === undefined && "detail" in captured)
+      appendAudit(paths.audit, {
+        event: "warning",
+        code: "GIT_WORK_BASE",
+        target: captured.repo,
+        reason: captured.detail,
+      });
     appendAudit(paths.audit, {
       event: "plan_approved",
       module: name,

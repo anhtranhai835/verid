@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   bashWriteTargets,
   decide,
+  isSecretPath,
   mcpAccess,
   mcpPaths,
+  plainRead,
   type Action,
   type PolicyContext,
 } from "../../src/core/policy.js";
@@ -391,6 +393,18 @@ describe("decide: file tools", () => {
     ]);
   });
 
+  it("classifies Windows spellings of secret paths consistently", () => {
+    const rows = [
+      [".npmrc.", true],
+      [".env::$DATA", true],
+      ["key.pem::$DATA", true],
+      [".ssh. /id_x", true],
+      [".codex/auth.json.", true],
+      [".env.example. ", false],
+    ] as const;
+    expect(rows.map(([path]) => isSecretPath(path))).toEqual(rows.map(([, expected]) => expected));
+  });
+
   it("allows source and test file reads and writes when only the basename substring matches", () => {
     expectFiles(
       [
@@ -698,6 +712,7 @@ describe("decide: file tools", () => {
       [`cat ${skill} && verid doctor --ci && verid menu && verid peek`, ALLOW],
       [`cat ${skill}; verid menu --commits --file`, HOOK],
       [`cat ${skill}; verid order x`, HOOK],
+      ["Write-Output .codex\nGet-Location", HOOK],
       [`verid tip "let me edit the test"`, "VERID_BURNT_BASH_DEVELOPER_ONLY"],
       [`rg --pre ./x.sh step ${skill}`, HOOK],
       [`rg --pre=./x.sh step ${skill}`, HOOK],
@@ -1085,8 +1100,44 @@ describe("decide: file tools", () => {
 });
 
 describe("decide: bash", () => {
+  it("classifies reads using complete quotes and line comments", () => {
+    const rows = [
+      ["cat \\'; echo x > src/a.ts; echo \\'", false, false],
+      ["cat x #'\necho y > src/a.ts\n#'", false, false],
+      ["cat $'\\'' .verid/manifest.yaml; echo y > src/a.ts; echo \\'", false, false],
+      ["rg 'one|two;three' src # \"ignored", false, true],
+      ["cat file#name; cat src/a.ts", false, true],
+      ["Get-Content x #'\nSet-Content src/a.ts x\n#'", true, false],
+      ["Write-Output <#'#> 'a'; Set-Content src/a.ts x #'", true, false],
+      ["Get-Content <#'#> src/a.ts", true, true],
+      ['Get-Content `"; Set-Content src/a.ts x; Write-Output `"', true, false],
+      ["Get-Content ‘src/a.ts’ 2>$null", true, true],
+    ] as const;
+    for (const [command, powershell, expected] of rows)
+      expect(plainRead(command, powershell), command).toBe(expected);
+  });
+
+  it("adapts plain reads using the Codex host's shell dialect", () => {
+    const rows = [
+      ["win32", "Get-Content README.md 2>$null"],
+      ["linux", "rg 'author’s notes' src"],
+    ] as const;
+    const platform = Object.getOwnPropertyDescriptor(process, "platform")!;
+    try {
+      for (const [host, command] of rows) {
+        Object.defineProperty(process, "platform", { ...platform, value: host });
+        const adapted = codexAction(payload("Bash", { command }));
+        expect(adapted.unsupported, command).toBeUndefined();
+        expect(adapted.files, command).toEqual([]);
+      }
+    } finally {
+      Object.defineProperty(process, "platform", platform);
+    }
+  });
   it("applies the file rules to the paths a Bash command names", () => {
     expectBash([
+      ["cat $'\\''; echo y > .verid/review/x; echo \\'", STATE],
+      ["echo $'\\''; cp evil .verid/review/x; echo \\'", STATE],
       ["cat .verid/.state/state.json", STATE],
       ["cat .env", SECRET],
       ["type C:\\proj\\.env.local", SECRET],
@@ -1550,6 +1601,18 @@ describe("bashWriteTargets: files a Bash command plainly writes", () => {
       ["perl -pi -e 's/(2)/3/' test/a.test.js", ["s/(2)/3/", "test/a.test.js"]],
       ["cp 'x(1).js' test/a.test.js", ["test/a.test.js", "test/a.test.js/x(1).js"]],
       ['echo x > "src/my file.ts"', ["src/my file.ts"]],
+      ["echo \\'; echo x > src/a.ts; echo \\'", ["src/a.ts"]],
+      ['echo \\"; echo x > src/a.ts; echo \\"', ["src/a.ts"]],
+      ["cat x #'\necho y > src/a.ts\n#'", ["src/a.ts"]],
+      ["echo $'\\''; echo y > src/a.ts; echo \\'", ["src/a.ts"]],
+      [
+        "echo $'\\''; cp evil .verid/review/x; echo \\'",
+        [".verid/review/x", ".verid/review/x/evil"],
+      ],
+      ["echo `#'\necho y > src/a.ts\n`; echo \\'", ["src/a.ts"]],
+      ['echo "$(echo ")"; echo x > src/a.ts; echo "(")"', ["src/a.ts"]],
+      ["echo \\'; cp tmp/b.ts src/a.ts; echo \\'", ["src/a.ts", "src/a.ts/b.ts"]],
+      ["echo 'x > src/ignored.ts' # \"ignored\" > src/ignored.ts", []],
       ['git commit -m "a > src/b.ts"', []],
     ]);
   });

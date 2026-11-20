@@ -1,8 +1,10 @@
 import type { PolicyDecision, RuleCode } from "./errors.js";
+import { renderShell, shellSpans, stripBashHeredocs } from "./shell-lex.js";
 import { inBoundary } from "./station.js";
 import { fileRole, relativeTo, type TddLayout } from "./tdd.js";
 
 export type Access = "read" | "write";
+type BashAction = { kind: "bash"; command: string; powershell?: boolean; shellPatch?: boolean };
 
 /**
  * A tool call reduced to what the rules need. File paths are already normalized by the
@@ -19,7 +21,7 @@ export type Action =
       /** Absolute spelling before resolving filesystem links. */
       written?: string;
     }
-  | { kind: "bash"; command: string }
+  | BashAction
   /** A shell other than Bash, whose commands verid cannot read. */
   | { kind: "shell"; tool: string }
   | { kind: "other"; tool: string };
@@ -40,7 +42,10 @@ export interface PolicyContext {
    * `/verid tip` lifts that. `shellWrite` names what a shell command does there, following `cd`
    * and `git -C`, and is null when it does nothing to them.
    */
-  legacy?: { roots: readonly string[]; shellWrite: (command: string) => string | null };
+  legacy?: {
+    roots: readonly string[];
+    shellWrite: (command: string, powershell?: boolean) => string | null;
+  };
   stateDir: string;
   manifestPath: string;
   transcriptsDir: string;
@@ -87,7 +92,7 @@ export function decide(
   lifted: ReadonlySet<RuleCode> = new Set(),
 ): PolicyDecision {
   if (action.kind === "file") return decideFile(action, ctx, lifted);
-  if (action.kind === "bash") return decideBash(action.command, ctx, lifted);
+  if (action.kind === "bash") return decideBash(action, ctx, lifted);
   if (action.kind === "shell" && ctx.station)
     return deny(
       "VERID_BURNT_STATION_COMMAND",
@@ -328,9 +333,14 @@ const flattenTestPathGuards = (command: string): string => {
 
 // One classifier for every protected path, run once on the command as typed: a literal quoted
 // word is data (a `|` in an rg pattern splits nothing); a double-quoted word that expands is not.
-const plainRead = (command: string): boolean => {
-  const c = command.replace(/'[^']*'|"[^"$`]*"/g, "_");
-  if (/\r(?!\n)|\\\r?\n/.test(c)) return false;
+export const plainRead = (command: string, powershell = false): boolean => {
+  const spans = shellSpans(command, powershell);
+  if (spans.some(({ kind }) => kind === "incomplete" || kind === "expansion" || kind === "ansi"))
+    return false;
+  const c = renderShell(command, spans, (text, { kind }) =>
+    kind === "comment" ? "" : kind === "quote" ? "_" : text,
+  );
+  if (/\r(?!\n)|[\\`]\r?\n/.test(c)) return false;
   // Match the redirect target as typed before normalizing command names.
   const reads = flattenTestPathGuards(
     c.replace(/(?<=\s)2>[ \t]*(?:\$null|\/dev\/null|&1)(?=$|[\s;|}]|&&)/g, " ").toLowerCase(),
@@ -373,7 +383,7 @@ const withoutExclusions = (c: string): string =>
 const BASH_RULES: [
   RuleCode,
   string,
-  (command: string, ctx: PolicyContext, read: boolean, original: string) => boolean,
+  (command: string, ctx: PolicyContext, read: boolean, action: BashAction) => boolean,
 ][] = [
   [
     "VERID_BURNT_PLUGIN_PROTECTED",
@@ -405,12 +415,14 @@ const BASH_RULES: [
   [
     "VERID_BURNT_HOOK_PROTECTED",
     "mentions Claude Code settings, agents, plugins or verid's commands, or writes skills or commands",
-    (c, ctx, read) =>
+    (c, ctx, read, { shellPatch }) =>
       /\.claude[\\/](settings|agents(?![\w.-])|plugins(?![\w.-])|commands[\\/]verid(?![\w.-]))/.test(
         c,
       ) ||
       // Codex reads its config through the shell; its secrets and transcripts have their own rules.
-      (/\.codex(?:[\\/]|$)/.test(c) && !read) ||
+      // An unreadable shell patch has its own denial. A bare directory operand can be its cwd.
+      (!read &&
+        (/\.codex(?:[\\/]|$)/.test(c) || (!shellPatch && /\.codex(?=[\s'"`;&|<>()=,])/.test(c)))) ||
       ((ctx.protectedWriteDirs ?? []).some((p) => c.includes(slashPath(p))) && !read) ||
       configMentions(
         c,
@@ -436,12 +448,12 @@ const BASH_RULES: [
   [
     "VERID_BURNT_BASH_NESTED_CODEX",
     "starts a nested Codex session",
-    (c, _ctx, _read, original) => !LONE_AGENT_INFO.test(original.trim()) && NESTED_CODEX.test(c),
+    (c, _ctx, _read, { command }) => !LONE_AGENT_INFO.test(command.trim()) && NESTED_CODEX.test(c),
   ],
   [
     "VERID_BURNT_BASH_NESTED_CLAUDE",
     "starts a nested Claude Code session",
-    (c, _ctx, _read, original) => !LONE_AGENT_INFO.test(original.trim()) && NESTED_CLAUDE.test(c),
+    (c, _ctx, _read, { command }) => !LONE_AGENT_INFO.test(command.trim()) && NESTED_CLAUDE.test(c),
   ],
   [
     "VERID_BURNT_BASH_DEVELOPER_ONLY",
@@ -486,17 +498,18 @@ function bashPathForms(command: string): string[] {
 }
 
 function decideBash(
-  command: string,
+  action: BashAction,
   ctx: PolicyContext,
   lifted: ReadonlySet<RuleCode>,
 ): PolicyDecision {
+  const { command, powershell = false } = action;
   const target = command.length > 200 ? `${command.slice(0, 200)}…` : command;
-  const legacyWrite = ctx.legacy?.shellWrite(command) ?? null;
+  const legacyWrite = ctx.legacy?.shellWrite(command, powershell) ?? null;
   if (legacyWrite !== null) return deny("VERID_BURNT_LEGACY_READ_ONLY", target, legacyWrite);
-  const data = literalData(command);
-  const spoken = [data, unquote(data)].map((c) => c.toLowerCase());
+  const data = [literalData(command), ...(powershell ? [literalData(command, true)] : [])];
+  const spoken = data.flatMap((c) => [c.toLowerCase(), unquote(c).toLowerCase()]);
   const reached = bashPathForms(command);
-  const read = plainRead(command);
+  const read = plainRead(command) && (!powershell || plainRead(command, true));
   for (const [code, reason, matches] of BASH_RULES) {
     // Command-name rules read literal text written to a file as data: `echo "/verid tip x"`.
     const texts =
@@ -505,11 +518,11 @@ function decideBash(
         : code === "VERID_BURNT_SECRET_PROTECTED"
           ? bashSecretForms(command, reached, ctx, read)
           : reached;
-    if (!lifted.has(code) && texts.some((c) => matches(c, ctx, read, command))) {
+    if (!lifted.has(code) && texts.some((c) => matches(c, ctx, read, action))) {
       const hint =
         !read &&
         (code === "VERID_BURNT_MANIFEST_PROTECTED" || code === "VERID_BURNT_HOOK_PROTECTED") &&
-        !texts.some((c) => matches(c, ctx, true, command));
+        !texts.some((c) => matches(c, ctx, true, action));
       return {
         ...deny(code, target, reason),
         ...(hint && { params: { hint_key: "hint.plain_read" } }),
@@ -594,14 +607,27 @@ const FLAG_RULES: [string, RegExp][] = [
 function dangerousCommand(command: string): string | null {
   const lower = command.toLowerCase();
   const unquoted = unquote(lower);
-  const masked = lower
-    .replace(/(^|[\s=])(?:"[^"]*\s[^"]*"|'[^']*\s[^']*')(?=$|[\s;&|)])/g, "$1_")
-    .replace(/\\(.)|["']/gs, "$1");
+  const spans = shellSpans(lower);
+  const masked = unquote(
+    renderShell(lower, spans, (word, { kind, start, end }) => {
+      if (kind === "comment") return "";
+      return kind === "quote" &&
+        /\s/.test(word) &&
+        (start === 0 || /[\s=]/.test(lower[start - 1]!)) &&
+        (end === lower.length || /[\s;&|)]/.test(lower[end]!))
+        ? "_"
+        : word;
+    }),
+  );
   const run = RUN_RULES.find(([, rule]) => rule.test(unquoted));
   const flag = FLAG_RULES.find(([, rule]) => rule.test(masked));
   const matched = run ?? flag;
   if (matched) return matched[0];
-  return SEARCH_INTO_PROGRAM.test(lower.replace(QUOTED_WORD, "_"))
+  return SEARCH_INTO_PROGRAM.test(
+    renderShell(lower, spans, (word, { kind }) =>
+      kind === "quote" ? "_" : kind === "comment" ? "" : word,
+    ),
+  )
     ? "pipes search results into a program"
     : null;
 }
@@ -615,21 +641,29 @@ const SEARCH_PROGRAM = new RegExp(`^${SEARCH_NAMES}$`);
 const SEARCH_INTO_PROGRAM = new RegExp(
   `(?:^|[;&|\\r\\n(])\\s*${SEARCH_NAMES}(?=\\s|\\|)[^;&|\\r\\n]*${INTO_PROGRAM}`,
 );
-const QUOTED_WORD = /'[^']*'|"[^"]*"/g;
 // Quoted or joined options can also enable rg's preprocessor.
 const RG_PRE_OPTION = /(?:^|[;&|\r\n(])\s*rg(?=\s)[\s\S]*?\s--pre\b/;
-function literalData(command: string): string {
-  if (/[$`]|\\['"]/.test(command)) return command;
-  const shell = unquote(command.toLowerCase());
-  if (new RegExp(INTO_PROGRAM).test(shell) || RG_PRE_OPTION.test(shell)) return command;
+function literalData(command: string, powershell = false): string {
+  const spans = shellSpans(command, powershell);
+  if (spans.some(({ kind }) => kind === "incomplete" || kind === "expansion")) return command;
+  const clean = renderShell(command, spans, (word, { kind }) =>
+    kind === "comment" ? " ".repeat(word.length) : word,
+  );
+  if (/[$`]|\\['"]/.test(clean)) return command;
+  const shell = unquote(clean.toLowerCase());
+  if (new RegExp(INTO_PROGRAM).test(shell) || RG_PRE_OPTION.test(shell)) return clean;
   // A quoted redirection target is a shell operand, not a search argument.
-  const searchData = !/[<>]/.test(command.replace(QUOTED_WORD, "_"));
+  const masked = renderShell(clean, spans, (word, { kind }) =>
+    kind === "quote" ? "\ue00b".repeat(word.length) : word,
+  );
+  const searchData = !/[<>]/.test(masked);
   let program: string | null = null; // the first word of the current simple command
-  return command.replace(/'[^']*'|"[^"]*"|[;&|\r\n(]|[^\s;&|\r\n('"]+/g, (word) => {
-    if (/^[;&|\r\n(]$/.test(word)) program = null;
+  return masked.replace(/\ue00b+|[;&|\r\n(]|[^\s;&|\r\n(\ue00b]+/g, (token, start: number) => {
+    const word = clean.slice(start, start + token.length);
+    if (/^[;&|\r\n(]$/.test(token)) program = null;
     else if (program === null) program = word.toLowerCase();
     else if (
-      /^['"]/.test(word) &&
+      token.startsWith("\ue00b") &&
       (DATA_PROGRAM.test(program) || (searchData && SEARCH_PROGRAM.test(program)))
     )
       return "_";
@@ -663,7 +697,6 @@ export const mcpAccess = (tool: string): Access =>
 const WRITES_ALL = new Set(["tee", "touch", "rm", "truncate"]);
 const WRITES_DEST = new Set(["cp", "mv", "ln", "install"]);
 const IN_PLACE = new Set(["sed", "perl"]);
-const HEREDOC = /<<-?[ \t]*(['"]?)([\w.-]+)\1([^\n]*)\n[\s\S]*?\n[ \t]*\2[ \t]*(?=\n|$)/g;
 const OPERATOR = /^[;&|<()\n]$/;
 
 // `node -e "…"`, `python -c "…"` and the like: when the inline code writes, the paths it quotes
@@ -680,7 +713,9 @@ const ASSIGNMENT = /^([A-Za-z_]\w*)=(.*)$/;
  * followed (see the README's limitations).
  */
 export function bashWriteTargets(command: string): string[] {
-  const text = command.replace(HEREDOC, "<<$2$3"); // a heredoc body is data, not commands
+  const raw = stripBashHeredocs(command);
+  const spans = shellSpans(raw);
+  const text = renderShell(raw, spans, (word, { kind }) => (kind === "comment" ? "" : word));
   const inline = [...text.matchAll(INLINE_CODE)].flatMap(([, , code = ""]) =>
     INLINE_WRITE.test(code)
       ? [...code.matchAll(/(['"`])([^'"`\n]+)\1/g)]
@@ -689,12 +724,17 @@ export function bashWriteTargets(command: string): string[] {
       : [],
   );
   // What is quoted stays one word, as sh reads it: `sed -i 's/(a|b)/c/' f` writes f.
-  const masked = text.replace(QUOTED, (q) => q.replace(WORD_BREAK, hide));
+  const masked = renderShell(raw, spans, (word, { kind }) => {
+    if (kind === "comment") return "";
+    if (kind === "escape" && word === "\\\n") return "";
+    return kind === "quote" || kind === "ansi" || kind === "escape"
+      ? word.replace(WORD_BREAK, hide)
+      : word;
+  });
   const forms = [masked.replace(/["']/g, ""), unquote(masked)];
   return [...inline, ...forms.flatMap(writeTargets).map((t) => t.replace(HIDDEN, show))];
 }
 
-const QUOTED = /"(?:\\.|[^"\\])*"|'[^']*'/gs;
 // Characters that end a word or a command, swapped for private-use ones while the command is split.
 const BREAKS = ";&|<>()\n \t\r";
 const WORD_BREAK = /[;&|<>()\n \t\r]/g;
@@ -760,10 +800,7 @@ const isDeveloperDoc = (path: string): boolean =>
 function isProtectedWrite(path: string): boolean {
   // Choices belong to the developer. Protect their ancestors too, so a directory replacement
   // cannot erase or forge the choice while ordinary HTML drafts remain writable.
-  const portable = slashPath(path)
-    .split("/")
-    .map((part) => part.replace(/:.*$/, "").replace(/[. ]+$/, ""))
-    .join("/");
+  const portable = portableSegments(path).join("/");
   const artifacts = /(?:^|\/)\.verid\/artifacts(?:\/(.*))?$/.exec(portable);
   if (
     artifacts &&
@@ -822,12 +859,13 @@ function isClaudeDefinition(path: string): boolean {
 }
 
 const slashPath = (path: string) => path.toLowerCase().replace(/\\/g, "/").replace(/\/+$/, "");
+const portableSegments = (path: string) =>
+  slashPath(path)
+    .split("/")
+    .map((part) => part.replace(/:.*$/, "").replace(/[. ]+$/, ""));
 
 function isPluginPath(path: string): boolean {
-  const portable = slashPath(path)
-    .split("/")
-    .map((part) => part.replace(/:.*$/, "").replace(/[. ]+$/, ""))
-    .join("/");
+  const portable = portableSegments(path).join("/");
   return /(?:^|\/)\.verid\/(?:plugins\.json(?:\.|\/|$)|\.plugins(?:\/|$)|\.plugin-data(?:\/|$))/.test(
     portable,
   );
@@ -968,10 +1006,7 @@ function bashSecretForms(
  * (Phase 4) but never remove these. Matching is case-insensitive.
  */
 export function isSecretPath(path: string, skipSubstring = false): boolean {
-  const segments = path
-    .toLowerCase()
-    .split(/[\\/]+/)
-    .filter(Boolean);
+  const segments = portableSegments(path).filter(Boolean);
   const base = segments.at(-1) ?? "";
   if (ENV_TEMPLATES.has(base)) return false;
   return (

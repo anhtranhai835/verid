@@ -4,6 +4,7 @@ import { powershellWriteTargets } from "../../src/core/powershell.js";
 describe("PowerShell targets", () => {
   it("finds plain write targets for redirects, cmdlets, aliases and literal methods", () => {
     const rows = [
+      { command: "Write-Output <#'#> 'a'; Set-Content src/a.ts x #'", targets: ["src/a.ts"] },
       {
         command: "'x' > 'src/a.ts'; 'y' 2>> test/a.test.ts",
         targets: ["src/a.ts", "test/a.test.ts"],
@@ -74,6 +75,22 @@ describe("PowerShell targets", () => {
       },
       { command: "& 'C:\\Tools\\writer.ps1' 'arg'", targets: [] },
       { command: "Set-Content -Path:'src/a.ts' -Value x", targets: ["src/a.ts"] },
+      { command: "Set-Content “src/a.ts” x", targets: ["src/a.ts"] },
+      {
+        command: "Set-Content ‘src/a.ts’ x; Add-Content ‚src/b.ts‛ y",
+        targets: ["src/a.ts", "src/b.ts"],
+      },
+      { command: "Set-Content „src/a.ts“ x", targets: ["src/a.ts"] },
+      {
+        command: "Copy-Item tmp/b.ts –Destination src/a.ts",
+        targets: ["src/a.ts", "src/a.ts/b.ts"],
+      },
+      { command: "Set-Content —Path src/a.ts ―Value x", targets: ["src/a.ts"] },
+      { command: "Write-Output x #'\nSet-Content src/a.ts x\n#'", targets: ["src/a.ts"] },
+      {
+        command: "Write-Output `'; Set-Content src/a.ts x; Write-Output `'",
+        targets: ["src/a.ts"],
+      },
       { command: "Write-Output ([IO.File]::WriteAllText('src/a.ts', 'x'))", targets: ["src/a.ts"] },
       { command: "Write-Output (Set-Content src/a.ts x)", targets: ["src/a.ts"] },
       {
@@ -118,6 +135,7 @@ describe("PowerShell targets", () => {
       "cmd /c $text",
       'cmd /c "echo x > $target"',
       "Set-Content -Path src/a.ts -Value 'unterminated",
+      "Write-Output <# unterminated",
       "Set-Content @params",
       "&('Set-Content') src/a.ts x",
       "Start-Process pwsh -Command $text",
@@ -145,6 +163,7 @@ describe("PowerShell targets", () => {
       "git status --short",
       "npx vitest run",
       "Get-Content -Raw design.md",
+      "Get-Content -Raw design.md 2>$null",
       "Write-Output 'hello'",
       "& 'C:\\node.exe' 'cli.js' taste",
       "Write-Output 'Invoke-Expression is forbidden'; Write-Output 'Set-Content src/a.ts x'",

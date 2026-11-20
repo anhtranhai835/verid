@@ -92,7 +92,7 @@ export async function initCommand(
   }
   const result = plan.apply();
   if (result.failed) return { exit: 1, stdout: result.stdout, stderr: result.stderr };
-  await restorePlugins(project, Boolean(flags.yes), io);
+  const pending = await restorePlugins(project, Boolean(flags.yes), io);
   // The same ending as the screen in a terminal: what to commit, then what to do next.
   const out = [
     result.stdout,
@@ -102,7 +102,11 @@ export async function initCommand(
   return {
     exit: 0,
     stdout: `${out.join("\n")}\n`,
-    stderr: "",
+    stderr: pending
+      .map(
+        (name) => `[VERID_BURNT_PLUGIN_CONFIRM] ${bilingual("plugin.restore_pending", { name })}\n`,
+      )
+      .join(""),
   };
 }
 
