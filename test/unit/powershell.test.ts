@@ -76,12 +76,21 @@ describe("PowerShell targets", () => {
       { command: "& 'C:\\Tools\\writer.ps1' 'arg'", targets: [] },
       { command: "Set-Content -Path:'src/a.ts' -Value x", targets: ["src/a.ts"] },
       { command: "Set-Content “src/a.ts” x", targets: ["src/a.ts"] },
-      { command: "Set-Content ‘src/a.ts’ x; Add-Content ‚src/b.ts‛ y", targets: ["src/a.ts", "src/b.ts"] },
+      {
+        command: "Set-Content ‘src/a.ts’ x; Add-Content ‚src/b.ts‛ y",
+        targets: ["src/a.ts", "src/b.ts"],
+      },
       { command: "Set-Content „src/a.ts“ x", targets: ["src/a.ts"] },
-      { command: "Copy-Item tmp/b.ts –Destination src/a.ts", targets: ["src/a.ts", "src/a.ts/b.ts"] },
+      {
+        command: "Copy-Item tmp/b.ts –Destination src/a.ts",
+        targets: ["src/a.ts", "src/a.ts/b.ts"],
+      },
       { command: "Set-Content —Path src/a.ts ―Value x", targets: ["src/a.ts"] },
       { command: "Write-Output x #'\nSet-Content src/a.ts x\n#'", targets: ["src/a.ts"] },
-      { command: "Write-Output `'; Set-Content src/a.ts x; Write-Output `'", targets: ["src/a.ts"] },
+      {
+        command: "Write-Output `'; Set-Content src/a.ts x; Write-Output `'",
+        targets: ["src/a.ts"],
+      },
       { command: "Write-Output ([IO.File]::WriteAllText('src/a.ts', 'x'))", targets: ["src/a.ts"] },
       { command: "Write-Output (Set-Content src/a.ts x)", targets: ["src/a.ts"] },
       {

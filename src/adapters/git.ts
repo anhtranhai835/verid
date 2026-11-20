@@ -345,8 +345,7 @@ export function readHistories(
         const cut = entry.indexOf("\n");
         return { sha: entry.slice(0, cut).trim(), message: entry.slice(cut + 1) };
       });
-    if (commits.length > MAX_COMMITS)
-      return { repo, error: HISTORY_LIMIT };
+    if (commits.length > MAX_COMMITS) return { repo, error: HISTORY_LIMIT };
     return { repo, ancestor: true, commits };
   });
 }

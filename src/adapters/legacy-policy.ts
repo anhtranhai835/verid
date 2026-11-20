@@ -74,9 +74,10 @@ const dynamicLocation = /[$`*?[\]{}<>‘’‚‛“”„]|^[-+]|^~./;
 function ambiguousPath(path: string, command: string, powershell: boolean): boolean {
   if (dynamicLocation.test(path)) return true;
   if (powershell || !path.includes("\\")) return false;
-  return shellSpans(command).some(({ start, end, kind }) =>
-    kind === "escape" ||
-    (kind === "quote" && command[start] === '"' && /\\["\\$`\n]/.test(command.slice(start, end))),
+  return shellSpans(command).some(
+    ({ start, end, kind }) =>
+      kind === "escape" ||
+      (kind === "quote" && command[start] === '"' && /\\["\\$`\n]/.test(command.slice(start, end))),
   );
 }
 
@@ -170,8 +171,11 @@ export function legacyShellWrite(
     }
     if (CHANGES_DIR.has(program) || POP_DIR.has(program)) {
       const target =
-        POP_DIR.has(program) || next === "(" ? undefined : location(program, args, segment, powershell);
-      if (target === undefined || dirs === null || ambiguousPath(target, segment, powershell)) dirs = null;
+        POP_DIR.has(program) || next === "("
+          ? undefined
+          : location(program, args, segment, powershell);
+      if (target === undefined || dirs === null || ambiguousPath(target, segment, powershell))
+        dirs = null;
       else {
         const reached: string[] = isAbsolute(target)
           ? [resolve(target)]
@@ -203,7 +207,7 @@ export function legacyShellWrite(
         const folder = glued ?? args[++at] ?? "";
         repos = ambiguousPath(folder, segment, powershell)
           ? null
-          : repos?.map((repo) => resolve(repo, folder)) ?? null;
+          : (repos?.map((repo) => resolve(repo, folder)) ?? null);
       } else if (option) {
         const folder = option[1] ?? args[++at] ?? "";
         for (const repo of repos ?? []) elsewhere.push(resolve(repo, folder));

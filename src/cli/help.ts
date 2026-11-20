@@ -49,7 +49,8 @@ export function misused(cmd: string, rest: string[]): Misuse {
       if (
         token.kind === "option" &&
         (!(token.name in options) || (cmd === "context" && token.value === undefined))
-      ) odd.push(token.rawName);
+      )
+        odd.push(token.rawName);
     }
     return {
       key: "usage.unexpected",

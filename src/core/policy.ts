@@ -42,7 +42,10 @@ export interface PolicyContext {
    * `/verid tip` lifts that. `shellWrite` names what a shell command does there, following `cd`
    * and `git -C`, and is null when it does nothing to them.
    */
-  legacy?: { roots: readonly string[]; shellWrite: (command: string, powershell?: boolean) => string | null };
+  legacy?: {
+    roots: readonly string[];
+    shellWrite: (command: string, powershell?: boolean) => string | null;
+  };
   stateDir: string;
   manifestPath: string;
   transcriptsDir: string;
@@ -419,8 +422,7 @@ const BASH_RULES: [
       // Codex reads its config through the shell; its secrets and transcripts have their own rules.
       // An unreadable shell patch has its own denial. A bare directory operand can be its cwd.
       (!read &&
-        (/\.codex(?:[\\/]|$)/.test(c) ||
-          (!shellPatch && /\.codex(?=[\s'"`;&|<>()=,])/.test(c)))) ||
+        (/\.codex(?:[\\/]|$)/.test(c) || (!shellPatch && /\.codex(?=[\s'"`;&|<>()=,])/.test(c)))) ||
       ((ctx.protectedWriteDirs ?? []).some((p) => c.includes(slashPath(p))) && !read) ||
       configMentions(
         c,
@@ -606,12 +608,17 @@ function dangerousCommand(command: string): string | null {
   const lower = command.toLowerCase();
   const unquoted = unquote(lower);
   const spans = shellSpans(lower);
-  const masked = unquote(renderShell(lower, spans, (word, { kind, start, end }) => {
-    if (kind === "comment") return "";
-    return kind === "quote" && /\s/.test(word) &&
-      (start === 0 || /[\s=]/.test(lower[start - 1]!)) &&
-      (end === lower.length || /[\s;&|)]/.test(lower[end]!)) ? "_" : word;
-  }));
+  const masked = unquote(
+    renderShell(lower, spans, (word, { kind, start, end }) => {
+      if (kind === "comment") return "";
+      return kind === "quote" &&
+        /\s/.test(word) &&
+        (start === 0 || /[\s=]/.test(lower[start - 1]!)) &&
+        (end === lower.length || /[\s;&|)]/.test(lower[end]!))
+        ? "_"
+        : word;
+    }),
+  );
   const run = RUN_RULES.find(([, rule]) => rule.test(unquoted));
   const flag = FLAG_RULES.find(([, rule]) => rule.test(masked));
   const matched = run ?? flag;
@@ -651,19 +658,17 @@ function literalData(command: string, powershell = false): string {
   );
   const searchData = !/[<>]/.test(masked);
   let program: string | null = null; // the first word of the current simple command
-  return masked.replace(
-    /\ue00b+|[;&|\r\n(]|[^\s;&|\r\n(\ue00b]+/g,
-    (token, start: number) => {
-      const word = clean.slice(start, start + token.length);
-      if (/^[;&|\r\n(]$/.test(token)) program = null;
-      else if (program === null) program = word.toLowerCase();
-      else if (
-        token.startsWith("\ue00b") &&
-        (DATA_PROGRAM.test(program) || (searchData && SEARCH_PROGRAM.test(program)))
-      ) return "_";
-      return word;
-    },
-  );
+  return masked.replace(/\ue00b+|[;&|\r\n(]|[^\s;&|\r\n(\ue00b]+/g, (token, start: number) => {
+    const word = clean.slice(start, start + token.length);
+    if (/^[;&|\r\n(]$/.test(token)) program = null;
+    else if (program === null) program = word.toLowerCase();
+    else if (
+      token.startsWith("\ue00b") &&
+      (DATA_PROGRAM.test(program) || (searchData && SEARCH_PROGRAM.test(program)))
+    )
+      return "_";
+    return word;
+  });
 }
 
 const unquote = (command: string) => command.replace(/\\(.)|["']/gs, "$1");
@@ -710,7 +715,7 @@ const ASSIGNMENT = /^([A-Za-z_]\w*)=(.*)$/;
 export function bashWriteTargets(command: string): string[] {
   const raw = stripBashHeredocs(command);
   const spans = shellSpans(raw);
-  const text = renderShell(raw, spans, (word, { kind }) => kind === "comment" ? "" : word);
+  const text = renderShell(raw, spans, (word, { kind }) => (kind === "comment" ? "" : word));
   const inline = [...text.matchAll(INLINE_CODE)].flatMap(([, , code = ""]) =>
     INLINE_WRITE.test(code)
       ? [...code.matchAll(/(['"`])([^'"`\n]+)\1/g)]
@@ -855,7 +860,9 @@ function isClaudeDefinition(path: string): boolean {
 
 const slashPath = (path: string) => path.toLowerCase().replace(/\\/g, "/").replace(/\/+$/, "");
 const portableSegments = (path: string) =>
-  slashPath(path).split("/").map((part) => part.replace(/:.*$/, "").replace(/[. ]+$/, ""));
+  slashPath(path)
+    .split("/")
+    .map((part) => part.replace(/:.*$/, "").replace(/[. ]+$/, ""));
 
 function isPluginPath(path: string): boolean {
   const portable = portableSegments(path).join("/");

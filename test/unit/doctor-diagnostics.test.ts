@@ -151,17 +151,26 @@ it("matches project-scoped plugin paths using platform case rules", async () => 
     Object.defineProperty(process, "platform", { ...platformDescriptor, value: platform });
     p.put(
       "claude-home/plugins/installed_plugins.json",
-      JSON.stringify({ version: 2, plugins: { "verid@verid": [{ scope: "project", projectPath, installPath: installed }] } }),
+      JSON.stringify({
+        version: 2,
+        plugins: { "verid@verid": [{ scope: "project", projectPath, installPath: installed }] },
+      }),
     );
     const { stdout } = await doctorCommand(p.root);
-    expect(stdout.includes("verid does not look installed for this project"), platform).toBe(missing);
+    expect(stdout.includes("verid does not look installed for this project"), platform).toBe(
+      missing,
+    );
   }
 });
 
 it("requires workspace Git metadata in each repository folder", async () => {
   p.contextSetup("en", {
     layout: "workspace",
-    repos: ["app", "docs"].map((path) => ({ path, source_globs: ["src/**"], test_globs: ["test/**"] })),
+    repos: ["app", "docs"].map((path) => ({
+      path,
+      source_globs: ["src/**"],
+      test_globs: ["test/**"],
+    })),
   });
   setLanguage("en");
   mkdirSync(p.path("app/.git"), { recursive: true });
@@ -169,9 +178,16 @@ it("requires workspace Git metadata in each repository folder", async () => {
   const probe = vi.spyOn(git, "gitView").mockReturnValue({ clean: true, head: "a".repeat(40) });
   vi.mocked(spawnSync).mockReturnValue(result(""));
   const { stdout } = await doctorCommand(p.root);
-  const rows = [["app", true], ["docs", false], [".verid", false]] as const;
+  const rows = [
+    ["app", true],
+    ["docs", false],
+    [".verid", false],
+  ] as const;
   for (const [repo, hasGit] of rows) {
-    expect(probe.mock.calls.some(([folder]) => folder === p.path(repo)), repo).toBe(hasGit);
+    expect(
+      probe.mock.calls.some(([folder]) => folder === p.path(repo)),
+      repo,
+    ).toBe(hasGit);
     if (!hasGit) expect(stdout).toContain(`${repo} is not a Git repo`);
   }
 });

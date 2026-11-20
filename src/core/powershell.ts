@@ -106,7 +106,12 @@ export function powershellWriteTargets(command: string, nativeSyntax = true): Po
   return inspect(command, 0, false, nativeSyntax);
 }
 
-function inspect(command: string, depth: number, cmd: boolean, nativeSyntax: boolean): PowershellTargets {
+function inspect(
+  command: string,
+  depth: number,
+  cmd: boolean,
+  nativeSyntax: boolean,
+): PowershellTargets {
   if (depth > 4) return { targets: [], unsupported: "nested shell depth" };
   const lexed = tokenize(command, nativeSyntax);
   if (typeof lexed === "string") return { targets: [], unsupported: lexed };
@@ -299,7 +304,11 @@ function inspect(command: string, depth: number, cmd: boolean, nativeSyntax: boo
     if (token.operator && /^\d*>>?$|^\*>>?$/.test(token.text)) {
       const next = lexed[++i];
       const discard =
-        nativeSyntax && token.text === "2>" && next && !next.literal && !next.quoted &&
+        nativeSyntax &&
+        token.text === "2>" &&
+        next &&
+        !next.literal &&
+        !next.quoted &&
         /^\$null$/i.test(next.text);
       if (!discard && next?.text !== "&1" && next?.text !== "&2")
         targets.push(...add(next ? [next] : undefined));

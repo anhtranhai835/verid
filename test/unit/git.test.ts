@@ -167,9 +167,13 @@ it("refuses commit ranges above the history limit", () => {
   });
   for (const { readLog, verb } of rows) {
     const lines = readLog(dir, { ".": { main: "main", base } });
-    expect(lines, verb).toContain("(history unreadable: more than 500 commits since the recorded base)");
-    expect(lines.some((line) => line.startsWith("--- commit ") || line.startsWith("commits  ")), verb)
-      .toBe(false);
+    expect(lines, verb).toContain(
+      "(history unreadable: more than 500 commits since the recorded base)",
+    );
+    expect(
+      lines.some((line) => line.startsWith("--- commit ") || line.startsWith("commits  ")),
+      verb,
+    ).toBe(false);
   }
 });
 

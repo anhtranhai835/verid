@@ -18,7 +18,7 @@ export function shellSpans(command: string, powershell = false): ShellSpan[] {
   const escapeChar = powershell ? "`" : "\\";
   let wordStart = true;
   let backtick = false;
-  for (let i = 0; i < command.length; ) {
+  for (let i = 0; i < command.length;) {
     const start = i;
     const char = command[i++]!;
     if (char === "#" && wordStart) {
@@ -62,7 +62,8 @@ export function shellSpans(command: string, powershell = false): ShellSpan[] {
             next === escapeChar &&
             following !== undefined &&
             (powershell || /["\\$`\n]/.test(following))
-          ) i++;
+          )
+            i++;
           else if (!powershell && (next === "`" || (next === "$" && following === "("))) {
             // Nested commands can contain their own quotes. Leave their syntax visible.
             i = command.length;

@@ -103,7 +103,9 @@ export async function initCommand(
     exit: 0,
     stdout: `${out.join("\n")}\n`,
     stderr: pending
-      .map((name) => `[VERID_BURNT_PLUGIN_CONFIRM] ${bilingual("plugin.restore_pending", { name })}\n`)
+      .map(
+        (name) => `[VERID_BURNT_PLUGIN_CONFIRM] ${bilingual("plugin.restore_pending", { name })}\n`,
+      )
       .join(""),
   };
 }
