@@ -71,10 +71,10 @@ export async function preToolUse(p: z.infer<typeof preToolUseSchema>): Promise<R
   );
   // A broken manifest must still allow reads; existing write gates report its error in order.
   const taskManifest = await loadManifest(project, { readOnly: true }).catch(() => null);
+  const layouts = taskManifest ? tddLayouts(project, taskManifest) : null;
   let taskProblem: TaskProblem | null = null;
-  if (taskManifest && (taskSessions(taskManifest) || stationContext(project)?.station)) {
+  if (taskManifest && layouts && (taskSessions(taskManifest) || stationContext(project)?.station)) {
     const key = shared.sessionKey(p.session_id);
-    const layouts = tddLayouts(project, taskManifest);
     const guardedWrite = writes.some(
       (write) =>
         !isUnder(write.path, normalizePath(project)) ||
@@ -101,6 +101,16 @@ export async function preToolUse(p: z.infer<typeof preToolUseSchema>): Promise<R
     ...policyContext(project, p.cwd),
     ...stationPolicy(project, p.cwd, writes),
     ...legacyPolicy(project, taskManifest, p.cwd),
+    ...(layouts && {
+      secretSource: {
+        ...layouts,
+        windows: process.platform === "win32",
+        resolvePath: (path: string) => {
+          const absolute = resolve(p.cwd, path);
+          return { real: normalizePath(absolute), written: writtenPath(absolute) };
+        },
+      },
+    }),
   };
   const stationSession = stationSessionProblem(project, shared.sessionKey(p.session_id));
   // Any project write outside .verid/ invalidates security review, including linked paths.

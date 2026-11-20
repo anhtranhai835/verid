@@ -11,13 +11,14 @@ import type { RuleCode } from "../../src/core/errors.js";
 import {
   bashWrites,
   mcpFiles,
+  normalizePath,
   policyContext,
   toAction,
   writtenPath,
 } from "../../src/adapters/claude-code.js";
 import { codexAction } from "../../src/adapters/codex.js";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { vi } from "vitest";
 
 // Paths arrive already normalized by the adapter (absolute, lowercase on win32).
@@ -32,7 +33,27 @@ const ctx: PolicyContext = {
   designMissing: false,
 };
 
-const read = (path: string): Action => ({
+const project = process.cwd();
+const projectPath = (path: string) => resolve(project, path);
+const sourceLayout = {
+  sourceGlobs: ["src/**"],
+  testGlobs: ["test/**"],
+  ignoreGlobs: ["src/ignored/**"],
+};
+const sourceContext: PolicyContext = {
+  ...ctx,
+  secretSource: {
+    real: [{ repoRoot: normalizePath(project), ...sourceLayout }],
+    written: [{ repoRoot: writtenPath(project), ...sourceLayout }],
+    windows: process.platform === "win32",
+    resolvePath: (path: string) => ({
+      real: normalizePath(projectPath(path)),
+      written: writtenPath(projectPath(path)),
+    }),
+  },
+};
+
+const read = (path: string): Extract<Action, { kind: "file" }> => ({
   kind: "file",
   tool: "Read",
   access: "read",
@@ -273,9 +294,9 @@ const verdict = (actions: Action[]) => {
 };
 
 // Each behaviour holds its cases as a literal table; on a failure the diff names the case.
-function expectFiles(rows: [string, Action, string][]): void {
+function expectFiles(rows: [string, Action, string][], context = ctx): void {
   const verdict = (a: Action) => {
-    const d = decide(a, ctx);
+    const d = decide(a, context);
     return d.kind === "allow" ? ALLOW : d.code;
   };
   expect(Object.fromEntries(rows.map(([name, a]) => [name, verdict(a)]))).toEqual(
@@ -283,9 +304,9 @@ function expectFiles(rows: [string, Action, string][]): void {
   );
 }
 
-function expectBash(rows: [string, string][]): void {
+function expectBash(rows: [string, string][], context = ctx): void {
   const verdict = (command: string) => {
-    const d = decide({ kind: "bash", command }, ctx);
+    const d = decide({ kind: "bash", command }, context);
     return d.kind === "allow" ? ALLOW : d.code;
   };
   expect(Object.fromEntries(rows.map(([c]) => [c, verdict(c)]))).toEqual(Object.fromEntries(rows));
@@ -368,6 +389,79 @@ describe("decide: file tools", () => {
       ["read .env.template", read("c:\\proj\\.env.template"), ALLOW],
       ["keyboard.ts is not a .key file", read("c:\\proj\\src\\keyboard.ts"), ALLOW],
     ]);
+  });
+
+  it("allows source and test file reads and writes when only the basename substring matches", () => {
+    expectFiles(
+      [
+        "src/auth/credentials.js",
+        "src/auth/client-secret.ts",
+        "test/secret-rotation.test.ts",
+        "src/auth/credentials.JS",
+      ].flatMap((path): [string, Action, string][] => [
+        [`read ${path}`, { ...read(normalizePath(projectPath(path))), display: path }, ALLOW],
+        [`write ${path}`, { ...write(normalizePath(projectPath(path))), display: path }, ALLOW],
+      ]),
+      sourceContext,
+    );
+  });
+
+  it("keeps secret file protections outside the substring exemption", () => {
+    expectFiles(
+      [
+        "credentials.json",
+        "config/secrets.yaml",
+        "client_secret.txt",
+        "scripts/secrets.js",
+        "src/ignored/secrets.js",
+        "src/.env",
+        "src/key.pem",
+        "src/id_rsa",
+        "src/id_rsa.ts",
+        "src/id_rsa-secret.ts",
+        "src/.env.ts",
+        "src/.env.secret.ts",
+        "src/secrets.json",
+        "src/.ssh/credentials.js",
+        "src/.codex/auth.json",
+      ].flatMap((path): [string, Action, string][] => [
+        [`read ${path}`, read(normalizePath(projectPath(path))), SECRET],
+        [`write ${path}`, write(normalizePath(projectPath(path))), SECRET],
+      ]),
+      sourceContext,
+    );
+  });
+
+  it("requires layouts and keeps the strictest match across file spellings", () => {
+    const inside = normalizePath(projectPath("src/auth/credentials.js"));
+    const outside = projectPath("../src/auth/credentials.js");
+    const file = write(inside);
+    expectFiles([["no layouts", file, SECRET]]);
+    expectFiles(
+      [
+        ["resolved spelling outside", { ...file, path: outside }, SECRET],
+        ["written spelling outside", { ...file, display: outside }, SECRET],
+        [
+          "protected ancestor in the written spelling",
+          {
+            ...file,
+            display: "credentials.js",
+            written: writtenPath(projectPath("src/.ssh/credentials.js")),
+          },
+          SECRET,
+        ],
+        [
+          "protected ancestor of a neutral alias",
+          { ...file, display: "auth.js", written: writtenPath(projectPath("src/.ssh/auth.js")) },
+          SECRET,
+        ],
+      ],
+      sourceContext,
+    );
+    expectFiles([["explicit secret path", file, SECRET]], {
+      ...sourceContext,
+      secretPaths: [inside],
+    });
   });
 
   it("protects Claude Code transcripts", () => {
@@ -1004,6 +1098,49 @@ describe("decide: bash", () => {
       ["echo {} > .claude/settings.local.json", HOOK],
       ["type C:\\proj\\.Claude\\Settings.json", HOOK],
     ]);
+  });
+
+  it("exempts Bash source path tokens that resolve from the tool cwd", () => {
+    expectBash(
+      [
+        ["cat src/auth/credentials.js", ALLOW],
+        ["cat 'src/auth/credentials.JS'", ALLOW],
+        ["cat 'src/auth/rotate + archive/credentials.js'", ALLOW],
+        ["rg -c token src/auth/credentials.js", ALLOW],
+        ["touch src/auth/credentials.js", ALLOW],
+        ...(process.platform === "win32"
+          ? [["cat 'src\\auth\\credentials.js'", ALLOW] satisfies [string, string]]
+          : []),
+      ],
+      sourceContext,
+    );
+  });
+
+  it("keeps Bash secret matches without an eligible source path", () => {
+    expectBash(
+      [
+        ["cat config/secrets.yaml", SECRET],
+        ["cat src/secrets.json", SECRET],
+        ["echo secret", SECRET],
+        ["cat scripts/secrets.js", SECRET],
+        ["cat src/../scripts/secrets.js", SECRET],
+        ["cd scripts; cat src/credentials.js", SECRET],
+        ["cat src/.env.secret.ts", SECRET],
+        ["cat 'outside folder src/credentials.js'", SECRET],
+        ["cat 'src/secret folder/auth.js'", SECRET],
+        ["cat src/*/credentials.js", SECRET],
+      ],
+      sourceContext,
+    );
+    expectBash([["cat src/auth/credentials.js", SECRET]]);
+    const explicit = projectPath("src/auth/credentials.js").replaceAll("\\", "/");
+    expectBash(
+      [
+        [`cat '${explicit}'`, SECRET],
+        ["cat src/auth/credentials.js", SECRET],
+      ],
+      { ...sourceContext, secretPaths: [explicit] },
+    );
   });
 
   it("lets rg and grep exclude verid's state while every reach into it stays denied", () => {

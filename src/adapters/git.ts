@@ -49,7 +49,7 @@ const failure = (r: ReturnType<typeof runGit>) =>
     ? sandboxBlocked(r.error)
       ? GIT_SANDBOX_MESSAGE
       : `git did not run: ${errno(r.error) ?? r.error.message}`
-    : (r.stderr.trim().split("\n")[0] ?? `git exited ${r.status}`);
+    : r.stderr?.trim().split("\n")[0] || `git exited ${r.status}`;
 
 /** A folder as one key: the same folder spelled two ways on Windows is one repository. */
 export const folderKey = (path: string): string => {
@@ -390,6 +390,9 @@ export function workLog(project: string, work: Work): string[] {
     lines.push(
       `== repo ${repo} · main ${main} · base ${base.slice(0, 12)} · HEAD ${ok(head) ? head.stdout.trim().slice(0, 12) : "?"} (${ok(branch) ? branch.stdout.trim() : "detached"})`,
     );
+    if (!ok(head)) lines.push(`(HEAD unreadable: ${failure(head)})`);
+    if (!ok(branch) && (branch.error || branch.status !== 1))
+      lines.push(`(branch unreadable: ${failure(branch)})`);
     const shas = runGit(folder, [
       "rev-list",
       "--reverse",
@@ -412,7 +415,12 @@ export function workLog(project: string, work: Work): string[] {
         ".",
         ...exclusions,
       ]);
-      lines.push(`--- commit ${sha}`, message.stdout.trimEnd(), "", diff.stdout.trimEnd());
+      lines.push(
+        `--- commit ${sha}`,
+        ok(message) ? message.stdout.trimEnd() : `(commit message unreadable: ${failure(message)})`,
+        "",
+        ok(diff) ? diff.stdout.trimEnd() : `(diff unreadable: ${failure(diff)})`,
+      );
     }
     const changed = runGit(folder, [
       "diff",
@@ -432,8 +440,14 @@ export function workLog(project: string, work: Work): string[] {
       ".",
       ...exclusions,
     ]);
-    lines.push("--- uncommitted", changed.stdout.trimEnd());
-    const names = added.stdout.split("\0").filter((name) => name !== "" && !isSecretPath(name));
+    lines.push(
+      "--- uncommitted",
+      ok(changed) ? changed.stdout.trimEnd() : `(uncommitted diff unreadable: ${failure(changed)})`,
+    );
+    if (!ok(added)) lines.push(`(new files unreadable: ${failure(added)})`);
+    const names = (ok(added) ? added.stdout : "")
+      .split("\0")
+      .filter((name) => name !== "" && !isSecretPath(name));
     if (names.length > 0) lines.push("--- new files", ...names);
   }
   const text = lines.join("\n");
@@ -464,6 +478,9 @@ export function compactWorkLog(project: string, work: Work, limit = LOG_LIMIT): 
     lines.push(
       `== repo ${repo} · main ${main} · base ${base.slice(0, 12)} · HEAD ${ok(head) ? head.stdout.trim().slice(0, 12) : "?"} (${ok(branch) ? branch.stdout.trim() : "detached"})`,
     );
+    if (!ok(head)) lines.push(`(HEAD unreadable: ${failure(head)})`);
+    if (!ok(branch) && (branch.error || branch.status !== 1))
+      lines.push(`(branch unreadable: ${failure(branch)})`);
     const log = runGit(folder, [
       "log",
       "--reverse",
@@ -479,7 +496,8 @@ export function compactWorkLog(project: string, work: Work, limit = LOG_LIMIT): 
     const common = ["--no-ext-diff", "--no-textconv", "-M", base, "--", ".", ...exclusions];
     const status = runGit(folder, ["diff", "--name-status", ...common]);
     const kinds = { A: 0, D: 0, R: 0, total: 0 };
-    for (const row of status.stdout.split("\n").filter(Boolean)) {
+    if (!ok(status)) lines.push(`(file status unreadable: ${failure(status)})`);
+    for (const row of ok(status) ? status.stdout.split("\n").filter(Boolean) : []) {
       const kind = row[0] as "A" | "D" | "R" | string;
       if (kind === "A" || kind === "D" || kind === "R") kinds[kind] += 1;
       kinds.total += 1;
@@ -493,15 +511,21 @@ export function compactWorkLog(project: string, work: Work, limit = LOG_LIMIT): 
       ".",
       ...exclusions,
     ]);
-    const names = added.stdout.split("\0").filter((name) => name !== "" && !isSecretPath(name));
-    lines.push(
-      `files    ${kinds.total + names.length} changed, ${kinds.A + names.length} new, ${kinds.R} renamed, ${kinds.D} deleted`,
-    );
+    if (!ok(added)) lines.push(`(new files unreadable: ${failure(added)})`);
+    const names = (ok(added) ? added.stdout : "")
+      .split("\0")
+      .filter((name) => name !== "" && !isSecretPath(name));
+    if (ok(status) && ok(added))
+      lines.push(
+        `files    ${kinds.total + names.length} changed, ${kinds.A + names.length} new, ${kinds.R} renamed, ${kinds.D} deleted`,
+      );
     const stat = runGit(folder, ["diff", "--stat=120", ...common]);
-    if (stat.stdout.trim() !== "") lines.push("stat", stat.stdout.trimEnd());
+    if (!ok(stat)) lines.push(`(diff stat unreadable: ${failure(stat)})`);
+    else if (stat.stdout.trim() !== "") lines.push("stat", stat.stdout.trimEnd());
     const diff = runGit(folder, ["diff", ...common]);
+    if (!ok(diff)) lines.push(`(diff unreadable: ${failure(diff)})`);
     // One chunk per file, in Git's order, then each untracked file as a new file.
-    const chunks = diff.stdout
+    const chunks = (ok(diff) ? diff.stdout : "")
       .split(/^(?=diff --git )/m)
       .filter((chunk) => chunk.trim() !== "")
       .map((chunk) => ({

@@ -26,6 +26,10 @@ Tài nguyên repo dùng entry `verid-<name>` trong `.claude/skills/` và
 `.claude/agents/`, dẫn về `.verid/skills/` và `.verid/agents/`.
 Codex nhận diện entry skill local từ `.agents/skills/`.
 
+Claude nạp trước các skill liệt kê trong `skills:` của agent. Coder chọn skill
+theo loại thay đổi, còn tester và QA dùng `web-testing` để kiểm thử trình duyệt,
+kiểm thử đầu cuối và kiểm tra khả năng tiếp cận.
+
 Skill onboard kiểm kê repo và runner, báo tình trạng và bước tiếp theo.
 Nó đề xuất các thay đổi manifest để developer áp dụng.
 
