@@ -157,6 +157,38 @@ describe("legacy shell writes", () => {
     expect(legacyShellWrite(command, root, roots())).toBeNull();
   });
 
+  it("follows directory changes and refuses writes whose directory is uncertain", () => {
+    const rows = [
+      ["true & cd legacy && touch marker.txt", true],
+      ["{ cd legacy; }; touch marker.txt", true],
+      ["if true; then cd legacy; fi; touch marker.txt", true],
+      ["builtin cd legacy; touch marker.txt", true],
+      ["Set-Location legacy; touch marker.txt", true],
+      ["sL legacy; touch marker.txt", true],
+      ["Push-Location legacy; touch marker.txt", true],
+      ["pushd legacy; touch marker.txt", true],
+      ["cd $folder; touch marker.txt", true],
+      ["cd $folder; git status", false],
+      ["cat <<EOF\nit's\nEOF\ncd legacy && git reset --hard", true],
+      ["echo $'\\''; cd legacy; echo \\'; git reset --hard", true],
+      ['echo "$(echo ")"; cd legacy; echo "(")"; git reset --hard', true],
+      ["cd app 2>/dev/null && npm test", false],
+      ["cd app >/dev/null && npm test", false],
+      ["echo 'cd legacy'; touch marker.txt", false],
+      ["cd ../app && git status; touch marker.txt", true, join(root, "legacy")],
+      ["ls | head; cd ../app && touch marker.txt", false, join(root, "legacy")],
+      [`cd '${join(root, "app")}' && touch marker.txt`, false, join(root, "legacy")],
+    ] as const;
+    for (const [command, blocked, cwd = root] of rows)
+      expect(legacyShellWrite(command, cwd, roots()) !== null, command).toBe(blocked);
+    const powershellRows = [
+      ["if ($true) {Set-Location legacy}; Set-Content marker.txt x", true],
+      [`Set-Location '${join(root, "app")}'; Get-Content marker.txt 2>$null`, false],
+    ] as const;
+    for (const [command, blocked] of powershellRows)
+      expect(legacyShellWrite(command, root, roots(), true) !== null, command).toBe(blocked);
+  });
+
   it("follows a working directory inside the legacy repo", () => {
     const inside = join(root, "legacy");
     for (const command of ["git commit -m x", "git add .", "echo x > a.txt", "rm a.txt"])

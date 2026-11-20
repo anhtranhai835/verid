@@ -1,3 +1,5 @@
+import { powershellQuote } from "./shell-lex.js";
+
 export interface PowershellTargets {
   targets: string[];
   unsupported?: string;
@@ -89,22 +91,24 @@ const PARAMETERS = [
 ];
 const base = (value: string): string => value.split(/[\\/]/).at(-1) ?? "";
 const parent = (value: string): string => value.replace(/[^\\/]+$/, "") || "./";
+const parameterDash = /^[-–—―]/;
+const commandArgument = /^[-–—―](?:c|command)$/i;
 const encodedArgument = (value: string): boolean => {
-  const key = /^-([^:]+)/.exec(value)?.[1]?.toLowerCase();
-  return key !== undefined && (key === "ec" || "encodedcommand".startsWith(key));
+  const key = parameterDash.test(value) ? value.slice(1).split(":")[0]?.toLowerCase() : undefined;
+  return Boolean(key && (key === "ec" || "encodedcommand".startsWith(key)));
 };
 
 /**
  * A conservative reader of plain PowerShell writes. It does not execute or expand expressions;
  * callers must also retain every existing Bash rule and document the shell heuristic's limits.
  */
-export function powershellWriteTargets(command: string): PowershellTargets {
-  return inspect(command, 0);
+export function powershellWriteTargets(command: string, nativeSyntax = true): PowershellTargets {
+  return inspect(command, 0, false, nativeSyntax);
 }
 
-function inspect(command: string, depth: number, cmd = false): PowershellTargets {
+function inspect(command: string, depth: number, cmd: boolean, nativeSyntax: boolean): PowershellTargets {
   if (depth > 4) return { targets: [], unsupported: "nested shell depth" };
-  const lexed = tokenize(command);
+  const lexed = tokenize(command, nativeSyntax);
   if (typeof lexed === "string") return { targets: [], unsupported: lexed };
   const targets: string[] = [];
   let unsupported: string | undefined;
@@ -122,7 +126,7 @@ function inspect(command: string, depth: number, cmd = false): PowershellTargets
     return tokens.map((t) => t.text);
   };
   const nested = (text: string, isCmd = false) => {
-    const result = inspect(text, depth + 1, isCmd);
+    const result = inspect(text, depth + 1, isCmd, !isCmd);
     targets.push(...result.targets);
     if (result.unsupported) fail(result.unsupported);
   };
@@ -173,7 +177,7 @@ function inspect(command: string, depth: number, cmd = false): PowershellTargets
         fail("EncodedCommand");
         return;
       }
-      const at = tokens.findIndex((t) => /^-(?:c|command)$/i.test(t.text));
+      const at = tokens.findIndex((t) => commandArgument.test(t.text));
       const text = tokens[at + 1];
       if (at < 0 || !text?.quoted || !text.literal || at + 2 !== tokens.length)
         fail("dynamic nested PowerShell command");
@@ -281,7 +285,7 @@ function inspect(command: string, depth: number, cmd = false): PowershellTargets
       /^(?:powershell|pwsh)(?:\.exe)?$/i.test(base(token.text)) &&
       invocation(i)
         .slice(1)
-        .some((t) => /^-(?:c|command)$/i.test(t.text) || encodedArgument(t.text))
+        .some((t) => commandArgument.test(t.text) || encodedArgument(t.text))
     )
       analyse(invocation(i));
     if (!token.quoted && /^\[(?:system\.)?scriptblock\]::create$/i.test(token.text))
@@ -294,7 +298,10 @@ function inspect(command: string, depth: number, cmd = false): PowershellTargets
     }
     if (token.operator && /^\d*>>?$|^\*>>?$/.test(token.text)) {
       const next = lexed[++i];
-      if (next?.text !== "&1" && next?.text !== "&2")
+      const discard =
+        nativeSyntax && token.text === "2>" && next && !next.literal && !next.quoted &&
+        /^\$null$/i.test(next.text);
+      if (!discard && next?.text !== "&1" && next?.text !== "&2")
         targets.push(...add(next ? [next] : undefined));
       continue;
     }
@@ -318,7 +325,7 @@ function bind(tokens: Token[]): { named: Map<string, Token[]>; positional: Token
     const token = tokens[i]!;
     let parameter: string | undefined;
     let inline: string | undefined;
-    if (token.text.startsWith("-")) {
+    if (parameterDash.test(token.text)) {
       const [key = "", ...rest] = token.text.slice(1).split(":");
       const matches = PARAMETERS.filter((p) => p.startsWith(key.toLowerCase()));
       parameter = PARAMETERS.includes(key.toLowerCase())
@@ -364,12 +371,14 @@ function bind(tokens: Token[]): { named: Map<string, Token[]>; positional: Token
 }
 
 /** Quoting is PowerShell quoting: backslash remains a path separator, backtick escapes. */
-function tokenize(command: string): Token[] | string {
+function tokenize(command: string, smartQuotes: boolean): Token[] | string {
   const tokens: Token[] = [];
   let text = "";
   let literal = true;
   let quoted = false;
   let started = false;
+  const quoteOf = (char: string) =>
+    smartQuotes ? powershellQuote(char) : char === "'" || char === '"' ? char : undefined;
   const flush = () => {
     if (started) tokens.push({ text, literal, quoted, operator: /^(?:\d|\*)?>>?$/.test(text) });
     text = "";
@@ -379,22 +388,23 @@ function tokenize(command: string): Token[] | string {
   };
   for (let i = 0; i < command.length; i++) {
     const c = command[i]!;
+    const quote = quoteOf(c);
     if (c === "`" && i + 1 < command.length) {
       const next = command[++i]!;
       if (next !== "\n" && next !== "\r") {
         text += next;
         started = true;
       }
-    } else if (c === "'" || c === '"') {
+    } else if (quote !== undefined) {
       quoted = true;
       started = true;
-      const quote = c;
       let closed = false;
       while (++i < command.length) {
         const next = command[i]!;
-        if (next === quote) {
-          if (command[i + 1] === quote) {
-            text += quote;
+        if (quoteOf(next) === quote) {
+          const following = command[i + 1];
+          if (following !== undefined && quoteOf(following) === quote) {
+            text += following;
             i++;
           } else {
             closed = true;
@@ -409,6 +419,10 @@ function tokenize(command: string): Token[] | string {
       if (!closed) return "unterminated PowerShell quote";
     } else if (c === "#" && !started) {
       while (i + 1 < command.length && command[i + 1] !== "\n") i++;
+    } else if (smartQuotes && !started && c === "<" && command[i + 1] === "#") {
+      const end = command.indexOf("#>", i + 2);
+      if (end === -1) return "unterminated PowerShell block comment";
+      i = end + 1;
     } else if (/[ \t\r]/.test(c)) flush();
     else if (/[;|&>\n(),{}]/.test(c)) {
       if (c === ">" && /^(?:\d|\*)$/.test(text)) {

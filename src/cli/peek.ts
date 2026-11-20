@@ -13,7 +13,7 @@ export async function status(project: string): Promise<CliResult> {
   const state = readState(statePaths(project));
   const manifest = await loadManifest(project);
   // A teammate who cloned the project but never ran cook has state and manifest, and no hooks.
-  const hook = projectHook(project);
+  const hook = projectHook(project, manifest?.resources);
   const claude = ["settings.local.json", "settings.json"].some((f) =>
     guardsToolCalls(readJson(join(project, ".claude", f)), hook),
   );

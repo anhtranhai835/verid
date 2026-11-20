@@ -398,10 +398,17 @@ export function removePlugin(project: string, name: string): void {
   });
 }
 
-export async function restorePlugins(project: string, yes: boolean, io?: Io): Promise<void> {
-  for (const entry of readPlugins(project).plugins)
-    if (!existsSync(pluginFolder(project, entry.name)))
-      await installPlugin(project, entry.source, { yes, io, restore: entry });
+export async function restorePlugins(project: string, yes: boolean, io?: Io): Promise<string[]> {
+  const pending: string[] = [];
+  for (const entry of readPlugins(project).plugins) {
+    if (existsSync(pluginFolder(project, entry.name))) continue;
+    if (!yes && !io && pluginSource(entry.source).kind === "git") {
+      pending.push(entry.name);
+      continue;
+    }
+    await installPlugin(project, entry.source, { yes, io, restore: entry });
+  }
+  return pending;
 }
 
 export async function pluginProblems(project: string, ci = false): Promise<string[]> {

@@ -7,6 +7,7 @@ import { menuLines } from "../adapters/plan-file.js";
 import { languageOf, readState, statePaths } from "../adapters/state-store.js";
 import type { CliResult } from "./test.js";
 import { COOK_OPTIONS, UPGRADE_OPTIONS } from "./cook-flags.js";
+import { CONTEXT_OPTIONS } from "./context.js";
 import { interactive, systemLang } from "./shell.js";
 
 type Misuse = { key: MessageKey; params: Record<string, string> };
@@ -14,7 +15,9 @@ type Misuse = { key: MessageKey; params: Record<string, string> };
 // How many arguments each command takes after its name; cook takes flags.
 const ARGS: Record<string, number> = {
   usage: 2,
-  context: 3,
+  "--version": 0,
+  "-v": 0,
+  "setup-codex": 0,
   module: 1,
   doctor: 0,
   taste: 0,
@@ -30,21 +33,24 @@ const ARGS: Record<string, number> = {
 
 /** What verid could not run in a command line: the command, or the words it did not expect. */
 export function misused(cmd: string, rest: string[]): Misuse {
-  if (cmd === "cook" || cmd === "upgrade") {
-    const options = cmd === "upgrade" ? UPGRADE_OPTIONS : COOK_OPTIONS;
+  if (cmd === "cook" || cmd === "upgrade" || cmd === "context") {
+    const options =
+      cmd === "context" ? CONTEXT_OPTIONS : cmd === "upgrade" ? UPGRADE_OPTIONS : COOK_OPTIONS;
     const { tokens } = parseArgs({
       args: rest,
       options,
       strict: false,
       tokens: true,
     });
-    const odd = tokens.flatMap((tk) =>
-      tk.kind === "positional"
-        ? [tk.value]
-        : tk.kind === "option" && !(tk.name in options)
-          ? [tk.rawName]
-          : [],
-    );
+    let positionals = cmd === "context" ? 1 : 0;
+    const odd: string[] = [];
+    for (const token of tokens) {
+      if (token.kind === "positional" && positionals-- <= 0) odd.push(token.value);
+      if (
+        token.kind === "option" &&
+        (!(token.name in options) || (cmd === "context" && token.value === undefined))
+      ) odd.push(token.rawName);
+    }
     return {
       key: "usage.unexpected",
       params: { command: cmd, args: (odd.length > 0 ? odd : rest).join(" ") },
@@ -52,6 +58,7 @@ export function misused(cmd: string, rest: string[]): Misuse {
   }
   if (cmd === "reheat")
     return { key: "usage.unexpected", params: { command: cmd, args: rest.join(" ") || "(none)" } };
+  if (cmd === "tip") return { key: "usage.tip_reason", params: {} };
   const max = ARGS[cmd];
   if (max === undefined) return { key: "usage.unknown", params: { command: cmd } };
   if (cmd === "serve" && rest.length === 0) return { key: "usage.no_module", params: {} };

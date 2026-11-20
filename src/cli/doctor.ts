@@ -19,7 +19,7 @@ import {
   reviewerContent,
 } from "../adapters/codex-settings.js";
 import { bilingual, inLanguage, t } from "../adapters/i18n.js";
-import { gitView } from "../adapters/git.js";
+import { folderKey, gitView } from "../adapters/git.js";
 import { verifyAuditChain } from "../adapters/audit-log.js";
 import { auditLines, traceFindings } from "../adapters/rule-audit.js";
 import { isDirectory, loadManifest } from "../adapters/manifest.js";
@@ -140,7 +140,7 @@ export async function doctorCommand(project: string, ci = false): Promise<CliRes
                   (entry.scope === "user" ||
                     (["project", "local"].includes(String(entry.scope)) &&
                       typeof entry.projectPath === "string" &&
-                      resolve(entry.projectPath) === resolve(project))),
+                      folderKey(entry.projectPath) === folderKey(project))),
               )
             : [],
         );
@@ -369,7 +369,10 @@ export async function doctorCommand(project: string, ci = false): Promise<CliRes
       continue;
     }
     lines.push(say("doctor.repo.folder.ok", { repo: repo.path }));
-    const git = gitView(folder);
+    const git =
+      manifest?.layout === "workspace" && !existsSync(join(folder, ".git"))
+        ? null
+        : gitView(folder);
     if (!git) lines.push(say("doctor.repo.git.missing", { repo: repo.path }));
     else {
       if (!git.clean) lines.push(say("doctor.repo.dirty", { repo: repo.path }));

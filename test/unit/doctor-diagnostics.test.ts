@@ -5,12 +5,15 @@ import { join } from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
 import { stringify } from "yaml";
 import { appendAudit } from "../../src/adapters/audit-log.js";
+import { wireProjectHooks } from "../../src/adapters/hook-wiring.js";
 import * as git from "../../src/adapters/git.js";
 import { setLanguage } from "../../src/adapters/i18n.js";
 import { auditWarnings } from "../../src/adapters/rule-audit.js";
 import * as ruleAudit from "../../src/adapters/rule-audit.js";
 import { readState, statePaths } from "../../src/adapters/state-store.js";
 import { doctorCommand } from "../../src/cli/doctor.js";
+import { approve } from "../../src/cli/order.js";
+import { status } from "../../src/cli/peek.js";
 import { parseManifest } from "../../src/core/manifest.js";
 import { projectManifest, tempProject } from "../support/project.js";
 
@@ -95,6 +98,83 @@ async function windowsSandbox(row: SandboxCase) {
 }
 
 const fullAccess = 'sandbox_mode = "danger-full-access"\n';
+
+it("warns about missing work bases and fills them in on a later order", async () => {
+  p.contextSetup();
+  p.put(".verid/research.md", "# Research\n");
+  p.put(".verid/design.md", "# Design\n");
+  p.put(".verid/spec.md", "- REQ-1: share a greeting\n");
+  p.putPlan(".verid/plan.md", "## Module: greet\n- AC-1: shares a greeting\n");
+  const missing = { repo: ".", detail: "main main has no commit yet" };
+  const firstBase = { ".": { main: "main", base: "a".repeat(40) } };
+  const rows = [
+    { captured: missing, work: {} },
+    { captured: firstBase, work: firstBase },
+    { captured: { ".": { main: "main", base: "b".repeat(40) } }, work: firstBase },
+  ];
+  const capture = vi.spyOn(git, "captureWork");
+  for (const row of rows) {
+    capture.mockReturnValue(row.captured);
+    expect((await approve(p.root, "greet")).exit).toBe(0);
+    expect(p.state().modules.greet.work).toEqual(row.work);
+    const warnings = p.audit().filter((event) => event.code === "GIT_WORK_BASE");
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatchObject({ event: "warning", target: ".", reason: missing.detail });
+  }
+});
+
+it("recognizes registered hooks in either resource mode", async () => {
+  const rows = ["installed", "repo"] as const;
+  for (const resources of rows) {
+    const manifest = projectManifest({ resources });
+    const parsed = parseManifest(manifest);
+    if (!parsed.ok) throw new Error(parsed.detail);
+    p.put(".verid/manifest.yaml", stringify(manifest));
+    wireProjectHooks(p.root, parsed.manifest);
+    expect((await status(p.root)).stderr, resources).toBe("");
+  }
+});
+
+it("matches project-scoped plugin paths using platform case rules", async () => {
+  p.contextSetup("en", { resources: "installed" });
+  setLanguage("en");
+  const installed = p.path("plugin");
+  mkdirSync(installed);
+  vi.stubEnv("CLAUDE_CONFIG_DIR", p.path("claude-home"));
+  vi.mocked(spawnSync).mockReturnValue(result(""));
+  const rows = [
+    ["win32", p.root.toUpperCase(), false],
+    ["linux", p.root.toUpperCase(), true],
+    ["linux", p.root, false],
+  ] as const;
+  for (const [platform, projectPath, missing] of rows) {
+    Object.defineProperty(process, "platform", { ...platformDescriptor, value: platform });
+    p.put(
+      "claude-home/plugins/installed_plugins.json",
+      JSON.stringify({ version: 2, plugins: { "verid@verid": [{ scope: "project", projectPath, installPath: installed }] } }),
+    );
+    const { stdout } = await doctorCommand(p.root);
+    expect(stdout.includes("verid does not look installed for this project"), platform).toBe(missing);
+  }
+});
+
+it("requires workspace Git metadata in each repository folder", async () => {
+  p.contextSetup("en", {
+    layout: "workspace",
+    repos: ["app", "docs"].map((path) => ({ path, source_globs: ["src/**"], test_globs: ["test/**"] })),
+  });
+  setLanguage("en");
+  mkdirSync(p.path("app/.git"), { recursive: true });
+  mkdirSync(p.path("docs"));
+  const probe = vi.spyOn(git, "gitView").mockReturnValue({ clean: true, head: "a".repeat(40) });
+  vi.mocked(spawnSync).mockReturnValue(result(""));
+  const { stdout } = await doctorCommand(p.root);
+  const rows = [["app", true], ["docs", false], [".verid", false]] as const;
+  for (const [repo, hasGit] of rows) {
+    expect(probe.mock.calls.some(([folder]) => folder === p.path(repo)), repo).toBe(hasGit);
+    if (!hasGit) expect(stdout).toContain(`${repo} is not a Git repo`);
+  }
+});
 
 it("reports Windows Codex sandbox verification as information when no test runner exists", async () => {
   const rows: SandboxCase[] = [

@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import * as z from "zod/mini";
-import type { Action } from "../core/policy.js";
+import { type Action, plainRead } from "../core/policy.js";
 import { parseApplyPatch } from "../core/apply-patch.js";
 import { powershellWriteTargets } from "../core/powershell.js";
 import {
@@ -126,7 +126,8 @@ export function codexAction(p: PreToolUse): CodexAction {
   const action = toAction(p);
   if ("invalid" in action) throw new VeridError("VERID_BURNT_PAYLOAD", { detail: action.invalid });
   if (action.kind === "bash") {
-    const shell = shellFiles(action.command, p.cwd);
+    const powershell = process.platform === "win32";
+    const shell = shellFiles(action.command, p.cwd, powershell);
     const unverified = ["shell", "workdir", "cwd"].find(
       (field) => p.tool_input[field] !== undefined,
     );
@@ -135,8 +136,11 @@ export function codexAction(p: PreToolUse): CodexAction {
     // only the apply_patch tool, resolved against this cwd, may carry one.
     const shellPatch = PATCH_TEXT.test(action.command) || PATCH_PROGRAM.test(action.command);
     return {
-      // Keep the Bash action: every existing mention rule still judges this command.
-      action,
+      action: {
+        ...action,
+        ...(powershell && { powershell }),
+        ...(shellPatch && { shellPatch }),
+      },
       files: shell.files,
       ...(shellPatch ? { invalidPatch: "a patch handed to the shell" } : {}),
       ...(unsupported ? { unsupported } : {}),
@@ -149,11 +153,17 @@ export function codexAction(p: PreToolUse): CodexAction {
  * What a shell command plainly writes, read both as sh and as PowerShell: a host's shell tool
  * runs either, depending on the machine. What neither reader can follow is `unsupported`.
  */
-function shellFiles(command: string, cwd: string): { files: FileAction[]; unsupported?: string } {
-  const ps = powershellWriteTargets(command);
+function shellFiles(
+  command: string,
+  cwd: string,
+  powershell: boolean,
+): { files: FileAction[]; unsupported?: string } {
+  const ps = powershellWriteTargets(command, powershell);
+  // On PowerShell, a verified stderr discard has no filesystem target.
+  const discard = powershell && /\$null/i.test(command) && plainRead(command, true);
   return {
     files: [
-      ...bashWrites(command, cwd),
+      ...bashWrites(command, cwd).filter((file) => !discard || !/^\$null$/i.test(file.display)),
       ...ps.targets.map((target) => fileAction("Bash", "write", target, cwd)),
     ],
     ...(ps.unsupported ? { unsupported: ps.unsupported } : {}),

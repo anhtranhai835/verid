@@ -38,6 +38,23 @@ describe("a folder that was never cooked", () => {
 });
 
 describe("the command table", () => {
+  it("names missing and unexpected arguments of known commands", async () => {
+    t.seed({ language: "en" });
+    const rows = [
+      [["tip"], /tip.*reason/i],
+      [["-v", "x"], /-v does not take x/],
+      [["--version", "x"], /--version does not take x/],
+      [["setup-codex", "x"], /setup-codex does not take x/],
+      [["context", "a", "b"], /context does not take b/],
+      [["context", "--bogus"], /context does not take --bogus/],
+    ] as const;
+    for (const [args, message] of rows) {
+      const r = await cli(...args);
+      expect(r.code, args.join(" ")).toBe(2);
+      expect(r.stderr.split("\n")[0], args.join(" ")).toMatch(message);
+    }
+  });
+
   it("fits 100 columns when verid is called by a long command, naming it once", async () => {
     const r = await cli("help");
     expect(r.code).toBe(0);
