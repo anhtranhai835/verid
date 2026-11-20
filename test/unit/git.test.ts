@@ -1,10 +1,19 @@
 import { tempProject } from "../support/project.js";
 
+import { spawnSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
 
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
-import { compactWorkLog, gitView } from "../../src/adapters/git.js";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { compactWorkLog, gitView, workLog } from "../../src/adapters/git.js";
+import { GIT_SANDBOX_MESSAGE } from "../../src/core/doctor.js";
+
+vi.mock("node:child_process", async (orig) => {
+  const real = await orig<typeof import("node:child_process")>();
+  return { ...real, spawnSync: vi.fn(real.spawnSync) };
+});
+
+afterEach(() => vi.mocked(spawnSync).mockReset());
 
 const GIT_ENV = ["GIT_CONFIG_GLOBAL", "GIT_CONFIG_NOSYSTEM", "XDG_CONFIG_HOME"] as const;
 let saved: Record<string, string | undefined>;
@@ -95,6 +104,47 @@ describe("gitView", () => {
       "broken config": { clean: false, head: null },
     });
   });
+});
+
+it("reports sandbox-blocked Git commands in work logs without throwing", async () => {
+  const { spawnSync: realSpawnSync } =
+    await vi.importActual<typeof import("node:child_process")>("node:child_process");
+  const dir = committed();
+  const base = git(dir, "rev-parse", "HEAD");
+  write(dir, "src/a.ts", "committed change\n");
+  git(dir, "commit", "-q", "-am", "feat: change");
+  write(dir, "src/a.ts", "uncommitted change\n");
+  write(dir, "src/new.ts", "new file\n");
+
+  const cases = [
+    [workLog, ["log", "-1", "--format=%B"], "commit message"],
+    [workLog, ["diff-tree"], "diff"],
+    [workLog, ["diff", "HEAD"], "uncommitted diff"],
+    [workLog, ["ls-files"], "new files"],
+    [compactWorkLog, ["diff", "--name-status"], "file status"],
+    [compactWorkLog, ["diff", "--stat=120"], "diff stat"],
+    [compactWorkLog, ["diff", "--no-ext-diff"], "diff"],
+    [compactWorkLog, ["ls-files"], "new files"],
+  ] as const;
+  for (const [readLog, target, label] of cases) {
+    vi.mocked(spawnSync).mockImplementation((command, args, options) => {
+      if (command === "git" && target.every((arg, i) => args?.[i + 3] === arg))
+        return {
+          error: Object.assign(new Error("spawnSync git EPERM"), { code: "EPERM" }),
+          status: null,
+          stdout: null,
+          stderr: null,
+        } as unknown as ReturnType<typeof spawnSync>;
+      return realSpawnSync(command, args, options);
+    });
+    let lines: string[] = [];
+    expect(() => {
+      lines = readLog(dir, { ".": { main: "main", base } });
+    }, `${readLog.name}: ${target.join(" ")}`).not.toThrow();
+    expect(lines.filter((line) => line.includes(GIT_SANDBOX_MESSAGE))).toEqual([
+      `(${label} unreadable: ${GIT_SANDBOX_MESSAGE})`,
+    ]);
+  }
 });
 
 describe("compactWorkLog", () => {
