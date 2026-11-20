@@ -16,30 +16,35 @@ const repo = { path: ".", source_globs: ["src/**"], test_globs: ["test/**"] };
 describe("self-contained verid skills", () => {
   it("preloads each agent's skills and preserves them in local Claude entries", () => {
     const rows = [
-      ["ui-ux-designer", ["verid:ui-ux-pro-max"]],
-      ["reviewer", ["verid:review"]],
+      ["ui-ux-designer", undefined],
+      ["reviewer", undefined],
       ["architect", ["verid:design", "verid:predict"]],
       ["brainstormer", ["verid:problem-solving", "verid:predict"]],
       ["code-simplifier", ["verid:problem-solving"]],
       ["debugger", ["verid:debugging"]],
       ["docs-manager", ["verid:context-engineering"]],
-      ["project-manager", ["verid:onboard"]],
+      ["project-manager", undefined],
       ["technical-researcher", ["verid:docs-seeker"]],
       ["security", ["verid:security"]],
     ] as const;
     const files = repoResources(mkdtempSync(join(tmpdir(), "verid-preloads-")), ["claude-code"]);
     for (const [name, skills] of rows) {
-      const agent = parse(read(`plugin/agents/${name}.md`).split("---")[1]!);
+      const [, header, body] = read(`plugin/agents/${name}.md`).split("---");
+      const agent = parse(header!);
       expect(agent.skills, name).toEqual(skills);
       expect(agent.tools, name).not.toMatch(/\bSkill\b/);
-      for (const skill of skills)
+      if (name === "ui-ux-designer") {
+        expect(body).toContain("data/");
+        expect(agent.tools).not.toMatch(/\bBash\b/);
+      }
+      for (const skill of skills ?? [])
         expect(
           existsSync(join(root, "plugin/skills", skill.replace(/^verid:/, ""), "SKILL.md")),
           skill,
         ).toBe(true);
       const local = files.find((file) => file.rel === `.claude/agents/verid-${name}.md`)!;
       expect(parse(local.content.toString().split("---")[1]!).skills, name).toEqual(
-        skills.map((skill) => skill.replace(/^verid:/, "verid-")),
+        skills?.map((skill) => skill.replace(/^verid:/, "verid-")),
       );
     }
   });
