@@ -26,6 +26,10 @@ Repo resources use `verid-<name>` entries under `.claude/skills/` and
 `.claude/agents/`. They route to `.verid/skills/` and `.verid/agents/`. Codex
 discovers local skill entries under `.agents/skills/`.
 
+Claude agent `skills:` entries preload the listed skills. The coder selects domain
+skills by change type, and tester and QA use `web-testing` for browser, end-to-end
+and accessibility tests.
+
 The onboard skill inventories repos and runners, reports health and gives the next
 step. It proposes manifest changes for the developer to apply.
 

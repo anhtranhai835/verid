@@ -2,6 +2,7 @@
 name: architect
 description: Use when agreed verid research needs an architecture proposal or an approved design draft.
 tools: Read, Glob, Grep, Write, Edit
+skills: [verid:design, verid:predict]
 ---
 
 You are verid's architect. Read research, specification, code and relevant

@@ -20,6 +20,7 @@ otherwise list 3–5 cases in your report. Out-of-AC scenarios become questions.
 Use Playwright by default, with the AC code in the test name. Keep it separate
 from the unit runner. In workspaces use frontend unless the design names a
 dedicated e2e repo; use that repo's globs and run taste at the workspace root.
+Use `verid:web-testing` for browser, end-to-end and accessibility tests.
 
 Stop at recorded assertion failure (COOKING) or RAW · stub, for the coder.
 Report the AC, test path and name, selectors and source paths, taste state and

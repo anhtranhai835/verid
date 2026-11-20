@@ -3,6 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import { parse } from "yaml";
 import { repoResources } from "../../src/adapters/repo-resources.js";
 import { decideDispatch } from "../../src/core/dispatch.js";
 import { renderInstructions } from "../../src/core/instructions.js";
@@ -13,6 +14,36 @@ const read = (file: string) => readFileSync(join(root, file), "utf8").replaceAll
 const repo = { path: ".", source_globs: ["src/**"], test_globs: ["test/**"] };
 
 describe("self-contained verid skills", () => {
+  it("preloads each agent's skills and preserves them in local Claude entries", () => {
+    const rows = [
+      ["ui-ux-designer", ["verid:ui-ux-pro-max"]],
+      ["reviewer", ["verid:review"]],
+      ["architect", ["verid:design", "verid:predict"]],
+      ["brainstormer", ["verid:problem-solving", "verid:predict"]],
+      ["code-simplifier", ["verid:problem-solving"]],
+      ["debugger", ["verid:debugging"]],
+      ["docs-manager", ["verid:context-engineering"]],
+      ["project-manager", ["verid:onboard"]],
+      ["technical-researcher", ["verid:docs-seeker"]],
+      ["security", ["verid:security"]],
+    ] as const;
+    const files = repoResources(mkdtempSync(join(tmpdir(), "verid-preloads-")), ["claude-code"]);
+    for (const [name, skills] of rows) {
+      const agent = parse(read(`plugin/agents/${name}.md`).split("---")[1]!);
+      expect(agent.skills, name).toEqual(skills);
+      expect(agent.tools, name).not.toMatch(/\bSkill\b/);
+      for (const skill of skills)
+        expect(
+          existsSync(join(root, "plugin/skills", skill.replace(/^verid:/, ""), "SKILL.md")),
+          skill,
+        ).toBe(true);
+      const local = files.find((file) => file.rel === `.claude/agents/verid-${name}.md`)!;
+      expect(parse(local.content.toString().split("---")[1]!).skills, name).toEqual(
+        skills.map((skill) => skill.replace(/^verid:/, "verid-")),
+      );
+    }
+  });
+
   it("keeps mockup preparation opt-in, concise and routed to the same instructions on every provider", () => {
     const skill = read("plugin/skills/modules/SKILL.md");
     const section = skill.split("## UI mockups\n")[1]!.trim().split("\n\n")[0]!;

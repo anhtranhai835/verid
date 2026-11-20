@@ -51,8 +51,9 @@ dependencies. Name verid:tdd (and its path for custom agents), write responsibil
 and relevant interfaces. Mapped tester/coder roles own their writes; on Codex or
 without mappings, main writes.
 
-Derive Playwright selectors from UI source. Keep e2e outside the unit runner,
-with matching `e2e_globs`. Evidence requires JUnit.
+Derive Playwright selectors from UI source. Run e2e separately with `e2e_globs` and JUnit.
+Use `verid:web-testing` for browser, e2e and accessibility tests.
+Coder picks domain skills by change type.
 
 In a workspace, remix mode or no-brain drive, read `references/modes.md` first.
 
