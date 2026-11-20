@@ -36,10 +36,7 @@ describe("1. the hook really blocks forbidden actions", () => {
     const rows = [
       {
         tool: "Bash",
-        input: {
-          command:
-            "if (Test-Path -LiteralPath README.md) { Get-Content -Raw README.md }; Get-Content -Raw .verid/manifest.yaml",
-        },
+        input: { command: "Get-Content -Raw .verid/manifest.yaml | ForEach-Object { $_ }" },
         code: "VERID_BURNT_MANIFEST_PROTECTED",
         hint: true,
       },

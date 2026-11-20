@@ -81,6 +81,8 @@ Chỉ bỏ qua việc so khớp chuỗi con `credentials` và `secret` trong tê
 
 Các rule áp dụng cho tool file, Bash (đích ghi rõ ràng được xét như Write), tool MCP, `Skill`, `Agent`, `Task` của Claude Code, cùng `apply_patch` và `collaborationspawn_agent` của Codex; tool tìm kiếm/đọc web chỉ đọc `webrun` của Codex được phép. Codex còn bảo vệ `.codex/` trong project/home, `.agents/skills/` trong project/home và thư mục `plugin/` của verid (lệnh shell chỉ gồm chương trình đọc như `Get-Content` hay `cat` vẫn được đọc, vì Codex không có tool đọc file; `.codex/` của project/home cũng được đọc như vậy, và bộ lọc `rg -g '!…'` hoặc `grep --exclude-dir=` được nhắc mọi đường dẫn được bảo vệ để bỏ qua nó), coi `~/.codex/sessions/`, `history.jsonl` và các database trạng thái của nó là transcript và `~/.codex/auth.json` là bí mật, kể cả khi chuyển `CODEX_HOME`. Lỗi bất ngờ bên trong verid chặn lần gọi đó.
 
+Lệnh chỉ đọc có thể dùng điều kiện `if`/`elseif` đơn giản với `Test-Path` trong PowerShell, nhánh `else` tùy chọn và chuyển hướng stderr bằng `2>$null`, `2>/dev/null` hoặc `2>&1`.
+
 Vai trò: khi có tester và coder, chỉ coder viết code production và chỉ tester (hoặc qa, với test end-to-end) viết test; luồng chính và agent lạ không giành được quyền nào trong hai quyền đó. Reviewer và security không ghi gì. Phạm vi của các vai soạn thảo (architect, planner, qa) và danh sách skill/agent được biết là chỉ dẫn: chỗ lệch được audit, không bị chặn. Một vai cần định danh subagent do host cung cấp.
 
 Ở prep/recipe với drive big-brain, `VERID_BURNT_TASK_SESSION` yêu cầu một session mới cho mỗi task được chọn bằng `verid order`. Drive no-brain dùng một session làm lần lượt các module theo thứ tự trong `.verid/plan.md`; remix giữ luồng baseline.

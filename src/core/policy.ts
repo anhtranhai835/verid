@@ -267,9 +267,8 @@ const VERID_HOOK = /\bdist[\\/]+hook\b|\bhook\.js\b/;
 const PLUGIN_COMMAND =
   /(?:\bverid(?:@[^\s"'\\/]*)?(?:\.(?:cmd|ps1|exe|mjs))?|\bcli(?:\.js)?)["']?\s+(?:--\s+)?plugin\b/;
 
-// Codex has no file-read tool: it reads its installed skills through the shell. Commands that are
-// all plain read programs, chained by newlines, `;`, `&&`, `||` or pipes, with no redirect, variable,
-// subshell or background job, write nothing.
+// Plain reads allow chains of read programs, simple `if (Test-Path ...)` guards, and the
+// exact stderr discard or merge forms below.
 const READ_PROGRAMS = new Set([
   "get-content",
   "gc",
@@ -291,15 +290,55 @@ const READ_PROGRAMS = new Set([
   "findstr",
   "wc",
   "measure-object",
+  "format-table",
+  "ft",
+  "format-list",
+  "fl",
+  "format-wide",
+  "fw",
+  "format-custom",
+  "format-hex",
+  "out-string",
+  "resolve-path",
+  "rvpa",
+  "get-item",
+  "gi",
 ]);
+
+const flattenTestPathGuards = (command: string): string => {
+  const branch = String.raw`\s*\(\s*test-path\s+(?:(?:-literalpath|-path)\s+)?([^\s(){}$;&|<>\x60]+)(?:\s+-pathtype\s+(?:leaf|container|any))?\s*\)\s*\{([^{}]*)\}`;
+  const otherwise = String.raw`else\s*\{([^{}]*)\}`;
+  const guard = new RegExp(
+    String.raw`(?<=^|;|&&|\|\||\n)[^\S\r\n]*if${branch}(?:\s*elseif${branch})*(?:\s*${otherwise})?(?=[^\S\r\n]*(?:$|[;|]|\r?\n|&&))`,
+    "g",
+  );
+  const branches = new RegExp(`(?:if|elseif)${branch}|${otherwise}`, "g");
+
+  // Check every condition and body, leaving any following shell operator in place.
+  return command.replace(guard, (match) =>
+    [...match.matchAll(branches)]
+      .flatMap(([, path, body, elseBody]) => [
+        path && `test-path ${path}`,
+        (body ?? elseBody)?.trim(),
+      ])
+      .filter(Boolean)
+      .join("; "),
+  );
+};
+
 // One classifier for every protected path, run once on the command as typed: a literal quoted
 // word is data (a `|` in an rg pattern splits nothing); a double-quoted word that expands is not.
 const plainRead = (command: string): boolean => {
-  const c = command.toLowerCase().replace(/'[^']*'|"[^"$`]*"/g, "_");
+  const c = command.replace(/'[^']*'|"[^"$`]*"/g, "_");
+  if (/\r(?!\n)|\\\r?\n/.test(c)) return false;
+  // Match the redirect target as typed before normalizing command names.
+  const reads = flattenTestPathGuards(
+    c.replace(/(?<=\s)2>[ \t]*(?:\$null|\/dev\/null|&1)(?=$|[\s;|}]|&&)/g, " ").toLowerCase(),
+  );
   return (
     // rg --pre runs a program on every file it searches.
-    !/[<>`$(){}'"]|\r(?!\n)|\\\r?\n|(?<!&)&(?!&)|\s--pre\b/.test(c) &&
-    c
+    !/[<>`$(){}'"]|(?<!&)&(?!&)|\s--pre\b/.test(reads) &&
+    reads
       .split(/\r?\n/)
       // Blank lines are harmless; empty commands around other operators remain rejected.
       .filter((line) => line.trim() !== "")
